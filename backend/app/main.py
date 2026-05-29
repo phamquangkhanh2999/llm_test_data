@@ -1,0 +1,448 @@
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+import json
+import re
+import sys
+import asyncio
+
+# Đảm bảo Windows console hỗ trợ UTF-8 đầy đủ cho các bản ghi logs
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
+# Nạp các thành phần kết nối Cơ sở dữ liệu SQLite cục bộ
+from .core.database import engine, Base, get_db, SessionLocal
+# Nạp các Models bảng dữ liệu quan hệ
+from . import models
+# Nạp dịch vụ kết nối OpenAI API thật
+from .services.ai_parser import parse_spec_with_openai
+# Nạp các bộ thuật toán tối ưu hóa chạy trên Server
+from .algorithms.optimizer_engine import TestSuiteOptimizer
+from .algorithms.boundary_tweak import optimize_testcase_boundaries
+
+# Bước 1: Tự động khởi tạo tất cả các Bảng dữ liệu trong SQLite tệp tin "testforge.db" 
+# khi ứng dụng Backend được khởi động. Đây là cơ chế tự động migration rất tiện lợi.
+Base.metadata.create_all(bind=engine)
+
+# Bước 2: Khởi tạo ứng dụng FastAPI chính
+app = FastAPI(
+    title="Hyperion TestForge Backend API",
+    description="API dịch vụ sinh và tối ưu hóa bộ ca kiểm thử tự động sử dụng LLM + GA + HC",
+    version="1.0.0"
+)
+
+# Bước 3: Cấu hình CORS Middleware (Cross-Origin Resource Sharing).
+# Cho phép ứng dụng Frontend React chạy ở cổng 5173 truy cập và gọi các Endpoint của Backend ở cổng 8000 một cách an toàn.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], # Chỉ định cổng React được gọi
+    allow_credentials=True,
+    allow_methods=["*"], # Cho phép tất cả các phương thức HTTP (GET, POST, OPTIONS, v.v.)
+    allow_headers=["*"], # Cho phép truyền tất cả các loại HTTP Headers
+)
+
+# --- ĐỊNH NGHĨA CÁC ĐỐI TƯỢNG TRUYỀN DỮ LIỆU (PYDANTIC SCHEMAS / DTOS) ---
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+
+class SpecRequest(BaseModel):
+    """
+    Schema đại diện cho yêu cầu phân tích mô tả đặc tả nghiệp vụ.
+    """
+    raw_text: str  # Văn bản nghiệp vụ tiếng Việt/Anh thô
+    api_key_override: Optional[str] = None  # Khóa OpenAI API Key tạm thời nhập từ màn hình Client
+
+class OptimizeWeights(BaseModel):
+    """
+    Trọng số cấu hình hàm đánh giá chất lượng Test Case.
+    """
+    validation: float
+    boundary: float
+    security: float
+    diversity: float
+
+class OptimizeRequest(BaseModel):
+    """
+    Schema cấu hình chạy tiến hóa và tối ưu hóa biên cho bộ test.
+    """
+    specification_id: str
+    generations: int
+    popSize: int
+    crossoverRate: float
+    mutationRate: float
+    weights: OptimizeWeights
+    initial_seeds: List[Dict[str, Any]] # Danh sách F0 mẫu
+
+# --- ĐỊNH NGHĨA CÁC ROUTER ENDPOINTS ---
+
+@app.post("/api/specifications")
+def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
+    """
+    ENDPOINT 1: Phân tích cú pháp mô tả đặc tả nghiệp vụ.
+    Nhận văn bản thô, gọi OpenAI API trích xuất JSON Schema ràng buộc,
+    tự động lưu một Dự án & Đặc tả mới vào CSDL SQLite, rồi trả về cấu trúc cho Client.
+    """
+    # 1. Gọi OpenAI API (hoặc bộ dự phòng Fallback) xử lý phân tích ngữ nghĩa
+    ai_result = parse_spec_with_openai(req.raw_text, req.api_key_override)
+    
+    # 2. Tạo một bản ghi Dự án (Project) mới tự động để gom nhóm dữ liệu
+    db_project = models.Project(
+        name=f"Dự án Test {schemaName_helper(req.raw_text)}",
+        description="Dự án kiểm thử tự động sinh bởi AI Parser"
+    )
+    db.add(db_project)
+    db.commit()
+    db.refresh(db_project)
+
+    # 3. Tạo một bản ghi Đặc tả (Specification) lưu trữ JSON Schema cấu trúc trường
+    db_spec = models.Specification(
+        project_id=db_project.id,
+        raw_text=req.raw_text,
+        parsed_schema=json.dumps(ai_result.get("fields", [])) # Chuyển mảng Python list sang chuỗi JSON lưu vào CSDL
+    )
+    db.add(db_spec)
+    db.commit()
+    db.refresh(db_spec)
+
+    # 4. Trả về kết quả hoàn chỉnh cho màn hình React sử dụng
+    return {
+        "specification_id": db_spec.id,
+        "project_id": db_project.id,
+        "fields": ai_result.get("fields", []),
+        "initialPopulation": ai_result.get("initialPopulation", [])
+    }
+
+
+@app.get("/api/specifications")
+def api_get_specifications(db: Session = Depends(get_db)):
+    """
+    ENDPOINT 3: Lấy danh sách tất cả các Đặc tả nghiệp vụ đã lưu trong CSDL SQLite.
+    """
+    specs = db.query(models.Specification).order_by(models.Specification.created_at.desc()).all()
+    result = []
+    for spec in specs:
+        try:
+            fields = json.loads(spec.parsed_schema)
+        except Exception:
+            fields = []
+        
+        # Tạo initialPopulation mô phỏng nếu cần thiết (hoặc rỗng)
+        # Giúp đồng bộ cấu trúc nạp preset
+        result.append({
+            "id": spec.id,
+            "raw_text": spec.raw_text,
+            "fields": fields,
+            "created_at": spec.created_at.isoformat()
+        })
+    return result
+
+
+@app.delete("/api/specifications/{specification_id}")
+def api_delete_specification(specification_id: str, db: Session = Depends(get_db)):
+    """
+    ENDPOINT 4: Xóa một Đặc tả nghiệp vụ khỏi CSDL SQLite.
+    """
+    spec = db.query(models.Specification).filter(models.Specification.id == specification_id).first()
+    if not spec:
+        raise HTTPException(status_code=404, detail="Không tìm thấy đặc tả nghiệp vụ!")
+    db.delete(spec)
+    db.commit()
+    return {"status": "success", "message": "Đã xóa đặc tả nghiệp vụ thành công!"}
+
+
+@app.post("/api/optimize")
+def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(get_db)):
+    """
+    ENDPOINT 2: Thực thi tiến hóa và tinh chỉnh biên tối ưu hóa bộ Test Cases.
+    Nhận cấu hình, chạy thuật toán GA trên Server qua N thế hệ, kích hoạt leo đồi HC
+    cho ca tốt nhất để sinh biên độc hại sâu sắc, lưu kết quả tối ưu vào SQLite và trả về.
+    """
+    # 1. Truy vấn JSON Schema quy tắc trường từ cơ sở dữ liệu
+    db_spec = db.query(models.Specification).filter(models.Specification.id == req.specification_id).first()
+    if not db_spec:
+        raise HTTPException(status_code=404, detail="Không tìm thấy đặc tả nghiệp vụ tương ứng!")
+
+    schema_rules = json.loads(db_spec.parsed_schema)
+
+    # 2. Khởi tạo bộ tối ưu hóa TestSuiteOptimizer chạy bằng Python trên Server
+    config_dict = {
+        "generations": req.generations,
+        "popSize": req.popSize,
+        "crossoverRate": req.crossoverRate,
+        "mutationRate": req.mutationRate,
+        "weights": {
+            "validation": req.weights.validation,
+            "boundary": req.weights.boundary,
+            "security": req.weights.security,
+            "diversity": req.weights.diversity
+        }
+    }
+
+    optimizer = TestSuiteOptimizer(schema_rules, config_dict)
+    optimizer.initialize_suite(req.initial_seeds)
+
+    # Mảng lưu lịch sử điểm qua từng thế hệ phục vụ vẽ biểu đồ Recharts
+    progress_history = []
+    
+    # Lưu thế hệ F0 ban đầu
+    f0_best = optimizer.test_suite[0]["fitness"]
+    f0_avg = sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite)
+    progress_history.append({
+        "generation": 0,
+        "bestFitness": f0_best,
+        "avgFitness": f0_avg,
+        "coverage": 0.2,
+        "duplicateRate": 0.1,
+        "test_cases": [
+            {"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]}
+            for p in optimizer.test_suite[:10]
+        ]
+    })
+
+    # 3. Vòng lặp tiến hóa qua từng thế hệ (GA generations loops)
+    for g in range(req.generations):
+        gen_stats = optimizer.evolve_one_generation()
+        progress_history.append(gen_stats)
+
+    # 4. Kích hoạt tối ưu tinh chỉnh biên cục bộ (Hill Climbing) trên ca test xuất sắc nhất F_final
+    best_candidate = optimizer.test_suite[0]["values"]
+    raw_suite_values = [p["values"] for p in optimizer.test_suite]
+    
+    # Định nghĩa hàm callback chấm điểm fitness cục bộ dựa trên suite hiện tại
+    fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
+    
+    # Tinh chỉnh ca test biên
+    hc_optimized, hc_tweak_stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator)
+
+    # Thay thế ca test đầu tiên tốt nhất bằng bản ghi đã được leo đồi tinh chỉnh
+    optimizer.test_suite[0]["values"] = hc_optimized
+    optimizer.test_suite[0]["fitness"] = hc_tweak_stats.optimized_fitness
+    optimizer.test_suite[0]["origin"] = "HC_FINE_TUNED"
+
+    # 5. Lưu phiên chạy Job này vào Cơ sở dữ liệu SQLite
+    final_stats = progress_history[-1]
+    db_job = models.Job(
+        specification_id=req.specification_id,
+        status="COMPLETE",
+        algorithm_config=json.dumps(config_dict),
+        final_coverage=final_stats["coverage"],
+        final_duplicate_rate=final_stats["duplicateRate"]
+    )
+    db.add(db_job)
+    db.commit()
+    db.refresh(db_job)
+
+    # 6. Lưu toàn bộ các Test Cases tối ưu hóa vừa sinh ra vào bảng generated_data trong CSDL SQLite
+    # Đánh dấu các ca test được nhúng mã độc hoặc chạm đúng biên
+    security_keywords = ["' or", '" or', "--", "union", "select", "<script"]
+    for ind in optimizer.test_suite:
+        tc_values = ind["values"]
+        
+        # Nhận diện xem có phải ca biên đặc biệt / độc hại không
+        is_security = any(any(kw in str(val).lower() for kw in security_keywords) for val in tc_values.values())
+        is_edge = is_security or (ind["fitness"] > 0.85 and "Tweak" in ind["origin"])
+
+        db_data = models.GeneratedData(
+            job_id=db_job.id,
+            test_case_values=json.dumps(tc_values),
+            fitness_score=ind["fitness"],
+            source_algorithm=ind["origin"],
+            is_edge_case=is_edge
+        )
+        db.add(db_data)
+    db.commit()
+
+    # 7. Trả về kết quả tối ưu hoàn chỉnh cho React hiển thị trực quan
+    return {
+        "job_id": db_job.id,
+        "final_coverage": final_stats["coverage"],
+        "final_duplicateRate": final_stats["duplicateRate"],
+        "optimizedDataset": [p["values"] for p in optimizer.test_suite],
+        "progressHistory": progress_history,
+        "hcStats": hc_tweak_stats.to_dict()
+    }
+
+
+# --- CÁC HÀM HELPER BỔ TRỢ ---
+def schemaName_helper(raw_text: str) -> str:
+    """
+    Sinh tên dự án tự động bằng cách lấy một vài ký tự đầu của văn bản thô.
+    """
+    text_clean = re.sub(r"[^\w\sÀ-ỹ]", "", raw_text)
+    words = text_clean.split()
+    name = " ".join(words[:4])
+    return name if name else "Không tên"
+
+
+@app.get("/health")
+def api_health_check():
+    """
+    Kiểm tra tình trạng hoạt động (Healthcheck) của Backend Server.
+    """
+    return {"status": "healthy", "service": "Hyperion TestForge Backend"}
+
+
+@app.websocket("/ws/jobs/{specification_id}")
+async def websocket_optimize_testcase_dataset(websocket: WebSocket, specification_id: str):
+    """
+    ENDPOINT WEBSOCKET: Truyền phát trực tiếp tiến trình tối ưu di truyền di trú (GA)
+    và tinh chỉnh biên (HC) từ Python Core trên Server về màn hình React thời gian thực.
+    """
+    await websocket.accept()
+    db = SessionLocal()
+    try:
+        # 1. Đón nhận gói cấu hình di truyền gửi lên từ Client
+        data = await websocket.receive_text()
+        req_data = json.loads(data)
+        
+        generations = req_data.get("generations", 60)
+        pop_size = req_data.get("popSize", 100)
+        crossover_rate = req_data.get("crossoverRate", 0.8)
+        mutation_rate = req_data.get("mutationRate", 0.15)
+        weights_data = req_data.get("weights", {"validation": 0.5, "boundary": 0.2, "security": 0.2, "diversity": 0.1})
+        initial_seeds = req_data.get("initial_seeds", [])
+        
+        # 2. Truy vấn JSON Schema quy tắc trường từ cơ sở dữ liệu SQLite
+        db_spec = db.query(models.Specification).filter(models.Specification.id == specification_id).first()
+        if not db_spec:
+            await websocket.send_json({"event": "ERROR", "message": "Không tìm thấy đặc tả nghiệp vụ tương ứng!"})
+            await websocket.close()
+            return
+
+        schema_rules = json.loads(db_spec.parsed_schema)
+
+        config_dict = {
+            "generations": generations,
+            "popSize": pop_size,
+            "crossoverRate": crossover_rate,
+            "mutationRate": mutation_rate,
+            "weights": weights_data
+        }
+
+        # 3. Khởi tạo bộ tối ưu hóa TestSuiteOptimizer chạy bằng Python trên Server
+        optimizer = TestSuiteOptimizer(schema_rules, config_dict)
+        optimizer.initialize_suite(initial_seeds)
+
+        progress_history = []
+        
+        # Lưu và truyền phát thế hệ F0 ban đầu
+        f0_best = optimizer.test_suite[0]["fitness"]
+        f0_avg = sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite)
+        f0_stats = {
+            "generation": 0,
+            "bestFitness": f0_best,
+            "avgFitness": f0_avg,
+            "coverage": 0.2,
+            "duplicateRate": 0.1,
+            "test_cases": [
+                {"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]}
+                for p in optimizer.test_suite[:10]
+            ]
+        }
+        progress_history.append(f0_stats)
+        
+        # Gửi gói tin thế hệ F0
+        await websocket.send_json({
+            "event": "GA_PROGRESS",
+            "data": f0_stats
+        })
+        await asyncio.sleep(0.05)
+
+        # 4. Vòng lặp tiến hóa qua từng thế hệ (GA generations loops)
+        for g in range(generations):
+            gen_stats = optimizer.evolve_one_generation()
+            progress_history.append(gen_stats)
+            
+            # Gửi gói tin tiến độ thế hệ di truyền qua kết nối WebSocket thời gian thực
+            await websocket.send_json({
+                "event": "GA_PROGRESS",
+                "data": gen_stats
+            })
+            # Tạm dừng rất ngắn để client render hoạt ảnh mượt mà và tránh nghẽn luồng
+            await asyncio.sleep(0.02)
+
+        # 5. Kích hoạt tối ưu tinh chỉnh biên cục bộ (Hill Climbing)
+        await websocket.send_json({
+            "event": "HC_START",
+            "message": "Bắt đầu tinh chỉnh dò biên cục bộ (Hill Climbing)..."
+        })
+        await asyncio.sleep(0.4)
+
+        best_candidate = optimizer.test_suite[0]["values"]
+        raw_suite_values = [p["values"] for p in optimizer.test_suite]
+        fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
+        
+        # Tinh chỉnh ca test biên
+        hc_optimized, hc_tweak_stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator)
+
+        # Truyền phát từng bước tinh chỉnh của leo đồi về cho terminal log của Client
+        for detail in hc_tweak_stats.details:
+            await websocket.send_json({
+                "event": "HC_PROGRESS",
+                "data": {
+                    "status": "ACTIVE",
+                    "log": detail
+                }
+            })
+            await asyncio.sleep(0.03)
+
+        # Thay thế ca tốt nhất bằng ca sau khi leo đồi
+        optimizer.test_suite[0]["values"] = hc_optimized
+        optimizer.test_suite[0]["fitness"] = hc_tweak_stats.optimized_fitness
+        optimizer.test_suite[0]["origin"] = "HC_FINE_TUNED"
+
+        # 6. Lưu phiên chạy Job này vào Cơ sở dữ liệu SQLite
+        final_stats = progress_history[-1]
+        db_job = models.Job(
+            specification_id=specification_id,
+            status="COMPLETE",
+            algorithm_config=json.dumps(config_dict),
+            final_coverage=final_stats["coverage"],
+            final_duplicate_rate=final_stats["duplicateRate"]
+        )
+        db.add(db_job)
+        db.commit()
+        db.refresh(db_job)
+
+        # 7. Lưu tất cả các Test Cases tối ưu hóa vào bảng generated_data
+        security_keywords = ["' or", '\" or', "--", "union", "select", "<script"]
+        for ind in optimizer.test_suite:
+            tc_values = ind["values"]
+            is_security = any(any(kw in str(val).lower() for kw in security_keywords) for val in tc_values.values())
+            is_edge = is_security or (ind["fitness"] > 0.85 and "Tweak" in ind["origin"])
+
+            db_data = models.GeneratedData(
+                job_id=db_job.id,
+                test_case_values=json.dumps(tc_values),
+                fitness_score=ind["fitness"],
+                source_algorithm=ind["origin"],
+                is_edge_case=is_edge
+            )
+            db.add(db_data)
+        db.commit()
+
+        # 8. Gửi gói tin HOÀN TẤT tối ưu hóa cuối cùng cho Client
+        await websocket.send_json({
+            "event": "COMPLETE",
+            "data": {
+                "job_id": db_job.id,
+                "final_coverage": final_stats["coverage"],
+                "final_duplicateRate": final_stats["duplicateRate"],
+                "optimizedDataset": [p["values"] for p in optimizer.test_suite],
+                "hcStats": hc_tweak_stats.to_dict()
+            }
+        })
+
+    except WebSocketDisconnect:
+        print(f">>> Client WebSocket disconnected for spec: {specification_id}")
+    except Exception as e:
+        print(f">>> ERROR in WebSocket optimizer route: {str(e)}")
+        try:
+            await websocket.send_json({"event": "ERROR", "message": f"Lỗi máy chủ: {str(e)}"})
+        except:
+            pass
+    finally:
+        db.close()
+
