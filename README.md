@@ -89,12 +89,19 @@ pip install -r requirements.txt
 Sao chép cấu hình mẫu hoặc chỉnh sửa trực tiếp tệp tin `.env` trong thư mục `backend/`:
 ```bash
 # Trong file backend/.env
+# Nếu sử dụng Gemini API:
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Hoặc nếu sử dụng OpenAI API:
 OPENAI_API_KEY=your_openai_api_key_here
+
 DATABASE_URL=sqlite:///./testforge.db
 ```
 > [!TIP]
-> **Chế độ Ngoại tuyến thông minh (Fallback/Mock mode):**
-> Nếu bạn không cấu hình `OPENAI_API_KEY` (hoặc để trống), hệ thống sẽ **tự động kích hoạt bộ giả lập nghiệp vụ thông minh**. Bạn vẫn có thể trải nghiệm toàn bộ các tính năng phân tích nghiệp vụ, tối ưu di truyền và leo đồi mượt mà mà không mất phí sử dụng OpenAI API!
+> **Hỗ trợ Đa AI Engine & Chế độ Ngoại tuyến (Fallback/Mock mode):**
+> 1. **Gemini API:** Được khuyên dùng nhờ tốc độ cao và chi phí tối ưu. Chỉ cần điền `GEMINI_API_KEY` (khóa có dạng bắt đầu bằng `AIzaSy`). Hệ thống sẽ tự động sử dụng mô hình `gemini-1.5-flash`.
+> 2. **OpenAI API:** Điền `OPENAI_API_KEY`, hệ thống sẽ sử dụng mô hình `gpt-3.5-turbo`.
+> 3. **Ngoại tuyến:** Nếu bạn để trống cả hai khóa, hệ thống sẽ **tự động kích hoạt bộ giả lập nghiệp vụ thông minh (Mock Fallback)** giúp trải nghiệm đầy đủ tính năng mà không mất phí!
 
 #### **Bước 1.5: Khởi chạy Backend Server**
 Thực thi lệnh sau để khởi chạy máy chủ FastAPI dưới chế độ tự động tải lại khi mã thay đổi (`--reload`):

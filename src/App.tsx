@@ -84,8 +84,8 @@ function App() {
       // Reset mảng dữ liệu test của dự án cũ
       setOptimizedDataset([]);
       
-      // Tự động nhảy sang Tab Visualizer để bạn bắt đầu tối ưu hóa dữ liệu!
-      setActiveTab('visualizer');
+      // Hiển thị thông báo thành công cho người dùng
+      alert("Phân tích đặc tả nghiệp vụ bằng AI thành công!\n\nQuy tắc ràng buộc (JSON Rules) và tập dữ liệu hạt giống F0 đã được tạo lập tự động ở phía dưới.\nBạn có thể tự do thêm bớt trường hoặc tinh chỉnh các giá trị Max/Min, Regex ngay tại đây, sau đó bấm nút 'Tiếp tục' ở cuối trang để tiến hành bước tối ưu hóa bộ test!");
       
     } catch (e: any) {
       console.error(e);
@@ -146,17 +146,17 @@ function App() {
           </span>
         </div>
 
-        {/* Ô nhập trực tiếp OpenAI API Key trên Giao diện */}
+        {/* Ô nhập trực tiếp API Key trên Giao diện */}
         <div className="flex align-center gap-sm" style={{ background: 'rgba(0,0,0,0.2)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.06)' }}>
           <Key size={14} style={{ color: 'var(--color-teal)' }} />
-          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>OpenAI API Key:</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>AI API Key:</span>
           <input
             type="password"
-            placeholder="sk-or-your-key-here..."
+            placeholder="Gemini (AIzaSy...) hoặc OpenAI (sk...)"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             className="input-field"
-            style={{ width: '180px', padding: '4px 8px', fontSize: '11px', background: 'rgba(15,23,42,0.8)' }}
+            style={{ width: '220px', padding: '4px 8px', fontSize: '11px', background: 'rgba(15,23,42,0.8)' }}
           />
         </div>
 
@@ -260,6 +260,8 @@ function App() {
             isParsing={isParsing}
             onParse={handleParseSpec}
             onPresetSelect={handlePresetSelect}
+            initialSeeds={initialSeeds}
+            onSwitchTab={setActiveTab}
           />
         )}
 
