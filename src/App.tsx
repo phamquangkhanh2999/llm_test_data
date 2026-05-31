@@ -30,7 +30,7 @@ function App() {
   // Lưu trữ Bộ dữ liệu kiểm thử (Test Suite) đã được tối ưu hóa cuối cùng
   const [optimizedDataset, setOptimizedDataset] = useState<Chromosome[]>([]);
   
-  // Mảng lưu trữ danh sách các lượt tối ưu hóa thành công trong phiên làm việc
+  // Mảng lưu trữ danh sách các lượt tối ưu hóa thành công trong phiên làm việc (Đồng bộ LocalStorage)
   const [historyRuns, setHistoryRuns] = useState<{
     timestamp: string;
     schemaName: string;
@@ -38,7 +38,24 @@ function App() {
     coverage: number;
     bestFitness: number;
     data: Chromosome[];
-  }[]>([]);
+  }[]>(() => {
+    try {
+      const saved = localStorage.getItem('testforge_history_runs');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error("Lỗi đọc dữ liệu lịch sử từ localStorage:", e);
+      return [];
+    }
+  });
+
+  // Lưu lịch sử runs vào localStorage bất cứ khi nào danh sách thay đổi
+  useEffect(() => {
+    try {
+      localStorage.setItem('testforge_history_runs', JSON.stringify(historyRuns));
+    } catch (e) {
+      console.error("Lỗi ghi dữ liệu lịch sử vào localStorage:", e);
+    }
+  }, [historyRuns]);
 
 
   
@@ -167,6 +184,14 @@ function App() {
   const handleLoadPastRun = (pastData: Chromosome[]) => {
     setOptimizedDataset(pastData);
     alert('Đã nạp lại mảng Test Cases tối ưu từ phiên chạy trước!');
+  };
+
+  // Hàm xóa sạch lịch sử các phiên chạy đã lưu
+  const handleClearHistory = () => {
+    if (window.confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử các phiên chạy đã lưu không?")) {
+      setHistoryRuns([]);
+      localStorage.removeItem('testforge_history_runs');
+    }
   };
 
   // Hàm cuộn mượt tới phân đoạn chỉ định
@@ -428,6 +453,7 @@ function App() {
             onParse={handleParseSpec}
             onPresetSelect={handlePresetSelect}
             initialSeeds={initialSeeds}
+            setInitialSeeds={setInitialSeeds}
             onSwitchTab={handleSwitchTab}
           />
         </section>
@@ -492,6 +518,7 @@ function App() {
               optimizedDataset={optimizedDataset}
               historyRuns={historyRuns}
               onLoadPastRun={handleLoadPastRun}
+              onClearHistory={handleClearHistory}
               schemaName={schemaName}
             />
           </div>

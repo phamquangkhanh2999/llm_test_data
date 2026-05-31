@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { PRESETS } from '../algorithms/presets';
 import type { FieldConstraint, PresetSpec } from '../algorithms/presets';
 import { FileText, Sparkles, Plus, Trash2, Database } from 'lucide-react';
+import { generateRandomValue } from '../algorithms/genetic';
 
 // --- ĐỊNH NGHĨA PHẠM VI DỮ LIỆU ĐẦU VÀO CHO COMPONENT ---
 interface SpecInputProps {
@@ -13,6 +14,7 @@ interface SpecInputProps {
   onParse: () => void;                 // Hàm callback gọi lên API Backend trích xuất dữ liệu
   onPresetSelect: (preset: PresetSpec) => void; // Hàm callback nạp mẫu dữ liệu dựng sẵn
   initialSeeds: any[];                 // Tập dữ liệu F0 mẫu khởi tạo sinh từ AI
+  setInitialSeeds?: React.Dispatch<React.SetStateAction<any[]>>; // Hàm cập nhật tập hạt giống F0
   onSwitchTab?: (tab: 'input' | 'visualizer' | 'arena' | 'history') => void; // Hàm chuyển đổi tab thủ công
 }
 
@@ -25,6 +27,7 @@ export const SpecInput: React.FC<SpecInputProps> = ({
   onParse,
   onPresetSelect,
   initialSeeds,
+  setInitialSeeds,
   onSwitchTab
 }) => {
   // --- CÁC HOOK HOẠT ĐỘNG PHẠM VI NỘI BỘ COMPONENT ---
@@ -63,15 +66,42 @@ export const SpecInput: React.FC<SpecInputProps> = ({
     // Đẩy đối tượng mới vào cuối danh sách schema hiện tại
     setParsedSchema([...parsedSchema, newField]);
     
+    // Đồng bộ và tự động sinh ngẫu nhiên các giá trị hạt giống F0 cho trường mới này
+    if (setInitialSeeds) {
+      setInitialSeeds(prevSeeds => {
+        // Sinh đa dạng các chế độ dữ liệu (valid, invalid, boundary, security) cho các ca hạt giống
+        const modes: ('valid' | 'invalid' | 'boundary' | 'security')[] = ['valid', 'boundary', 'security', 'valid'];
+        return prevSeeds.map((seed, idx) => {
+          const mode = modes[idx % modes.length];
+          return {
+            ...seed,
+            [newField.name]: generateRandomValue(newField, mode)
+          };
+        });
+      });
+    }
+
     // Reset ô nhập liệu tên trường về chuỗi rỗng
     setNewFieldName('');
   };
 
   // --- HÀM XÓA BỎ MỘT TRƯỜNG DỮ LIỆU KHỎI SCHEMA ---
   const handleRemoveField = (index: number) => {
+    const fieldToRemove = parsedSchema[index];
     const updated = [...parsedSchema];
     updated.splice(index, 1); // Cắt bỏ phần tử tại index chỉ định
     setParsedSchema(updated); // Cập nhật lại state
+
+    // Đồng bộ xóa trường này ra khỏi danh sách hạt giống F0
+    if (setInitialSeeds && fieldToRemove) {
+      setInitialSeeds(prevSeeds => 
+        prevSeeds.map(seed => {
+          const newSeed = { ...seed };
+          delete newSeed[fieldToRemove.name];
+          return newSeed;
+        })
+      );
+    }
   };
 
   // --- HÀM CẬP NHẬT TỪNG THUỘC TÍNH RÀNG BUỘC CỦA TRƯỜNG (BIÊN, PHỤC VỤ TỐI ƯU HÓA) ---
@@ -80,6 +110,21 @@ export const SpecInput: React.FC<SpecInputProps> = ({
     // Ghi đè thuộc tính chỉ định của trường tại vị trí index
     updated[index] = { ...updated[index], [key]: value } as FieldConstraint;
     setParsedSchema(updated);
+
+    // Đồng bộ cập nhật lại giá trị hạt giống F0 cho trường này để khớp tức thì với ràng buộc biên mới
+    const updatedField = updated[index];
+    if (setInitialSeeds && updatedField) {
+      setInitialSeeds(prevSeeds => {
+        const modes: ('valid' | 'invalid' | 'boundary' | 'security')[] = ['valid', 'boundary', 'security', 'valid'];
+        return prevSeeds.map((seed, idx) => {
+          const mode = modes[idx % modes.length];
+          return {
+            ...seed,
+            [updatedField.name]: generateRandomValue(updatedField, mode)
+          };
+        });
+      });
+    }
   };
 
   return (
