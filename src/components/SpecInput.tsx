@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PRESETS } from '../algorithms/presets';
 import type { FieldConstraint, PresetSpec } from '../algorithms/presets';
-import { FileText, Sparkles, Plus, Trash2, Database } from 'lucide-react';
+import { FileText, Sparkles, Plus, Trash2, Database, Wifi, WifiOff, Zap, CheckCircle, Loader, BrainCircuit } from 'lucide-react';
 import { generateRandomValue } from '../algorithms/genetic';
 
 // --- ĐỊNH NGHĨA PHẠM VI DỮ LIỆU ĐẦU VÀO CHO COMPONENT ---
@@ -16,6 +16,7 @@ interface SpecInputProps {
   initialSeeds: any[];                 // Tập dữ liệu F0 mẫu khởi tạo sinh từ AI
   setInitialSeeds?: React.Dispatch<React.SetStateAction<any[]>>; // Hàm cập nhật tập hạt giống F0
   onSwitchTab?: (tab: 'input' | 'visualizer' | 'arena' | 'history') => void; // Hàm chuyển đổi tab thủ công
+  hasApiKey?: boolean;                 // True khi người dùng đã nhập Gemini API Key thật
 }
 
 export const SpecInput: React.FC<SpecInputProps> = ({
@@ -28,7 +29,8 @@ export const SpecInput: React.FC<SpecInputProps> = ({
   onPresetSelect,
   initialSeeds,
   setInitialSeeds,
-  onSwitchTab
+  onSwitchTab,
+  hasApiKey = false
 }) => {
   // --- CÁC HOOK HOẠT ĐỘNG PHẠM VI NỘI BỘ COMPONENT ---
   // Theo dõi ID của mẫu preset đang được lựa chọn (mặc định là User Sign Up)
@@ -37,6 +39,41 @@ export const SpecInput: React.FC<SpecInputProps> = ({
   const [newFieldName, setNewFieldName] = useState('');
   // State quản lý kiểu dữ liệu của trường tự thêm (Mặc định: String)
   const [newFieldType, setNewFieldType] = useState<FieldConstraint['type']>('string');
+  // Theo dõi trạng thái đã phân tích thành công (connected)
+  const [isConnected, setIsConnected] = useState(false);
+  // Giả lập bước xử lý hiển thị khi đang phân tích
+  const [processingStep, setProcessingStep] = useState(0);
+
+  const PROCESSING_STEPS = [
+    { icon: '🔌', text: 'Khởi tạo kết nối tới Gemini Flash 3.5 API...' },
+    { icon: '🧠', text: 'AI đang đọc và hiểu đặc tả nghiệp vụ...' },
+    { icon: '🔍', text: 'Trích xuất các trường dữ liệu và ràng buộc...' },
+    { icon: '⚙️', text: 'Sinh tập dữ liệu hạt giống F0 ban đầu...' },
+    { icon: '✅', text: 'Phân tích hoàn tất! Đã sẵn sàng.' },
+  ];
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (isParsing) {
+      setProcessingStep(0);
+      interval = setInterval(() => {
+        setProcessingStep(prev => {
+          if (prev < PROCESSING_STEPS.length - 2) return prev + 1;
+          clearInterval(interval);
+          return prev;
+        });
+      }, 600);
+    }
+    return () => clearInterval(interval);
+  }, [isParsing]);
+
+  // Đánh dấu connected khi parsedSchema được populate sau khi parse thành công
+  useEffect(() => {
+    if (!isParsing && parsedSchema.length > 0) {
+      setIsConnected(true);
+      setProcessingStep(PROCESSING_STEPS.length - 1);
+    }
+  }, [isParsing, parsedSchema.length]);
 
   // --- HÀM XỬ LÝ KHI NGƯỜI DÙNG CHỌN MẪU DỰNG SẴN ---
   const handlePresetClick = (preset: PresetSpec) => {
@@ -48,7 +85,7 @@ export const SpecInput: React.FC<SpecInputProps> = ({
   const handleAddField = () => {
     // Nếu chưa nhập tên trường, dừng xử lý
     if (!newFieldName.trim()) return;
-    
+
     // Kiểm tra trùng lặp tên trường (không phân biệt chữ hoa, chữ thường)
     if (parsedSchema.some(f => f.name.toLowerCase() === newFieldName.toLowerCase().trim())) {
       alert('Tên trường đã tồn tại!');
@@ -65,7 +102,7 @@ export const SpecInput: React.FC<SpecInputProps> = ({
 
     // Đẩy đối tượng mới vào cuối danh sách schema hiện tại
     setParsedSchema([...parsedSchema, newField]);
-    
+
     // Đồng bộ và tự động sinh ngẫu nhiên các giá trị hạt giống F0 cho trường mới này
     if (setInitialSeeds) {
       setInitialSeeds(prevSeeds => {
@@ -94,7 +131,7 @@ export const SpecInput: React.FC<SpecInputProps> = ({
 
     // Đồng bộ xóa trường này ra khỏi danh sách hạt giống F0
     if (setInitialSeeds && fieldToRemove) {
-      setInitialSeeds(prevSeeds => 
+      setInitialSeeds(prevSeeds =>
         prevSeeds.map(seed => {
           const newSeed = { ...seed };
           delete newSeed[fieldToRemove.name];
@@ -135,7 +172,7 @@ export const SpecInput: React.FC<SpecInputProps> = ({
           <FileText className="text-teal" size={24} style={{ color: 'var(--color-teal)' }} />
           <h2>BƯỚC 1: PHÂN TÍCH ĐẶC TẢ NGHIỆP VỤ (RAW SPEC INPUT)</h2>
         </div>
-        
+
         <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
           Chọn một mẫu kịch bản nghiệp vụ có sẵn bên dưới hoặc tự biên soạn đặc tả bằng ngôn ngữ tự nhiên tiếng Việt để AI phân tích trích xuất các ràng buộc kiểm thử.
         </p>
@@ -163,16 +200,135 @@ export const SpecInput: React.FC<SpecInputProps> = ({
           placeholder="Nhập mô tả nghiệp vụ cho dữ liệu cần sinh tại đây..."
         />
 
-        {/* Nút bấm gửi yêu cầu lên API Backend AI trích xuất thông tin */}
+        {/* GEMINI API STATUS INDICATOR */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          padding: '10px 14px',
+          background: isParsing
+            ? 'rgba(59, 130, 246, 0.06)'
+            : isConnected
+              ? 'rgba(45, 212, 191, 0.06)'
+              : 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid',
+          borderColor: isParsing
+            ? 'rgba(59, 130, 246, 0.3)'
+            : isConnected
+              ? 'rgba(45, 212, 191, 0.25)'
+              : 'rgba(255, 255, 255, 0.06)',
+          borderRadius: '10px',
+          transition: 'all 0.4s ease',
+          marginTop: '4px',
+          marginBottom: '4px',
+          boxShadow: isParsing
+            ? '0 0 12px rgba(59, 130, 246, 0.1)'
+            : isConnected
+              ? '0 0 12px rgba(45, 212, 191, 0.08)'
+              : 'none'
+        }}>
+          {/* Icon trạng thái */}
+          <div style={{ flexShrink: 0 }}>
+            {isParsing ? (
+              <div style={{ width: '20px', height: '20px', border: '2.5px solid rgba(59,130,246,0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+            ) : isConnected ? (
+              <CheckCircle size={20} style={{ color: 'var(--color-teal)' }} />
+            ) : (
+              <BrainCircuit size={20} style={{ color: 'var(--text-muted)' }} />
+            )}
+          </div>
+
+          {/* Nội dung trạng thái */}
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+              <span style={{
+                fontSize: '11.5px',
+                fontWeight: 'bold',
+                color: isParsing ? '#3b82f6' : isConnected ? 'var(--color-teal)' : 'var(--text-secondary)'
+              }}>
+                {isParsing
+                  ? (hasApiKey ? '⏳ Gọi Gemini API thật...' : '⏳ Đang phân tích bằng Mock AI...')
+                  : isConnected
+                    ? (hasApiKey ? '✅ Gemini Real API - Phân Tích Thành Công' : '✅ Mock AI - Phân Tích Thành Công')
+                    : (hasApiKey ? '🧠 Gemini Flash 1.5 - Đã kết nối' : '🤖 Mock AI Mode - Sẵn sàng')}
+              </span>
+              {/* Model Badge */}
+              <span style={{
+                fontSize: '9.5px',
+                padding: '1px 6px',
+                borderRadius: '8px',
+                background: hasApiKey ? 'rgba(45,212,191,0.1)' : 'rgba(250,204,21,0.08)',
+                border: hasApiKey ? '1px solid rgba(45,212,191,0.25)' : '1px solid rgba(250,204,21,0.2)',
+                color: hasApiKey ? 'var(--color-teal)' : '#facc15',
+                fontFamily: 'var(--font-mono)',
+                fontWeight: 'bold',
+                letterSpacing: '0.03em'
+              }}>
+                {hasApiKey ? 'gemini-1.5-flash' : 'mock-ai-local'}
+              </span>
+            </div>
+
+            {/* Bước xử lý đang chạy */}
+            {isParsing && PROCESSING_STEPS[processingStep] && (
+              <div style={{ fontSize: '11px', color: 'rgba(59,130,246,0.8)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span>{PROCESSING_STEPS[processingStep].icon}</span>
+                <span>{PROCESSING_STEPS[processingStep].text}</span>
+              </div>
+            )}
+            {isConnected && !isParsing && (
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                {hasApiKey
+                  ? `📊 ${parsedSchema.length} trường ràng buộc • Gemini API xử lý thành công`
+                  : `📊 ${parsedSchema.length} trường ràng buộc • Mock AI sinh dữ liệu F0 sẵn sàng`
+                }
+              </div>
+            )}
+            {!isParsing && !isConnected && (
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                {hasApiKey
+                  ? '🔑 API Key hợp lệ → bấm nút để gọi Gemini thật'
+                  : 'Nhập đặc tả và bấm nút bên dưới → Mock AI sẽ phân tích nội bộ'
+                }
+              </div>
+            )}
+          </div>
+
+          {/* Dot live */}
+          <div style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: isParsing ? '#3b82f6' : isConnected ? 'var(--color-teal)' : 'rgba(255,255,255,0.15)',
+            boxShadow: isParsing ? '0 0 8px #3b82f6' : isConnected ? '0 0 8px var(--color-teal)' : 'none',
+            animation: isParsing ? 'pulse 1s infinite' : isConnected ? 'pulse 3s infinite' : 'none',
+            flexShrink: 0
+          }} />
+        </div>
+
+        {/* Nút bấm gử yêu cầu lên API Backend AI trích xuất thông tin */}
         <button
           onClick={onParse}
           disabled={isParsing || !rawText.trim()}
           className={`btn btn-primary ${isParsing || !rawText.trim() ? 'btn-disabled' : ''}`}
-          style={{ marginTop: '8px', alignSelf: 'flex-start' }}
+          style={{ marginTop: '4px', alignSelf: 'flex-start' }}
         >
-          <Sparkles size={18} />
-          {isParsing ? 'AI Đang Phân Tích Hệ Thống...' : 'Yêu Cầu AI (Gemini/GPT) Trích Xuất Schema'}
+          {isParsing ? (
+            <>
+              <div style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+              AI Đang Phân Tích...
+            </>
+          ) : (
+            <>
+              <Sparkles size={18} />
+              Yêu Cầu AI (Gemini) Phân Tích Đặc Tả
+            </>
+          )}
         </button>
+
+        <style>{`
+          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        `}</style>
       </div>
 
       {/* 2. CỘT BÊN PHẢI: KHU VỰC CHỈNH SỬA SCHEMA RÀNG BUỘC CỦA ĐỒNG SÁNG LẬP */}
@@ -200,10 +356,10 @@ export const SpecInput: React.FC<SpecInputProps> = ({
                 }
               `}</style>
               {Array(3).fill(0).map((_, i) => (
-                <div key={i} className="skeleton-row" style={{ 
-                  background: 'rgba(255,255,255,0.02)', 
-                  border: '1px solid rgba(255,255,255,0.04)', 
-                  padding: '16px', 
+                <div key={i} className="skeleton-row" style={{
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid rgba(255,255,255,0.04)',
+                  padding: '16px',
                   borderRadius: 'var(--radius-sm)',
                   display: 'flex',
                   flexDirection: 'column',
@@ -227,14 +383,14 @@ export const SpecInput: React.FC<SpecInputProps> = ({
             </div>
           ) : (
             parsedSchema.map((field, idx) => (
-              <div 
-                key={field.name} 
-                className="flex align-center gap-sm" 
-                style={{ 
-                  background: 'rgba(255,255,255,0.02)', 
-                  border: '1px solid rgba(255,255,255,0.04)', 
-                  padding: '12px', 
-                  borderRadius: 'var(--radius-sm)' 
+              <div
+                key={field.name}
+                className="flex align-center gap-sm"
+                style={{
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid rgba(255,255,255,0.04)',
+                  padding: '12px',
+                  borderRadius: 'var(--radius-sm)'
                 }}
               >
                 {/* Khu vực nhập các cấu hình chi tiết cho từng trường */}
@@ -247,13 +403,13 @@ export const SpecInput: React.FC<SpecInputProps> = ({
                       Kiểu: {field.type.toUpperCase()}
                     </span>
                   </div>
-                  
+
                   {/* Hộp tùy chỉnh ràng buộc biên */}
                   <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
                     <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={field.required} 
+                      <input
+                        type="checkbox"
+                        checked={field.required}
                         onChange={(e) => handleUpdateField(idx, 'required', e.target.checked)}
                       />
                       Bắt buộc
@@ -299,7 +455,7 @@ export const SpecInput: React.FC<SpecInputProps> = ({
                         />
                       </>
                     )}
-                    
+
                     {/* Ô nhập biểu thức chính quy (Regex) để so khớp kiểm định định dạng */}
                     <input
                       type="text"
@@ -313,9 +469,9 @@ export const SpecInput: React.FC<SpecInputProps> = ({
                 </div>
 
                 {/* Nút xóa bỏ trường kiểm thử này */}
-                <button 
+                <button
                   onClick={() => handleRemoveField(idx)}
-                  className="btn btn-secondary" 
+                  className="btn btn-secondary"
                   style={{ padding: '8px', color: 'var(--color-rose)', borderColor: 'rgba(244,63,94,0.1)' }}
                   title="Xóa trường"
                 >
@@ -327,12 +483,12 @@ export const SpecInput: React.FC<SpecInputProps> = ({
         </div>
 
         {/* Thanh công cụ thêm mới trường kiểm thử thủ công dưới đáy */}
-        <div 
-          className="flex align-center gap-sm" 
-          style={{ 
-            marginTop: 'auto', 
-            paddingTop: '12px', 
-            borderTop: '1px solid rgba(255,255,255,0.06)' 
+        <div
+          className="flex align-center gap-sm"
+          style={{
+            marginTop: 'auto',
+            paddingTop: '12px',
+            borderTop: '1px solid rgba(255,255,255,0.06)'
           }}
         >
           <input
@@ -373,38 +529,38 @@ export const SpecInput: React.FC<SpecInputProps> = ({
             <Database className="text-violet" size={24} style={{ color: 'var(--color-violet)' }} />
             <h2>Tập Dữ Liệu Ca Kiểm Thử Mẫu Khởi Tạo (F0 Initial Seeds Dataset)</h2>
           </div>
-          
+
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
             Đây là tập dữ liệu ban đầu gồm các ca test thông thường, cận biên nghiệp vụ và kịch bản tấn công bảo mật (SQL Injection, XSS) do AI phân tích tự động sinh ra. Tập dữ liệu này sẽ được dùng làm "hạt giống" thế hệ F0 phục vụ cho thuật toán di truyền di trú ở bước tiếp theo.
           </p>
 
           {isParsing ? (
-            <div style={{ 
-              padding: '40px 24px', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
+            <div style={{
+              padding: '40px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
               gap: '16px',
               background: 'rgba(255,255,255,0.01)',
               borderRadius: 'var(--radius-sm)',
               border: '1px solid rgba(255,255,255,0.03)'
             }}>
-              <div 
-                className="status-dot-pulse" 
-                style={{ 
-                  width: '16px', 
-                  height: '16px', 
-                  borderRadius: '50%', 
+              <div
+                className="status-dot-pulse"
+                style={{
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
                   background: 'var(--color-violet)',
                   boxShadow: '0 0 12px var(--color-violet)',
                   animation: 'pulse-local 1.5s infinite ease-in-out'
-                }} 
+                }}
               />
               <span style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: '500' }}>
                 AI đang làm việc... Đang trích xuất cấu trúc ràng buộc và tự động tạo tập dữ liệu hạt giống F0...
               </span>
-              
+
               {/* Bảng skeleton micro thể hiện tiến trình loading */}
               <div className="skeleton-row" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px' }}>
                 <div style={{ width: '100%', height: '36px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px' }} />
@@ -429,9 +585,9 @@ export const SpecInput: React.FC<SpecInputProps> = ({
                   </thead>
                   <tbody>
                     {initialSeeds.map((seed, idx) => (
-                      <tr 
-                        key={idx} 
-                        style={{ 
+                      <tr
+                        key={idx}
+                        style={{
                           borderBottom: idx < initialSeeds.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
                           background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
                           transition: 'background 0.2s'
@@ -442,17 +598,17 @@ export const SpecInput: React.FC<SpecInputProps> = ({
                         {parsedSchema.map((field) => {
                           const value = seed[field.name];
                           const valStr = value !== undefined ? String(value) : '-';
-                          
+
                           // Tô đỏ nhẹ các payload bảo mật/độc hại để người dùng nhận ra
-                          const isAttack = valStr.toLowerCase().includes("' or") || 
-                                           valStr.toLowerCase().includes("--") || 
-                                           valStr.toLowerCase().includes("<script");
-    
+                          const isAttack = valStr.toLowerCase().includes("' or") ||
+                            valStr.toLowerCase().includes("--") ||
+                            valStr.toLowerCase().includes("<script");
+
                           return (
-                            <td 
-                              key={field.name} 
-                              style={{ 
-                                padding: '12px 16px', 
+                            <td
+                              key={field.name}
+                              style={{
+                                padding: '12px 16px',
                                 color: isAttack ? 'var(--color-rose)' : 'var(--text-primary)',
                                 fontWeight: isAttack ? '600' : 'normal',
                                 fontFamily: field.type === 'number' || isAttack ? 'var(--font-mono)' : 'inherit'
@@ -467,18 +623,18 @@ export const SpecInput: React.FC<SpecInputProps> = ({
                   </tbody>
                 </table>
               </div>
-              
+
               {/* Nút bấm thủ công để chuyển sang Tab 2 */}
               <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
-                <button 
+                <button
                   onClick={() => onSwitchTab && onSwitchTab('visualizer')}
                   className="btn btn-primary glow-teal"
-                  style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '8px', 
-                    padding: '12px 24px', 
-                    fontSize: '14px', 
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px 24px',
+                    fontSize: '14px',
                     fontWeight: 'bold',
                     cursor: 'pointer',
                     background: 'linear-gradient(135deg, var(--color-teal), var(--color-violet))',

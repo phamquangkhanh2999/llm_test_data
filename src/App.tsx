@@ -254,23 +254,95 @@ function App() {
           </span>
         </div>
 
-        {/* Ô nhập trực tiếp API Key trên Giao diện */}
-        <div className="flex flex-col gap-xs" style={{ background: 'rgba(0,0,0,0.25)', padding: '8px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <div className="flex align-center gap-sm">
-            <Key size={14} style={{ color: 'var(--color-teal)' }} />
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>AI API Key (Không bắt buộc):</span>
+        {/* Ô nhập trực tiếp API Key trên Giao diện - có visual status */}
+        <div style={{
+          background: apiKey.trim().length > 10
+            ? 'rgba(45, 212, 191, 0.05)'
+            : 'rgba(0,0,0,0.25)',
+          padding: '10px 14px',
+          borderRadius: 'var(--radius-sm)',
+          border: '1px solid',
+          borderColor: apiKey.trim().length > 10
+            ? 'rgba(45, 212, 191, 0.35)'
+            : 'rgba(255,255,255,0.08)',
+          boxShadow: apiKey.trim().length > 10
+            ? '0 0 14px rgba(45, 212, 191, 0.1)'
+            : 'none',
+          transition: 'all 0.3s ease',
+          minWidth: '280px'
+        }}>
+          {/* Header hàng 1: Icon + label + status badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <Key size={14} style={{
+              color: apiKey.trim().length > 10 ? 'var(--color-teal)' : 'var(--text-muted)'
+            }} />
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', flex: 1 }}>
+              AI API Key
+            </span>
+
+            {/* Status Badge */}
+            {apiKey.trim().length > 10 ? (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                fontSize: '9.5px', fontWeight: 'bold', padding: '2px 8px',
+                borderRadius: '10px',
+                background: 'rgba(45,212,191,0.12)',
+                border: '1px solid rgba(45,212,191,0.3)',
+                color: 'var(--color-teal)',
+                animation: 'none'
+              }}>
+                <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-teal)', display: 'inline-block', boxShadow: '0 0 5px var(--color-teal)' }} />
+                GEMINI CONNECTED
+              </span>
+            ) : (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                fontSize: '9.5px', fontWeight: 'bold', padding: '2px 8px',
+                borderRadius: '10px',
+                background: 'rgba(250,204,21,0.08)',
+                border: '1px solid rgba(250,204,21,0.2)',
+                color: '#facc15'
+              }}>
+                <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#facc15', display: 'inline-block' }} />
+                MOCK MODE
+              </span>
+            )}
+          </div>
+
+          {/* Hàng 2: Input ô nhập */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <input
               type="password"
-              placeholder="Nhập Key gọi AI thật hoặc để trống dùng Mock"
+              placeholder="Dán Gemini API Key vào đây..."
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               className="input-field"
-              style={{ width: '230px', padding: '4px 8px', fontSize: '11px', background: 'rgba(15,23,42,0.8)' }}
+              style={{
+                flex: 1,
+                padding: '5px 10px',
+                fontSize: '11px',
+                background: 'rgba(15,23,42,0.8)',
+                borderColor: apiKey.trim().length > 10 ? 'rgba(45,212,191,0.2)' : 'rgba(255,255,255,0.06)',
+                color: apiKey.trim().length > 10 ? 'var(--color-teal)' : 'var(--text-primary)',
+                fontFamily: apiKey.trim().length > 10 ? 'var(--font-mono)' : 'inherit'
+              }}
             />
           </div>
-          <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontStyle: 'italic', paddingLeft: '22px' }}>
-            *Hệ thống tự động sử dụng bộ mock phân tích nội bộ nếu để trống.
-          </span>
+
+          {/* Hàng 3: Mô tả trạng thái */}
+          <div style={{ marginTop: '6px', fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {apiKey.trim().length > 10 ? (
+              <>
+                <span style={{ color: 'var(--color-teal)' }}>✓</span>
+                Dùng Gemini thật &bull;
+                <span style={{ fontFamily: 'var(--font-mono)', color: 'rgba(45,212,191,0.6)' }}>
+                  {apiKey.trim().slice(0, 6)}••••{apiKey.trim().slice(-4)}
+                </span>
+              </>
+            ) : (
+              <>* Để trống → tự động dùng Mock AI phân tích nội bộ</>
+            )}
+          </div>
         </div>
 
         {/* Các chỉ số hiển thị trạng thái CSDL SQLite và Schema */}
@@ -460,6 +532,7 @@ function App() {
             initialSeeds={initialSeeds}
             setInitialSeeds={setInitialSeeds}
             onSwitchTab={handleSwitchTab}
+            hasApiKey={apiKey.trim().length > 10}
           />
         </section>
 

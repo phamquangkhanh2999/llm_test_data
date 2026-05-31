@@ -29,12 +29,24 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
   const [copied, setCopied] = useState(false);
   // Trạng thái lọc loại ca kiểm thử trong bảng xem trước
   const [filterType, setFilterType] = useState<'all' | 'happy' | 'boundary' | 'security'>('all');
+  // Số lượng bản ghi hiển thị trong bảng (có thể expand thêm)
+  const [displayLimit, setDisplayLimit] = useState(30);
 
   // Trạng thái mô phỏng API Validation thời gian thực
   const [selectedRecord, setSelectedRecord] = useState<Chromosome | null>(null);
   const [selectedRecordIdx, setSelectedRecordIdx] = useState<number | null>(null);
   const [apiSimStatus, setApiSimStatus] = useState<'idle' | 'loading' | 'success' | 'validation_error' | 'waf_blocked'>('idle');
   const [apiSimDetails, setApiSimDetails] = useState<any>(null);
+  
+  // Trạng thái chạy hàng loạt (Batch Run All)
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [batchSummary, setBatchSummary] = useState<{
+    total: number;
+    passed: number;
+    validationErrors: number;
+    wafBlocked: number;
+  } | null>(null);
 
   // --- HÀM TRỢ GIÚP: TẠO TỆP TIN VÀ BẮT TRÌNH DUYỆT TẢI XUỐNG ---
   const downloadFile = (content: string, filename: string, contentType: string) => {
@@ -186,6 +198,61 @@ describe('${schemaName} Automation Form Tests', () => {
 });
 `;
     downloadFile(scriptContent, `${safeSchemaName}_cypress.spec.js`, 'application/javascript');
+  };
+
+  // --- HÀM CHẠY HÀNG LOẠT (BATCH RUN ALL) ---
+  const handleBatchRunAll = async () => {
+    if (optimizedDataset.length === 0 || batchRunning) return;
+    setBatchRunning(true);
+    setBatchProgress(0);
+    setBatchSummary(null);
+    setApiSimStatus('idle');
+    setSelectedRecord(null);
+
+    let passed = 0;
+    let validationErrors = 0;
+    let wafBlocked = 0;
+    const total = optimizedDataset.length;
+
+    for (let i = 0; i < total; i++) {
+      const record = optimizedDataset[i];
+      setBatchProgress(Math.round(((i + 1) / total) * 100));
+
+      // Kiểm tra WAF
+      let isSecurity = false;
+      let isValidationError = false;
+      Object.keys(record).forEach(key => {
+        const valStr = String(record[key]);
+        if (valStr.includes("'") || valStr.includes('<script') || valStr.includes('--')) {
+          isSecurity = true;
+        }
+      });
+      if (isSecurity) { wafBlocked++; continue; }
+
+      // Kiểm tra validation
+      Object.keys(record).forEach(key => {
+        const val = record[key];
+        const valStr = String(val);
+        if (key === 'email' || key === 'beneficiaryEmail') {
+          if (!valStr.includes('@') || !valStr.includes('.')) isValidationError = true;
+        }
+        if (key === 'phone' && !/^(03|05|07|08|09)\d{8}$/.test(valStr)) isValidationError = true;
+        if (key === 'cardNumber' && !/^\d{16}$/.test(valStr)) isValidationError = true;
+        if (key === 'cvv' && !/^\d{3}$/.test(valStr)) isValidationError = true;
+        if (key === 'age') { const n = Number(val); if (isNaN(n) || n < 18 || n > 100) isValidationError = true; }
+        if (key === 'amount') { const n = Number(val); if (isNaN(n) || n < 1 || n > 50000) isValidationError = true; }
+        if (key === 'username' && (valStr.length < 5 || valStr.length > 15 || !/^[a-zA-Z0-9]+$/.test(valStr))) isValidationError = true;
+      });
+
+      if (isValidationError) { validationErrors++; } else { passed++; }
+      
+      // Giả lập độ trễ 5ms giữa mỗi ca
+      await new Promise(res => setTimeout(res, 5));
+    }
+
+    setBatchSummary({ total, passed, validationErrors, wafBlocked });
+    setBatchRunning(false);
+    setBatchProgress(100);
   };
 
   // --- HÀM MÔ PHỎNG PHẢN HỒI API (LIVE API RESPONSE SIMULATOR) ---
@@ -621,7 +688,7 @@ describe('${schemaName} Automation Form Tests', () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDataset.slice(0, 15).map(({ row, idx, category }) => {
+                    {filteredDataset.slice(0, displayLimit).map(({ row, idx, category }) => {
                       return (
                         <tr 
                           key={idx} 
@@ -698,12 +765,26 @@ describe('${schemaName} Automation Form Tests', () => {
                 </table>
               )}
               
-              {/* THÔNG BÁO GIỚI HẠN HIỂN THỊ */}
-              {filteredDataset.length > 15 && (
-                <div style={{ textAlign: 'center', padding: '8px', fontSize: '11px', color: 'var(--text-muted)', background: 'rgba(15,23,42,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                  Hiển thị tối đa 15 trong số {filteredDataset.length} ca test thỏa mãn bộ lọc. Hãy xuất file để kiểm duyệt toàn bộ.
+              {/* NÚT XEM THÊM / THU GỌN */}
+              {filteredDataset.length > displayLimit ? (
+                <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(15,23,42,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'center', gap: '10px' }}>
+                  <button
+                    onClick={() => setDisplayLimit(prev => prev + 30)}
+                    style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.2)', borderRadius: '6px', color: 'var(--color-teal)', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    ↓ Xem thêm {Math.min(30, filteredDataset.length - displayLimit)} ca ({filteredDataset.length - displayLimit} còn lại)
+                  </button>
                 </div>
-              )}
+              ) : filteredDataset.length > 30 ? (
+                <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(15,23,42,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <button
+                    onClick={() => setDisplayLimit(30)}
+                    style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: 'var(--text-muted)', cursor: 'pointer' }}
+                  >
+                    ↑ Thu gọn
+                  </button>
+                </div>
+              ) : null}
             </div>
             
             {/* LƯU Ý BẢO MẬT DƯỚI ĐÁY */}
@@ -742,19 +823,88 @@ describe('${schemaName} Automation Form Tests', () => {
             transition: 'all 0.3s ease'
           }}
         >
-          <div className="flex justify-between align-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '12px' }}>
+          <div className="flex justify-between align-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
             <div className="flex align-center gap-sm">
               <Zap className="text-teal" size={22} style={{ color: apiSimStatus === 'waf_blocked' ? 'var(--color-rose)' : apiSimStatus === 'validation_error' ? 'var(--color-violet)' : 'var(--color-teal)' }} />
               <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff', letterSpacing: '0.03em' }}>
-                ⚡ BỘ MÔ PHỎNG PHẢN HỒI API KIỂM THỬ THỜI GIAN THỰC (LIVE API VALIDATION SIMULATOR)
+                ⚡ BỘ MÔ PHỎNG API THỜI GIAN THỰC (LIVE API VALIDATION SIMULATOR)
               </h2>
             </div>
-            {selectedRecord && (
-              <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '12px', fontWeight: '500' }}>
-                Đang mô phỏng Ca Test #{selectedRecordIdx !== null ? selectedRecordIdx + 1 : ''}
-              </span>
-            )}
+            <div className="flex align-center gap-sm">
+              {selectedRecord && (
+                <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '12px', fontWeight: '500' }}>
+                  Ca Test #{selectedRecordIdx !== null ? selectedRecordIdx + 1 : ''}
+                </span>
+              )}
+              <button
+                onClick={handleBatchRunAll}
+                disabled={batchRunning}
+                style={{
+                  fontSize: '12px',
+                  padding: '7px 14px',
+                  background: batchRunning ? 'rgba(255,255,255,0.02)' : 'linear-gradient(135deg, rgba(45,212,191,0.15), rgba(45,212,191,0.05))',
+                  border: '1px solid',
+                  borderColor: batchRunning ? 'rgba(255,255,255,0.05)' : 'rgba(45,212,191,0.3)',
+                  borderRadius: '8px',
+                  color: batchRunning ? 'var(--text-muted)' : 'var(--color-teal)',
+                  cursor: batchRunning ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {batchRunning ? (
+                  <>
+                    <div style={{ width: '12px', height: '12px', border: '2px solid rgba(45,212,191,0.2)', borderTopColor: 'var(--color-teal)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    Đang chạy {batchProgress}%...
+                  </>
+                ) : (
+                  <>
+                    <Zap size={13} />
+                    ⚡ Chạy Tất Cả ({optimizedDataset.length} ca)
+                  </>
+                )}
+              </button>
+            </div>
           </div>
+
+          {/* THANH TIẾN TRÌNH BATCH RUN */}
+          {batchRunning && (
+            <div style={{ marginBottom: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                <span>Đang kiểm duyệt toàn bộ dataset...</span>
+                <span>{batchProgress}%</span>
+              </div>
+              <div style={{ height: '6px', background: 'rgba(255,255,255,0.04)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${batchProgress}%`, background: 'linear-gradient(90deg, var(--color-teal), #0d9488)', borderRadius: '3px', transition: 'width 0.1s' }} />
+              </div>
+            </div>
+          )}
+
+          {/* KẾT QUẢ BATCH RUN SUMMARY */}
+          {batchSummary && !batchRunning && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '8px' }}>
+              <div style={{ background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-teal)', fontFamily: 'var(--font-mono)' }}>{batchSummary.total}</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>TỔNG CA</div>
+              </div>
+              <div style={{ background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-teal)', fontFamily: 'var(--font-mono)' }}>{batchSummary.passed}</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 200 ✅</div>
+              </div>
+              <div style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-violet)', fontFamily: 'var(--font-mono)' }}>{batchSummary.validationErrors}</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 400 ⚠️</div>
+              </div>
+              <div style={{ background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-rose)', fontFamily: 'var(--font-mono)' }}>{batchSummary.wafBlocked}</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 403 🚫</div>
+              </div>
+            </div>
+          )}
 
           {apiSimStatus === 'idle' ? (
             <div className="flex flex-col align-center justify-center gap-sm" style={{ padding: '40px 20px', color: 'var(--text-muted)', border: '1px dashed rgba(255,255,255,0.05)', borderRadius: '8px' }}>

@@ -1141,24 +1141,53 @@ export const Visualizer: React.FC<VisualizerProps> = ({
                   ))}
                 </div>
 
-                {/* Legend */}
-                <div className="flex flex-col gap-sm" style={{ fontSize: '11px', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '12px', marginTop: 'auto' }}>
-                  <div style={{ fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '4px', letterSpacing: '0.03em' }}>🎯 PHÂN LOẠI CÁC CA KIỂM THỬ TRÊN LƯỚI TRỰC QUAN:</div>
-                  <div className="flex gap-md" style={{ flexWrap: 'wrap', gap: '8px' }}>
-                    <span className="flex align-center gap-xs" style={{ background: 'rgba(250,204,21,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(250,204,21,0.15)', color: '#facc15', display: 'flex', alignItems: 'center' }}>
-                      🟡 <b>Positive</b>: Dữ liệu chuẩn nghiệp vụ
-                    </span>
-                    <span className="flex align-center gap-xs" style={{ background: 'rgba(45,212,191,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(45,212,191,0.15)', color: 'var(--color-teal)', display: 'flex', alignItems: 'center' }}>
-                      🟢 <b>Boundary</b>: Chạm mốc Min/Max/Length
-                    </span>
-                    <span className="flex align-center gap-xs" style={{ background: 'rgba(244,63,94,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(244,63,94,0.15)', color: 'var(--color-rose)', display: 'flex', alignItems: 'center' }}>
-                      🔴 <b>Negative</b>: Dữ liệu trống, Null, Stress test
-                    </span>
-                    <span className="flex align-center gap-xs" style={{ background: 'rgba(167,139,250,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(167,139,250,0.15)', color: 'var(--color-violet)', display: 'flex', alignItems: 'center' }}>
-                      💀 <b>Security</b>: Chèn payload SQLi, XSS tấn công
-                    </span>
-                  </div>
-                </div>
+                {/* Legend with counts */}
+                {(() => {
+                  const currentChromosomes = history[history.length - 1].chromosomes;
+                  const counts = { positive: 0, boundary: 0, negative: 0, security: 0 };
+                  currentChromosomes.forEach(c => {
+                    const cat = getTestCaseCategory(c);
+                    if (cat === 'boundary') counts.boundary++;
+                    else if (cat === 'negative') counts.negative++;
+                    else if (cat === 'security') counts.security++;
+                    else counts.positive++;
+                  });
+                  const total = currentChromosomes.length;
+                  return (
+                    <div className="flex flex-col gap-sm" style={{ fontSize: '11px', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '12px', marginTop: 'auto' }}>
+                      {/* Quick Stats Bar */}
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
+                        {[
+                          { label: 'Positive', count: counts.positive, color: '#facc15', bg: 'rgba(250,204,21,0.06)', border: 'rgba(250,204,21,0.2)' },
+                          { label: 'Boundary', count: counts.boundary, color: 'var(--color-teal)', bg: 'rgba(45,212,191,0.06)', border: 'rgba(45,212,191,0.2)' },
+                          { label: 'Negative', count: counts.negative, color: 'var(--color-rose)', bg: 'rgba(244,63,94,0.06)', border: 'rgba(244,63,94,0.2)' },
+                          { label: 'Security', count: counts.security, color: 'var(--color-violet)', bg: 'rgba(167,139,250,0.06)', border: 'rgba(167,139,250,0.2)' },
+                        ].map(s => (
+                          <div key={s.label} style={{ flex: 1, textAlign: 'center', background: s.bg, border: `1px solid ${s.border}`, borderRadius: '6px', padding: '6px 4px' }}>
+                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: s.color, fontFamily: 'var(--font-mono)' }}>{s.count}</div>
+                            <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '1px' }}>{s.label}</div>
+                            <div style={{ fontSize: '9px', color: s.color, opacity: 0.7 }}>{total > 0 ? Math.round(s.count / total * 100) : 0}%</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ fontWeight: 'bold', color: 'var(--text-secondary)', letterSpacing: '0.03em' }}>🎯 Chú thích màu ô:</div>
+                      <div className="flex gap-md" style={{ flexWrap: 'wrap', gap: '6px' }}>
+                        <span style={{ background: 'rgba(250,204,21,0.04)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(250,204,21,0.15)', color: '#facc15', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          🟡 <b>Positive</b>: Chuẩn nghiệp vụ
+                        </span>
+                        <span style={{ background: 'rgba(45,212,191,0.04)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(45,212,191,0.15)', color: 'var(--color-teal)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          🟢 <b>Boundary</b>: Biên Min/Max
+                        </span>
+                        <span style={{ background: 'rgba(244,63,94,0.04)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(244,63,94,0.15)', color: 'var(--color-rose)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          🔴 <b>Negative</b>: Lỗi/Null/Empty
+                        </span>
+                        <span style={{ background: 'rgba(167,139,250,0.04)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(167,139,250,0.15)', color: 'var(--color-violet)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          💀 <b>Security</b>: SQLi/XSS Attack
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
