@@ -7,7 +7,7 @@ import { SpecInput } from './components/SpecInput';
 import { Visualizer } from './components/Visualizer';
 import { ComparisonArena } from './components/ComparisonArena';
 import { HistoryManager } from './components/HistoryManager';
-import { Sparkles, Activity, Layers, ShieldCheck, Key } from 'lucide-react';
+import { Sparkles, Activity, Layers, ShieldCheck, Key, ArrowDown, ChevronDown, ChevronUp, BookOpen, CheckCircle } from 'lucide-react';
 
 function App() {
   // Lấy Mẫu đặc tả mặc định (User Sign Up) để hiển thị ban đầu
@@ -40,8 +40,13 @@ function App() {
     data: Chromosome[];
   }[]>([]);
 
-  // Quản lý Tab đang hiển thị
-  const [activeTab, setActiveTab] = useState<'input' | 'visualizer' | 'arena' | 'history'>('input');
+
+  
+  // Trạng thái mở/đóng hướng dẫn vận hành hệ thống
+  const [showGuide, setShowGuide] = useState(true);
+
+  // Theo dõi phân đoạn (step) active hiện tại để highlight đồng bộ trên thanh điều hướng menu
+  const [activeSection, setActiveSection] = useState<string>('step-spec');
   
   // Hiệu ứng Loading khi gọi AI phân tích
   const [isParsing, setIsParsing] = useState(false);
@@ -50,6 +55,38 @@ function App() {
   useEffect(() => {
     sessionStorage.setItem("openai_api_key", apiKey);
   }, [apiKey]);
+
+  // Thiết lập IntersectionObserver tự động theo dõi cuộn màn hình để đổi active tab ở menu trên
+  useEffect(() => {
+    const sections = ['step-spec', 'step-opt', 'step-arena', 'step-data'];
+    const observerOptions = {
+      root: null,
+      rootMargin: '-15% 0px -45% 0px', // Nhận diện khi phân đoạn nằm ở vùng giữa màn hình
+      threshold: 0.05
+    };
+
+    const observerCallback = (entries: IntersectionObserverEntry[]) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          setActiveSection(entry.target.id);
+        }
+      });
+    };
+
+    const observer = new IntersectionObserver(observerCallback, observerOptions);
+
+    sections.forEach((id) => {
+      const element = document.getElementById(id);
+      if (element) observer.observe(element);
+    });
+
+    return () => {
+      sections.forEach((id) => {
+        const element = document.getElementById(id);
+        if (element) observer.unobserve(element);
+      });
+    };
+  }, []);
 
   // --- CUỘC GỌI API BACKEND: GỬI ĐẶC TẢ NGỮ NGHĨA LÊN OPENAI ---
   const handleParseSpec = async () => {
@@ -132,6 +169,52 @@ function App() {
     alert('Đã nạp lại mảng Test Cases tối ưu từ phiên chạy trước!');
   };
 
+  // Hàm cuộn mượt tới phân đoạn chỉ định
+  const handleScrollToSection = (sectionId: string) => {
+    setActiveSection(sectionId);
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  // Hàm điều hợp chuyển tab sang hành vi cuộn mượt
+  const handleSwitchTab = (tab: 'input' | 'visualizer' | 'arena' | 'history') => {
+    const mapping = {
+      'input': 'step-spec',
+      'visualizer': 'step-opt',
+      'arena': 'step-arena',
+      'history': 'step-data'
+    };
+    handleScrollToSection(mapping[tab]);
+  };
+
+  // Component phụ trợ: Đường ống liên kết dữ liệu (Pipeline Connector)
+  const PipelineConnector = ({ title }: { title: string }) => (
+    <div className="flex flex-col align-center justify-center" style={{ margin: '40px 0', gap: '8px' }}>
+      <div style={{ height: '40px', width: '2px', borderLeft: '2px dashed rgba(45,212,191,0.3)', opacity: 0.8, alignSelf: 'center' }} />
+      <span className="flex align-center gap-xs" style={{ 
+        fontSize: '11px', 
+        background: 'rgba(15, 23, 42, 0.85)', 
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        padding: '6px 16px',
+        borderRadius: '20px',
+        color: 'var(--text-secondary)',
+        backdropFilter: 'blur(8px)',
+        fontFamily: 'var(--font-mono)',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+        fontWeight: 'bold',
+        letterSpacing: '0.05em',
+        alignSelf: 'center'
+      }}>
+        <ArrowDown size={12} className="text-teal" style={{ color: 'var(--color-teal)' }} />
+        {title}
+        <ArrowDown size={12} className="text-violet" style={{ color: 'var(--color-violet)' }} />
+      </span>
+      <div style={{ height: '40px', width: '2px', borderLeft: '2px dashed rgba(167,139,250,0.3)', opacity: 0.8, alignSelf: 'center' }} />
+    </div>
+  );
+
   return (
     <div className="app-container">
       {/* 1. APP HEADER & OPENAI KEY CONTAINER */}
@@ -177,81 +260,165 @@ function App() {
         </div>
       </header>
 
-      {/* 2. MENU TAB CHUYỂN MÀN HÌNH TƯƠNG TÁC */}
-      <nav className="flex justify-between align-center" style={{ flexWrap: 'wrap', gap: '12px', marginBottom: '8px' }}>
-        <div className="tabs-container glow-teal">
-          <button 
-            onClick={() => setActiveTab('input')}
-            className={`tab-btn ${activeTab === 'input' ? 'active' : ''}`}
-          >
-            1. Phân Tích Đặc Tả (Spec Parser)
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab('visualizer')}
-            className={`tab-btn ${activeTab === 'visualizer' ? 'active' : ''}`}
-          >
-            2. Tối Ưu Hóa Bộ Test (Test Suite Optimizer)
-          </button>
+      {/* 1.5. HƯỚNG DẪN VẬN HÀNH HỆ THỐNG (COLLAPSIBLE TUTORIAL) */}
+      <section className="glass-card tutorial-container teal-border" style={{ 
+        marginTop: '16px', 
+        padding: '20px 24px', 
+        background: 'rgba(15, 23, 42, 0.65)' 
+      }}>
+        <button 
+          onClick={() => setShowGuide(!showGuide)} 
+          className="tutorial-header-btn"
+          aria-expanded={showGuide}
+        >
+          <div className="tutorial-title">
+            <BookOpen className="text-teal" size={20} style={{ color: 'var(--color-teal)' }} />
+            💡 HƯỚNG DẪN VẬN HÀNH HỆ THỐNG (INTERACTIVE GUIDE)
+            <span className="tutorial-badge">4 Bước Tự Động Hóa Dữ Liệu</span>
+          </div>
+          <div className="flex align-center gap-sm" style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+            <span>{showGuide ? 'Thu gọn hướng dẫn' : 'Mở rộng xem chi tiết'}</span>
+            {showGuide ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </div>
+        </button>
 
-          <button 
-            onClick={() => setActiveTab('arena')}
-            className={`tab-btn ${activeTab === 'arena' ? 'active' : ''}`}
-          >
-            3. So Sánh Giải Thuật (Comparison Arena)
-          </button>
+        {showGuide && (
+          <div className="tutorial-grid">
+            {/* BƯỚC 1 */}
+            <div className="tutorial-card step-1">
+              <span className="step-badge teal">BƯỚC 1: PHÂN TÍCH</span>
+              <h3 className="tutorial-card-title">
+                <Sparkles size={16} className="text-teal" style={{ color: 'var(--color-teal)' }} />
+                Trích Xuất Schema AI
+              </h3>
+              <ul className="tutorial-card-list">
+                <li>Chọn kịch bản mẫu hoặc biên soạn mô tả nghiệp vụ bằng tiếng Việt.</li>
+                <li>Bấm <b>Yêu Cầu AI Trích Xuất Schema</b> để nhận cấu trúc logic (JSON Rules).</li>
+                <li>AI cũng sinh sẵn <b>Tập Hạt Giống F0</b> chứa các giá trị biên thông thường &amp; payload SQLi/XSS bảo mật.</li>
+              </ul>
+              <button onClick={() => handleScrollToSection('step-spec')} className="tutorial-card-action">
+                Xem Phân Tích &rarr;
+              </button>
+            </div>
 
+            {/* BƯỚC 2 */}
+            <div className="tutorial-card step-2">
+              <span className="step-badge violet">BƯỚC 2: TỐI ƯU</span>
+              <h3 className="tutorial-card-title">
+                <Activity size={16} className="text-violet" style={{ color: 'var(--color-violet)' }} />
+                Tiến Hóa Thuật Toán
+              </h3>
+              <ul className="tutorial-card-list">
+                <li>Điều chỉnh 4 trọng số chất lượng: Độ bao phủ, Biên điều kiện, Bảo mật và Độ đa dạng.</li>
+                <li>Bấm <b>Khởi chạy</b> để truyền phát tiến trình qua WebSockets thời gian thực từ FastAPI backend.</li>
+                <li>Giải thuật di truyền GA kết hợp leo đồi tinh chỉnh biên cục bộ HC để tối ưu hóa.</li>
+              </ul>
+              <button onClick={() => handleScrollToSection('step-opt')} className="tutorial-card-action">
+                Bắt đầu Tối Ưu &rarr;
+              </button>
+            </div>
+
+            {/* BƯỚC 3 */}
+            <div className="tutorial-card step-3">
+              <span className="step-badge teal">BƯỚC 3: ĐỐI CHIẾU</span>
+              <h3 className="tutorial-card-title">
+                <Layers size={16} className="text-teal" style={{ color: 'var(--color-teal)' }} />
+                Đấu Trường Giải Thuật
+              </h3>
+              <ul className="tutorial-card-list">
+                <li>Bấm <b>Khởi Trình So Sánh Đối Kháng</b> để kiểm chứng 5 thuật toán sinh dữ liệu song song.</li>
+                <li>Đọc biểu đồ trực quan Recharts (Coverage, Duplicate rate, Edge Cases).</li>
+                <li>Xem chứng minh thực nghiệm vì sao mô hình lai ghép GA+HC đạt độ phủ biên tuyệt đối &gt;95%.</li>
+              </ul>
+              <button onClick={() => handleScrollToSection('step-arena')} className="tutorial-card-action">
+                Đến Đấu Trường &rarr;
+              </button>
+            </div>
+
+            {/* BƯỚC 4 */}
+            <div className="tutorial-card step-4">
+              <span className="step-badge rose">BƯỚC 4: KẾT QUẢ</span>
+              <h3 className="tutorial-card-title">
+                <CheckCircle size={16} className="text-rose" style={{ color: 'var(--color-rose)' }} />
+                Xuất File Kiểm Thử
+              </h3>
+              <ul className="tutorial-card-list">
+                <li>Xem trước bảng dữ liệu test tối ưu, tự động tô đỏ các payload bảo mật nguy hiểm.</li>
+                <li>Tải bộ dữ liệu hoàn chỉnh dưới dạng <b>CSV (Excel)</b> hoặc cấu trúc <b>JSON</b>.</li>
+                <li>Nhúng trực tiếp vào automation script của bạn (Selenium, JMeter, Playwright, CI/CD).</li>
+              </ul>
+              <button onClick={() => handleScrollToSection('step-data')} className="tutorial-card-action">
+                Tải Bộ Test &rarr;
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* 2. STICKY QUICK-SCROLL PIPELINE CONTROL BAR */}
+      <nav className="flex justify-between align-center" style={{ 
+        position: 'sticky', 
+        top: '16px', 
+        zIndex: 100, 
+        backdropFilter: 'blur(16px)', 
+        background: 'rgba(15, 23, 42, 0.8)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        borderRadius: 'var(--radius-sm)',
+        padding: '10px 24px',
+        margin: '16px 0 24px 0',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <div className="flex align-center gap-md" style={{ fontSize: '13px', fontWeight: '600', color: '#fff' }}>
+          <span className="text-teal" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--color-teal)' }}>
+            <Activity size={16} />
+            ĐƯỜNG ỐNG TỐI ƯU TOÀN DIỆN (PIPELINE)
+          </span>
+        </div>
+        
+        <div className="tabs-container glow-teal" style={{ background: 'transparent', border: 'none', padding: 0 }}>
           <button 
-            onClick={() => setActiveTab('history')}
-            className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            onClick={() => handleScrollToSection('step-spec')} 
+            className={`tab-btn ${activeSection === 'step-spec' ? 'active' : ''}`} 
+            style={{ fontSize: '12px', padding: '6px 14px' }}
           >
-            4. Xuất Dữ Liệu Kiểm Thử (Data Center)
-            {optimizedDataset.length > 0 && (
-              <span style={{ fontSize: '10px', background: 'var(--color-rose)', color: '#fff', borderRadius: '50%', width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                !
-              </span>
-            )}
+            1. Phân Tích Đặc Tả
+          </button>
+          <button 
+            onClick={() => handleScrollToSection('step-opt')} 
+            className={`tab-btn ${activeSection === 'step-opt' ? 'active' : ''}`} 
+            style={{ fontSize: '12px', padding: '6px 14px' }}
+          >
+            2. Tối Ưu Hóa Bộ Test
+          </button>
+          <button 
+            onClick={() => handleScrollToSection('step-arena')} 
+            className={`tab-btn ${activeSection === 'step-arena' ? 'active' : ''}`} 
+            style={{ fontSize: '12px', padding: '6px 14px' }}
+          >
+            3. So Sánh Thuật Toán
+          </button>
+          <button 
+            onClick={() => handleScrollToSection('step-data')} 
+            className={`tab-btn ${activeSection === 'step-data' ? 'active' : ''}`} 
+            style={{ fontSize: '12px', padding: '6px 14px' }}
+          >
+            4. Trung Tâm Dữ Liệu
           </button>
         </div>
 
-        <div 
-          className="flex align-center gap-md" 
-          style={{ 
-            fontSize: '11px', 
-            color: 'var(--text-secondary)',
-            background: 'rgba(15, 23, 42, 0.45)',
-            padding: '6px 12px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid rgba(255, 255, 255, 0.05)',
-            backdropFilter: 'blur(8px)',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
-          }}
-        >
-          <div className="flex align-center gap-xs">
-            <span 
-              className="status-dot-pulse"
-              style={{ 
-                display: 'inline-block', 
-                width: '6px', 
-                height: '6px', 
-                borderRadius: '50%', 
-                backgroundColor: 'var(--color-teal)', 
-                boxShadow: '0 0 8px var(--color-teal)'
-              }}
-            ></span>
-            <span>Đường truyền: <b style={{ color: 'var(--color-teal)' }}>Đang kết nối</b></span>
-          </div>
-          <span style={{ color: 'rgba(255, 255, 255, 0.1)' }}>•</span>
-          <div className="flex align-center gap-xs">
-            <span>Cơ sở dữ liệu: <b style={{ color: '#fff' }}>SQLite (Sẵn sàng)</b></span>
-          </div>
+        <div className="flex align-center gap-xs" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+          <span className="status-dot-pulse" style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--color-teal)', boxShadow: '0 0 8px var(--color-teal)' }}></span>
+          <span><b>SQLite Cục bộ Sẵn sàng</b></span>
         </div>
       </nav>
 
-      {/* 3. DYNAMIC CONTENT RENDERING - TRÌNH BÀY NỘI DUNG DỰA TRÊN TAB ACTIVE */}
-      <main style={{ minHeight: '520px' }}>
-        {activeTab === 'input' && (
+      {/* 3. SINGLE-PAGE PIPELINE SECTIONS */}
+      <main style={{ minHeight: '520px', display: 'flex', flexDirection: 'column' }}>
+        
+        {/* BƯỚC 1: PHÂN TÍCH ĐẶC TẢ */}
+        <section id="step-spec">
           <SpecInput
             rawText={rawText}
             setRawText={setRawText}
@@ -261,42 +428,82 @@ function App() {
             onParse={handleParseSpec}
             onPresetSelect={handlePresetSelect}
             initialSeeds={initialSeeds}
-            onSwitchTab={setActiveTab}
+            onSwitchTab={handleSwitchTab}
           />
-        )}
+        </section>
 
-        {activeTab === 'visualizer' && (
-          <Visualizer
-            schema={parsedSchema}
-            initialSeeds={initialSeeds}
-            onEvolutionComplete={handleEvolutionComplete}
-            specificationId={specificationId} // Truyền spec ID SQLite
-            apiKey={apiKey} // Truyền khóa OpenAI Key override
-          />
-        )}
+        {/* ĐƯỜNG DẪN 1 -> 2 */}
+        <PipelineConnector title="RÀNG BUỘC NGHIỆP VỤ + HẠT GIỐNG F0 -> CHUYỂN TIẾP TẬP TỐI ƯU HÓA" />
 
-        {activeTab === 'arena' && (
-          <ComparisonArena
-            schema={parsedSchema}
-            initialSeeds={initialSeeds}
-          />
-        )}
+        {/* BƯỚC 2: TỐI ƯU HÓA BỘ TEST */}
+        <section id="step-opt">
+          <div className="glass-card violet-border" style={{ padding: '24px' }}>
+            <h2 style={{ fontSize: '20px', color: '#fff', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Sparkles className="text-teal" size={22} style={{ color: 'var(--color-teal)' }} />
+              BƯỚC 2: TỐI ƯU HÓA BỘ TEST CASES (GENETIC ALGORITHM & HILL CLIMBING)
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '20px' }}>
+              Cấu hình các trọng số đánh giá chất lượng (Độ bao phủ, Biên, Bảo mật, Đa dạng) và chạy tiến hóa di truyền GA kết hợp leo đồi tinh chỉnh biên cục bộ HC trên Server FastAPI cục bộ.
+            </p>
+            <Visualizer
+              schema={parsedSchema}
+              initialSeeds={initialSeeds}
+              onEvolutionComplete={handleEvolutionComplete}
+              specificationId={specificationId} // Truyền spec ID SQLite
+              apiKey={apiKey} // Truyền khóa OpenAI Key override
+            />
+          </div>
+        </section>
 
-        {activeTab === 'history' && (
-          <HistoryManager
-            optimizedDataset={optimizedDataset}
-            historyRuns={historyRuns}
-            onLoadPastRun={handleLoadPastRun}
-            schemaName={schemaName}
-          />
-        )}
+        {/* ĐƯỜNG DẪN 2 -> 3 */}
+        <PipelineConnector title="DỮ LIỆU TẬP TỐI ƯU HÓA -> CHUYỂN TIẾP ĐẤU TRƯỜNG SO SÁNH" />
+
+        {/* BƯỚC 3: ĐẤU TRƯỜNG SO SÁNH */}
+        <section id="step-arena">
+          <div className="glass-card teal-border" style={{ padding: '24px' }}>
+            <h2 style={{ fontSize: '20px', color: '#fff', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Activity className="text-violet" size={22} style={{ color: 'var(--color-violet)' }} />
+              BƯỚC 3: ĐẤU TRƯỜNG SO SÁNH GIẢI THUẬT (COMPARISON ARENA)
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '20px' }}>
+              Trực quan hóa và đối chiếu kết quả đầu ra giữa 3 phương pháp sinh dữ liệu: Mô hình ngôn ngữ lớn thuần túy (LLM Pure), Giải thuật di truyền thuần túy (GA Pure) và Bộ giải thuật phức hợp toàn diện (GA + HC) của Hyperion.
+            </p>
+            <ComparisonArena
+              schema={parsedSchema}
+              initialSeeds={initialSeeds}
+            />
+          </div>
+        </section>
+
+        {/* ĐƯỜNG DẪN 3 -> 4 */}
+        <PipelineConnector title="TEST CASES TỐI ƯU -> LƯU TRỮ LỊCH SỬ & TRUNG TÂM XUẤT FILE" />
+
+        {/* BƯỚC 4: TRUNG TÂM DỮ LIỆU */}
+        <section id="step-data">
+          <div className="glass-card violet-border" style={{ padding: '24px' }}>
+            <h2 style={{ fontSize: '20px', color: '#fff', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Layers className="text-rose" size={22} style={{ color: 'var(--color-rose)' }} />
+              BƯỚC 4: TRUNG TÂM DỮ LIỆU &amp; LỊCH SỬ CHẠY (DATA CENTER)
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '20px' }}>
+              Xem lại lịch sử các lần chạy tối ưu hóa thành công trong phiên làm việc hiện tại, nạp lại bộ dữ liệu cũ hoặc tiến hành tải bộ test cases tối ưu về máy dưới định dạng CSV, JSON để nhúng vào mã nguồn kiểm thử tự động của bạn.
+            </p>
+            <HistoryManager
+              optimizedDataset={optimizedDataset}
+              historyRuns={historyRuns}
+              onLoadPastRun={handleLoadPastRun}
+              schemaName={schemaName}
+            />
+          </div>
+        </section>
+
       </main>
 
       {/* 4. FOOTER */}
       <footer 
         className="glass-card flex justify-between align-center" 
         style={{ 
-          marginTop: '12px', 
+          marginTop: '24px', 
           padding: '12px 24px', 
           fontSize: '11px', 
           color: 'var(--text-muted)', 
@@ -304,7 +511,7 @@ function App() {
           borderColor: 'rgba(255,255,255,0.03)'
         }}
       >
-        <span>© 2026 Hyperion TestForge Fullstack. Build v1.1.0</span>
+        <span>© 2026 Hyperion TestForge Fullstack. Build v1.2.0</span>
         <span className="flex align-center gap-sm">
           Lập trình và chú thích tiếng Việt bởi <b style={{ color: 'var(--text-secondary)' }}>Personal</b> via Google Antigravity • Chuẩn Dev &amp; Test
         </span>

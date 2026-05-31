@@ -47,6 +47,13 @@
 
 body {
   background-color: var(--bg-space);
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(45, 212, 191, 0.04) 0%, transparent 45%),
+    radial-gradient(circle at 90% 80%, rgba(167, 139, 250, 0.04) 0%, transparent 45%),
+    radial-gradient(circle at 50% 50%, rgba(3, 7, 18, 0.4) 0%, var(--bg-space) 100%),
+    linear-gradient(rgba(255, 255, 255, 0.003) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.003) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 36px 36px, 36px 36px;
   color: var(--text-primary);
   font-family: var(--font-sans);
   min-height: 100vh;
@@ -411,3 +418,251 @@ h1, h2, h3, h4, h5, h6 {
 .arena-card.ga::before { background: var(--color-teal); }
 .arena-card.hc::before { background: var(--color-violet); }
 .arena-card.hybrid::before { background: linear-gradient(90deg, var(--color-teal), var(--color-violet)); }
+
+/* ==========================================
+   TUTORIAL / OPERATION GUIDE STYLES
+   ========================================== */
+.tutorial-container {
+  border-radius: var(--radius-md);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  transition: var(--transition-smooth);
+}
+
+.tutorial-header-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-family: var(--font-title);
+  width: 100%;
+  justify-content: space-between;
+  padding: 0;
+  outline: none;
+}
+
+.tutorial-header-btn:hover .tutorial-title {
+  color: var(--color-teal);
+  text-shadow: 0 0 10px rgba(45, 212, 191, 0.3);
+}
+
+.tutorial-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: var(--transition-fast);
+  color: #fff;
+}
+
+.tutorial-badge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: rgba(45, 212, 191, 0.1);
+  color: var(--color-teal);
+  padding: 2px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(45, 212, 191, 0.2);
+  margin-left: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.tutorial-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 20px;
+  transition: var(--transition-smooth);
+}
+
+@media (min-width: 768px) {
+  .tutorial-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1200px) {
+  .tutorial-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.tutorial-card {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  transition: var(--transition-smooth);
+}
+
+.tutorial-card:hover {
+  transform: translateY(-4px);
+  background: rgba(30, 41, 59, 0.75);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.tutorial-card.step-1:hover {
+  border-color: rgba(45, 212, 191, 0.4);
+  box-shadow: 0 0 15px rgba(45, 212, 191, 0.15);
+}
+
+.tutorial-card.step-2:hover {
+  border-color: rgba(167, 139, 250, 0.4);
+  box-shadow: 0 0 15px rgba(167, 139, 250, 0.15);
+}
+
+.tutorial-card.step-3:hover {
+  border-color: rgba(45, 212, 191, 0.4);
+  box-shadow: 0 0 15px rgba(45, 212, 191, 0.15);
+}
+
+.tutorial-card.step-4:hover {
+  border-color: rgba(244, 63, 94, 0.4);
+  box-shadow: 0 0 15px rgba(244, 63, 94, 0.15);
+}
+
+.step-badge {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  align-self: flex-start;
+  letter-spacing: 0.05em;
+}
+
+.step-badge.teal {
+  background: rgba(45, 212, 191, 0.12);
+  color: var(--color-teal);
+  border: 1px solid rgba(45, 212, 191, 0.25);
+}
+
+.step-badge.violet {
+  background: rgba(167, 139, 250, 0.12);
+  color: var(--color-violet);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+}
+
+.step-badge.rose {
+  background: rgba(244, 63, 94, 0.12);
+  color: var(--color-rose);
+  border: 1px solid rgba(244, 63, 94, 0.25);
+}
+
+.tutorial-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tutorial-card-list {
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  flex-grow: 1;
+}
+
+.tutorial-card-list li {
+  position: relative;
+  padding-left: 14px;
+  line-height: 1.4;
+}
+
+.tutorial-card-list li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--color-teal);
+  font-weight: bold;
+}
+
+.tutorial-card.step-2 .tutorial-card-list li::before {
+  color: var(--color-violet);
+}
+
+.tutorial-card.step-3 .tutorial-card-list li::before {
+  color: var(--color-teal);
+}
+
+.tutorial-card.step-4 .tutorial-card-list li::before {
+  color: var(--color-rose);
+}
+
+.tutorial-card-action {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-teal);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: auto;
+  align-self: flex-start;
+  transition: var(--transition-fast);
+  font-family: var(--font-sans);
+}
+
+.tutorial-card-action:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+.tutorial-card.step-2 .tutorial-card-action {
+  color: var(--color-violet);
+}
+
+.tutorial-card.step-3 .tutorial-card-action {
+  color: var(--color-teal);
+}
+
+.tutorial-card.step-4 .tutorial-card-action {
+  color: var(--color-rose);
+}
+
+.pipeline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Enhancements for header badge steps */
+.step-header-badge {
+  background: linear-gradient(135deg, var(--color-teal), var(--color-violet));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  font-family: var(--font-mono);
+}
+

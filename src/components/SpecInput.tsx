@@ -88,7 +88,7 @@ export const SpecInput: React.FC<SpecInputProps> = ({
       <div className="glass-card flex flex-col gap-md teal-border glow-teal">
         <div className="flex align-center gap-sm">
           <FileText className="text-teal" size={24} style={{ color: 'var(--color-teal)' }} />
-          <h2>Nhập Đặc Tả Nghiệp Vụ Chức Năng (Raw Spec Input)</h2>
+          <h2>BƯỚC 1: PHÂN TÍCH ĐẶC TẢ NGHIỆP VỤ (RAW SPEC INPUT)</h2>
         </div>
         
         <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>

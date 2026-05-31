@@ -33,6 +33,42 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   const [wSec, setWSec] = useState(0.2);
   const [wDiv, setWDiv] = useState(0.1);
 
+  // --- CHẾ ĐỘ KIỂM THỬ THÂN THIỆN CHO QA/TESTER PRESSETS ---
+  const [qaMode, setQaMode] = useState<'happy' | 'boundary' | 'security' | 'hybrid'>('hybrid');
+  
+  const handleApplyQAMode = (mode: 'happy' | 'boundary' | 'security' | 'hybrid') => {
+    setQaMode(mode);
+    if (mode === 'happy') {
+      setGenerations(30);
+      setPopSize(80);
+      setWVal(0.8);
+      setWBound(0.0);
+      setWSec(0.0);
+      setWDiv(0.2);
+    } else if (mode === 'boundary') {
+      setGenerations(60);
+      setPopSize(100);
+      setWVal(0.3);
+      setWBound(0.5);
+      setWSec(0.1);
+      setWDiv(0.1);
+    } else if (mode === 'security') {
+      setGenerations(60);
+      setPopSize(100);
+      setWVal(0.2);
+      setWBound(0.1);
+      setWSec(0.6);
+      setWDiv(0.1);
+    } else if (mode === 'hybrid') {
+      setGenerations(60);
+      setPopSize(100);
+      setWVal(0.5);
+      setWBound(0.2);
+      setWSec(0.2);
+      setWDiv(0.1);
+    }
+  };
+
   // --- TRẠNG THÁI VẬN HÀNH BỘ CHẠY (EXECUTION STATES) ---
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -429,22 +465,207 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
   const breakdown = getBreakdown();
 
+  // Giải mã xuất xứ thuật toán sinh
+  const getOriginLabel = (origin: string) => {
+    if (!origin) return '🌱 Khởi Tạo';
+    const o = origin.toUpperCase();
+    if (o.startsWith('SEED')) return '🌱 Bộ Ca Test Cơ Bản (AI Gemini Trích Xuất)';
+    if (o.startsWith('ELITE')) return '👑 Ca Test Đạt Chuẩn Cao Nhất (Retained Elites)';
+    if (o.startsWith('CROSSOVER') || o.startsWith('MIX')) return '🧬 Phối Hợp Đa Dạng Tham Số (GA Crossover)';
+    if (o.startsWith('MUTATION')) return '💥 Sinh Dữ Liệu Dị Thường (GA Mutation)';
+    if (o.startsWith('HC') || o.startsWith('TWEAK') || o.includes('FINE_TUNED') || o.includes('FINE-TUNED')) return '🧗‍♂️ Tinh Chỉnh Giá Trị Biên (Hill Climbing)';
+    if (o.startsWith('INIT_VALID')) return '🟢 Happy Path (Khớp Quy Tắc Nghiệp Vụ)';
+    if (o.startsWith('INIT_BOUNDARY')) return '🟡 Boundary Case (Phân Tích Giá Trị Biên)';
+    if (o.startsWith('INIT_SECURITY')) return '🔴 Security Payload (Kiểm Thử An Ninh)';
+    return `👾 Tối ưu hóa: ${origin}`;
+  };
+
   return (
     <div className="flex flex-col gap-lg" style={{ marginTop: '16px' }}>
-      
+
+      {/* SƠ ĐỒ ĐƯỜNG ĐI THUẬT TOÁN LAI GHÉP PHỨC HỢP (GA + HC) */}
+      <div className="glass-card flex flex-col gap-sm" style={{ 
+        padding: '16px 20px', 
+        background: 'rgba(15,23,42,0.4)', 
+        border: '1px solid rgba(255,255,255,0.04)',
+        marginTop: '-8px',
+        marginBottom: '4px'
+      }}>
+        <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--color-teal)', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Cpu size={14} />
+          BẢN ĐỒ ĐƯỜNG ĐI THUẬT TOÁN PHỨC HỢP (HYBRID GA + HC PIPELINE MAP)
+        </div>
+        
+        {/* Sơ đồ tuyến tính các khối chức năng */}
+        <div className="flex align-center justify-between" style={{ flexWrap: 'wrap', gap: '12px', marginTop: '8px' }}>
+          
+          {/* Khối 1: F0 Seeds */}
+          <div className="flex align-center gap-sm" style={{ flex: '1', minWidth: '220px', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: '8px' }}>
+            <span style={{ fontSize: '20px' }}>🌱</span>
+            <div className="flex flex-col">
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#fff' }}>1. Bộ Ca Test Cơ Bản</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>AI Gemini trích xuất quy tắc &amp; sinh các ca test biên thô ban đầu (Seeds).</span>
+            </div>
+          </div>
+
+          <div style={{ color: 'var(--color-teal)', fontSize: '16px', fontWeight: 'bold' }}>&rarr;</div>
+
+          {/* Khối 2: Genetic Algorithm (GA) */}
+          <div className="flex align-center gap-sm" style={{ 
+            flex: '1.2', 
+            minWidth: '260px', 
+            background: isRunning && !hcActive ? 'rgba(45,212,191,0.08)' : 'rgba(255,255,255,0.01)', 
+            border: isRunning && !hcActive ? '1px solid rgba(45,212,191,0.3)' : '1px solid rgba(255,255,255,0.03)', 
+            padding: '10px 14px', 
+            borderRadius: '8px',
+            boxShadow: isRunning && !hcActive ? '0 0 12px rgba(45,212,191,0.1)' : 'none',
+            transition: 'var(--transition-smooth)'
+          }}>
+            <span style={{ fontSize: '20px', animation: isRunning && !hcActive ? 'neon-glow 1.5s infinite ease-in-out' : 'none' }}>🧬</span>
+            <div className="flex flex-col">
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: isRunning && !hcActive ? 'var(--color-teal)' : '#fff' }}>
+                2. Tối Ưu Độ Bao Phủ (GA) {isRunning && !hcActive ? `[Vòng lặp: ${currentGen}/${generations}]` : ''}
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Phối hợp đa dạng tham số (Crossover) &amp; Sinh dữ liệu dị thường (Mutation) toàn cục.</span>
+            </div>
+          </div>
+
+          <div style={{ color: 'var(--color-violet)', fontSize: '16px', fontWeight: 'bold' }}>&rarr;</div>
+
+          {/* Khối 3: Hill Climbing (HC) */}
+          <div className="flex align-center gap-sm" style={{ 
+            flex: '1.2', 
+            minWidth: '260px', 
+            background: hcActive ? 'rgba(167,139,250,0.08)' : 'rgba(255,255,255,0.01)', 
+            border: hcActive ? '1px solid rgba(167,139,250,0.3)' : '1px solid rgba(255,255,255,0.03)', 
+            padding: '10px 14px', 
+            borderRadius: '8px',
+            boxShadow: hcActive ? '0 0 12px rgba(167,139,250,0.1)' : 'none',
+            transition: 'var(--transition-smooth)'
+          }}>
+            <span style={{ fontSize: '20px', animation: hcActive ? 'neon-glow 1.5s infinite ease-in-out' : 'none' }}>🧗‍♂️</span>
+            <div className="flex flex-col">
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: hcActive ? 'var(--color-violet)' : '#fff' }}>
+                3. Tinh Chỉnh Biên Cực Đoan (HC) {hcActive ? `[Đang tinh chỉnh...]` : ''}
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Tự động chèn ký tự lạ, làm rỗng/tràn trường, chèn payload SQLi/XSS để stress test.</span>
+            </div>
+          </div>
+
+          <div style={{ color: 'var(--color-rose)', fontSize: '16px', fontWeight: 'bold' }}>&rarr;</div>
+
+          {/* Khối 4: Complete */}
+          <div className="flex align-center gap-sm" style={{ flex: '1', minWidth: '220px', background: isComplete ? 'rgba(244,63,94,0.08)' : 'rgba(255,255,255,0.01)', border: isComplete ? '1px solid rgba(244,63,94,0.3)' : '1px solid rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: '8px' }}>
+            <span style={{ fontSize: '20px' }}>👑</span>
+            <div className="flex flex-col">
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: isComplete ? 'var(--color-rose)' : '#fff' }}>4. Xuất Bộ Test Case Đạt Chuẩn</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Đạt độ bao phủ kiểm thử (Test Coverage) &gt;95%, sẵn sàng xuất file CSV/JSON.</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      <div className="glass-card teal-border" style={{ padding: '20px', background: 'rgba(15,23,42,0.6)', marginBottom: '8px' }}>
+        <h3 style={{ fontSize: '14px', color: '#fff', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.05em' }}>
+          <Cpu size={16} className="text-teal" style={{ color: 'var(--color-teal)' }} />
+          CHỌN CHẾ ĐỘ KIỂM THỬ (QA QUICK MODE SELECTOR) - TIÊU CHUẨN THIẾT KẾ CA KIỂM THỬ (ISTQB STANDARDS)
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px' }}>
+          Lựa chọn kỹ thuật thiết kế ca kiểm thử (Test Case Design Technique). Thuật toán AI và GA+HC sẽ tự động thiết lập các tham số tối ưu phù hợp nhất bên dưới.
+        </p>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+          {/* Card Happy Path */}
+          <div 
+            onClick={() => handleApplyQAMode('happy')}
+            className={`tutorial-card`}
+            style={{ 
+              cursor: 'pointer',
+              border: qaMode === 'happy' ? '1px solid var(--color-teal)' : '1px solid rgba(255,255,255,0.05)',
+              background: qaMode === 'happy' ? 'rgba(45,212,191,0.06)' : 'rgba(15,23,42,0.6)',
+              boxShadow: qaMode === 'happy' ? '0 0 12px rgba(45,212,191,0.1)' : 'none',
+              padding: '14px'
+            }}
+          >
+            <span style={{ fontSize: '20px' }}>🟢</span>
+            <div className="flex flex-col gap-xs" style={{ marginTop: '6px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--color-teal)' }}>Kiểm Thử Luồng Tích Cực (Positive Testing)</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>Happy Path: Tự động tạo bộ dữ liệu hợp lệ để xác minh các Business Rules (Quy tắc nghiệp vụ chuẩn).</span>
+            </div>
+          </div>
+
+          {/* Card Boundary */}
+          <div 
+            onClick={() => handleApplyQAMode('boundary')}
+            className={`tutorial-card`}
+            style={{ 
+              cursor: 'pointer',
+              border: qaMode === 'boundary' ? '1px solid var(--color-violet)' : '1px solid rgba(255,255,255,0.05)',
+              background: qaMode === 'boundary' ? 'rgba(167,139,250,0.06)' : 'rgba(15,23,42,0.6)',
+              boxShadow: qaMode === 'boundary' ? '0 0 12px rgba(167,139,250,0.1)' : 'none',
+              padding: '14px'
+            }}
+          >
+            <span style={{ fontSize: '20px' }}>🟡</span>
+            <div className="flex flex-col gap-xs" style={{ marginTop: '6px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--color-violet)' }}>Phân Tích Giá Trị Biên (Boundary Value Analysis)</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>Boundary Testing: Tự động chèn các giá trị cực hạn (Min, Max, Null, Empty) để tìm lỗi xử lý biên.</span>
+            </div>
+          </div>
+
+          {/* Card Security */}
+          <div 
+            onClick={() => handleApplyQAMode('security')}
+            className={`tutorial-card`}
+            style={{ 
+              cursor: 'pointer',
+              border: qaMode === 'security' ? '1px solid var(--color-rose)' : '1px solid rgba(255,255,255,0.05)',
+              background: qaMode === 'security' ? 'rgba(244,63,94,0.06)' : 'rgba(15,23,42,0.6)',
+              boxShadow: qaMode === 'security' ? '0 0 12px rgba(244,63,94,0.1)' : 'none',
+              padding: '14px'
+            }}
+          >
+            <span style={{ fontSize: '20px' }}>🔴</span>
+            <div className="flex flex-col gap-xs" style={{ marginTop: '6px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--color-rose)' }}>Kiểm Thử An Ninh &amp; Bảo Mật (Security Penetration)</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>Penetration Testing: Tự động nhúng các payload độc hại (SQL Injection, XSS) để quét lỗ hổng bảo mật.</span>
+            </div>
+          </div>
+
+          {/* Card Hybrid */}
+          <div 
+            onClick={() => handleApplyQAMode('hybrid')}
+            className={`tutorial-card`}
+            style={{ 
+              cursor: 'pointer',
+              border: qaMode === 'hybrid' ? '1px solid #fff' : '1px solid rgba(255,255,255,0.05)',
+              background: qaMode === 'hybrid' ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.6)',
+              boxShadow: qaMode === 'hybrid' ? '0 0 12px rgba(255,255,255,0.05)' : 'none',
+              padding: '14px'
+            }}
+          >
+            <span style={{ fontSize: '20px' }}>🧬</span>
+            <div className="flex flex-col gap-xs" style={{ marginTop: '6px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff' }}>Tối Ưu Hóa Độ Bao Phủ Phức Hợp (Hybrid Suite)</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>GA + HC Coverage: Kết hợp đồng thời các kỹ thuật trên để tối đa hóa độ bao phủ (Test Coverage) vượt trội &gt;95%.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 1. CONFIGURATION & WEIGHTS SLIDERS */}
       <div className="grid-2">
         <div className="glass-card flex flex-col gap-md teal-border">
           <div className="flex align-center gap-sm">
             <Cpu size={22} className="text-teal" style={{ color: 'var(--color-teal)' }} />
-            <h3>Cấu hình thuật toán di truyền di trú (GA Config)</h3>
+            <h3>Cấu Hình Bộ Tiến Hóa Tối Ưu (Test Suite Optimization Config)</h3>
           </div>
 
           <div className="flex flex-col gap-sm" style={{ marginTop: '8px' }}>
             <div className="flex justify-between" style={{ fontSize: '13px' }}>
               <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Vòng lặp tối ưu hóa (Generations):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Số chu kỳ cải tiến; số lớn giúp tìm lỗi biên sâu hơn nhưng chạy lâu hơn.</span>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Số Vòng Lặp Tối Ưu Hóa (Generations):</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Số chu kỳ thuật toán chạy cải tiến bộ test; số càng lớn độ bao phủ (Coverage) càng cao nhưng sinh lâu hơn.</span>
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{generations}</span>
             </div>
@@ -457,8 +678,8 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
             <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
               <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Kích thước tập ca test (Population Size):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Số lượng bản ghi dữ liệu kiểm thử được tối ưu hóa trong tập kết quả.</span>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Kích Thước Bộ Kiểm Thử (Test Suite Size):</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Tổng số lượng ca kiểm thử (Test Cases) tối ưu sẽ được sinh ra trong bộ dữ liệu kết quả.</span>
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{popSize}</span>
             </div>
@@ -471,8 +692,8 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
             <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
               <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Tỉ lệ trộn tham số (Crossover Rate):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Xác suất kết hợp các trường từ các ca test tốt để tạo ra bộ giá trị mới.</span>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Độ Phối Hợp Tham Số (Crossover Rate):</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Xác suất tự động phối hợp thuộc tính giữa các ca kiểm thử tốt nhất để sinh kịch bản test mới.</span>
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{crossoverRate * 100}%</span>
             </div>
@@ -485,8 +706,8 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
             <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
               <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Tỉ lệ biến đổi dữ liệu (Mutation Rate):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Xác suất sinh ký tự đặc biệt, chuỗi biên để phát hiện kịch bản lỗi.</span>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Độ Đột Biến Dị Thường (Mutation Rate / Stress Rate):</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Tần suất chèn các giá trị cực đoan, lỗi định dạng phục vụ Kiểm Thử Tiêu Cực (Negative Testing).</span>
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{mutationRate * 100}%</span>
             </div>
@@ -502,14 +723,14 @@ export const Visualizer: React.FC<VisualizerProps> = ({
         <div className="glass-card flex flex-col gap-md violet-border">
           <div className="flex align-center gap-sm">
             <TrendingUp size={22} className="text-violet" style={{ color: 'var(--color-violet)' }} />
-            <h3>Trọng số đánh giá chất lượng ca kiểm thử (Weights)</h3>
+            <h3>Trọng Số Chất Lượng Bộ Kiểm Thử (Test Suite Quality Weights)</h3>
           </div>
 
           <div className="flex flex-col gap-sm" style={{ marginTop: '8px' }}>
             <div className="flex justify-between" style={{ fontSize: '13px' }}>
               <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Khớp định dạng nghiệp vụ (Validation Score):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Mức độ ưu tiên khớp định dạng ràng buộc như Email, Số điện thoại, v.v.</span>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Trọng Số Xác Minh Nghiệp Vụ (Business Rule Validation):</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Mức độ ưu tiên để dữ liệu sinh ra khớp chính xác định dạng chuẩn cơ bản (Email, SĐT, Regex...).</span>
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{wVal.toFixed(2)}</span>
             </div>
@@ -522,8 +743,8 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
             <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
               <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Độ bao phủ giá trị biên (Boundary Score):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Mức độ ưu tiên kiểm thử các giá trị cận trên, cận dưới, độ dài max/min.</span>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Trọng Số Phân Tích Biên (Boundary Value Analysis):</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Mức độ ưu tiên sinh dữ liệu chạm chính xác mốc cực hạn Min/Max, Null, chuỗi rỗng.</span>
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{wBound.toFixed(2)}</span>
             </div>
@@ -536,8 +757,8 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
             <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
               <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Độ bao phủ lỗ hổng bảo mật (Security Score):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Mức độ ưu tiên chèn các payload tấn công nguy hiểm như SQL Injection, XSS.</span>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Trọng Số Kiểm Thử Bảo Mật (Security Penetration):</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Mức độ ưu tiên nhúng các payload an ninh mạng phổ biến (SQL Injection, XSS, Bypass Auth).</span>
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{wSec.toFixed(2)}</span>
             </div>
@@ -550,8 +771,8 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
             <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
               <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Độ đa dạng tập dữ liệu (Diversity Score):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Giữ cho các ca kiểm thử khác biệt lẫn nhau, tránh trùng lặp thông tin.</span>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Trọng Số Độ Đa Dạng Ca Test (Test Case Diversity):</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Mức độ ưu tiên sinh ca test không trùng lặp lẫn nhau, giúp giảm thiểu số lượng ca test dư thừa.</span>
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{wDiv.toFixed(2)}</span>
             </div>
@@ -699,7 +920,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
                           boxShadow: isSelected ? '0 0 12px #fff' : '',
                           transform: isSelected ? 'scale(1.1)' : ''
                         }}
-                        title={`Quality Score: ${c.fitness.toFixed(3)}`}
+                        title={`Độ phủ & Tối ưu: ${c.fitness.toFixed(3)}`}
                       >
                         {c.fitness.toFixed(2)}
                       </div>
@@ -715,10 +936,13 @@ export const Visualizer: React.FC<VisualizerProps> = ({
                 </div>
 
                 {/* Legend */}
-                <div className="flex gap-md" style={{ fontSize: '12px', justifyContent: 'center', marginTop: 'auto' }}>
-                  <span className="flex align-center gap-sm"><span style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'rgba(244,63,94,0.15)', border: '1px solid var(--color-rose)' }}></span> Chất lượng kém (&lt; 0.4)</span>
-                  <span className="flex align-center gap-sm"><span style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'rgba(167,139,250,0.15)', border: '1px solid var(--color-violet)' }}></span> Trung bình</span>
-                  <span className="flex align-center gap-sm"><span style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'rgba(45,212,191,0.15)', border: '1px solid var(--color-teal)' }}></span> Xuất sắc (&gt; 0.75)</span>
+                <div className="flex flex-col gap-sm" style={{ fontSize: '11px', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '10px', marginTop: 'auto' }}>
+                  <div style={{ fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '2px' }}>🎯 PHÂN LOẠI CA KIỂM THỬ ĐỂ GIẢI THÍCH CHO TESTER:</div>
+                  <div className="flex gap-md" style={{ flexWrap: 'wrap' }}>
+                    <span className="flex align-center gap-sm"><span style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'rgba(244,63,94,0.15)', border: '1px solid var(--color-rose)' }}></span> 🔴 <b>Ca Test Biên Dị Thường (&lt; 0.40)</b>: Chứa giá trị trống, tràn số, hoặc chuỗi lỗi. Phù hợp cho <b>Negative Testing</b>.</span>
+                    <span className="flex align-center gap-sm"><span style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'rgba(167,139,250,0.15)', border: '1px solid var(--color-violet)' }}></span> 🟡 <b>Ca Test Tiêu Chuẩn (0.40 - 0.75)</b>: Khớp định dạng chuẩn cơ bản. Phù hợp cho <b>Happy Path / Positive Testing</b>.</span>
+                    <span className="flex align-center gap-sm"><span style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'rgba(45,212,191,0.15)', border: '1px solid var(--color-teal)' }}></span> 🟢 <b>Ca Test Biên &amp; Bảo Mật Xuất Sắc (&gt; 0.75)</b>: Chạm chính xác mốc Min/Max hoặc chứa SQLi/XSS. Phù hợp cho <b>Security &amp; Edge Case Testing</b>.</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -853,7 +1077,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
                   color: selectedTestCase.origin.includes('Seed') ? '#fff' : selectedTestCase.origin.includes('HC') || selectedTestCase.origin.includes('Tweak') ? 'var(--color-violet)' : 'var(--color-teal)'
                 }}
               >
-                Giải thuật sinh: {selectedTestCase.origin}
+                Nguồn gốc: {getOriginLabel(selectedTestCase.origin)}
               </span>
               <h4 style={{ fontFamily: 'var(--font-mono)' }}>Chi Tiết Ca Kiểm Thử (Điểm chất lượng: {selectedTestCase.fitness.toFixed(4)})</h4>
             </div>
@@ -873,41 +1097,58 @@ export const Visualizer: React.FC<VisualizerProps> = ({
                 padding: '12px 16px', 
                 borderRadius: 'var(--radius-sm)', 
                 border: '1px solid rgba(255,255,255,0.05)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: '13px',
-                lineHeight: '1.6',
                 maxHeight: '160px',
                 overflowY: 'auto'
               }}
             >
-              <pre style={{ color: 'var(--color-teal)' }}>
-                {JSON.stringify(selectedTestCase.values, null, 2)}
-              </pre>
+              <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', color: 'var(--text-primary)' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+                    <th style={{ textAlign: 'left', paddingBottom: '6px', fontSize: '10px', textTransform: 'uppercase' }}>Trường dữ liệu</th>
+                    <th style={{ textAlign: 'left', paddingBottom: '6px', fontSize: '10px', textTransform: 'uppercase' }}>Giá trị sinh ra</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(selectedTestCase.values).map(([key, val]) => (
+                    <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                      <td style={{ padding: '6px 0', fontFamily: 'var(--font-mono)', color: 'var(--color-teal)', fontWeight: 'bold' }}>{key}</td>
+                      <td style={{ padding: '6px 0', fontFamily: 'var(--font-mono)' }}>
+                        <span style={{ 
+                          color: String(val).includes("'") || String(val).includes("<script") || String(val).includes("--") ? 'var(--color-rose)' : 'inherit',
+                          fontWeight: String(val).includes("'") || String(val).includes("<script") || String(val).includes("--") ? 'bold' : 'normal'
+                        }}>
+                          {String(val) === '' ? <i style={{ color: 'var(--text-muted)' }}>(Chuỗi rỗng / Empty)</i> : String(val)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
             {/* Right: Scores breakdown */}
             {breakdown ? (
               <div className="flex flex-col gap-sm" style={{ fontSize: '13px' }}>
                 <div className="flex justify-between align-center">
-                  <span style={{ color: 'var(--text-secondary)' }}>Nghiệp vụ (Khớp định dạng ràng buộc):</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Độ hợp lệ nghiệp vụ (Đúng định dạng):</span>
                   <span style={{ fontWeight: 'bold', color: breakdown.vScore > 0.9 ? 'var(--color-teal)' : 'var(--color-rose)' }}>
                     {(breakdown.vScore * 100).toFixed(0)}%
                   </span>
                 </div>
                 <div className="flex justify-between align-center">
-                  <span style={{ color: 'var(--text-secondary)' }}>Giá trị biên (Cận trên / cận dưới / độ dài):</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Độ phủ cận biên (Chạm mốc Min/Max/Length):</span>
                   <span style={{ fontWeight: 'bold', color: breakdown.bScore > 0.4 ? 'var(--color-teal)' : '#94a3b8' }}>
                     {(breakdown.bScore * 100).toFixed(0)}%
                   </span>
                 </div>
                 <div className="flex justify-between align-center">
-                  <span style={{ color: 'var(--text-secondary)' }}>Bảo mật (Payload tấn công SQLi/XSS):</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Mức độ bảo mật (Payload SQLi/XSS độc hại):</span>
                   <span style={{ fontWeight: 'bold', color: breakdown.sScore > 0.0 ? 'var(--color-rose)' : '#94a3b8' }}>
                     {breakdown.sScore > 0 ? `ĐẠT (${(breakdown.sScore * 100).toFixed(0)}%)` : 'Không phát hiện'}
                   </span>
                 </div>
                 <div className="flex justify-between align-center">
-                  <span style={{ color: 'var(--text-secondary)' }}>Độ đa dạng (So với tập dữ liệu):</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Độ độc đáo (Tránh lặp lại dữ liệu):</span>
                   <span style={{ fontWeight: 'bold', color: 'var(--color-violet)' }}>
                     {(breakdown.dScore * 100).toFixed(0)}%
                   </span>
