@@ -35,6 +35,7 @@ class Specification(Base):
     project_id = Column(String(36), ForeignKey("projects.id"), nullable=False)
     raw_text = Column(String(2000), nullable=False) # Văn bản mô tả nghiệp vụ bằng chữ thường
     parsed_schema = Column(String(2000), nullable=False) # Cấu trúc JSON Schema (chuỗi JSON văn bản) dạng text
+    initial_seeds = Column(String(5000), nullable=True) # Dữ liệu hạt giống F0 ban đầu
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Mối quan hệ ngược về Project

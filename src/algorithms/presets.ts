@@ -172,7 +172,7 @@ export const PRESETS: PresetSpec[] = [
   },
   {
     id: 'health-insurance',
-    title: 'Đăng ký Gói Bảo Hiểm Sức Khỏe VIP (Health Insurance VIP Underwriting)',
+    title: 'Hồ Sơ Bảo Hiểm VIP (Health Insurance VIP Underwriting)',
     description: 'Hồ sơ đăng ký bảo hiểm y tế cao cấp với các kiểm soát chặt chẽ về mã đơn bảo hiểm, thu nhập hàng tháng, tình trạng bệnh lý có sẵn và thông tin thụ hưởng.',
     rawText: `Yêu cầu hồ sơ đăng ký Bảo Hiểm Sức Khỏe VIP:
 - Policy Number: Bắt buộc, định dạng chuỗi gồm 3 chữ và 6 số (Regex ^[A-Z]{3}-\\d{6}$).

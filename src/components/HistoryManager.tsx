@@ -1,30 +1,16 @@
 import React, { useState } from 'react';
 import type { Chromosome } from '../algorithms/genetic';
 import { Download, FileSpreadsheet, FileJson, History, Database, AlertCircle, Trash2, Clock, ShieldAlert, Zap, Terminal, Code } from 'lucide-react';
+import { useAppStore } from '../store/useAppStore';
 
-// --- ĐỊNH NGHĨA PHẠM VI DỮ LIỆU ĐẦU VÀO CHO COMPONENT ---
-interface HistoryManagerProps {
-  optimizedDataset: Chromosome[]; // Mảng dữ liệu test case (bản ghi tốt nhất) đã tối ưu hóa thành công
-  historyRuns: { 
-    timestamp: string; 
-    schemaName: string; 
-    size: number; 
-    coverage: number; 
-    bestFitness: number; 
-    data: Chromosome[] 
-  }[]; // Nhật ký lưu trữ danh sách các phiên chạy thành công trong phiên làm việc hiện tại
-  onLoadPastRun: (data: Chromosome[]) => void; // Hàm callback nạp lại dữ liệu cũ khi click nút
-  onClearHistory?: () => void; // Hàm callback xóa sạch lịch sử đã lưu
-  schemaName: string; // Tên của schema đặc tả nghiệp vụ hiện tại
-}
-
-export const HistoryManager: React.FC<HistoryManagerProps> = ({
-  optimizedDataset,
-  historyRuns,
-  onLoadPastRun,
-  onClearHistory,
-  schemaName
-}) => {
+export const HistoryManager: React.FC = () => {
+  const {
+    optimizedDataset,
+    historyRuns,
+    handleLoadPastRun: onLoadPastRun,
+    handleClearHistory: onClearHistory,
+    schemaName
+  } = useAppStore();
   // Trạng thái (state) hiển thị thông báo đã sao chép chuỗi JSON vào bộ nhớ đệm
   const [copied, setCopied] = useState(false);
   // Trạng thái lọc loại ca kiểm thử trong bảng xem trước

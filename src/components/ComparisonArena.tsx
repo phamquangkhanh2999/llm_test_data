@@ -1,16 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { FieldConstraint } from '../algorithms/presets';
 import type { Chromosome, GeneticConfig } from '../algorithms/genetic';
 import { GeneticEngine, generateRandomValue } from '../algorithms/genetic';
 import { runHillClimbing } from '../algorithms/hillClimbing';
-import { Play, ShieldAlert, Award, Zap, Copy, BarChart3, Cpu, Sparkles } from 'lucide-react';
+import { Play, ShieldAlert, Award, Zap, Copy, Cpu, Sparkles } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-
-// --- ĐỊNH NGHĨA PHẠM VI DỮ LIỆU ĐẦU VÀO CHO COMPONENT ---
-interface ComparisonArenaProps {
-  schema: FieldConstraint[];       // Cấu trúc các trường ràng buộc dữ liệu đầu vào
-  initialSeeds: Chromosome[];     // Danh sách các bản ghi mẫu F0 ban đầu do AI gợi ý
-}
+import { useAppStore } from '../store/useAppStore';
 
 // --- CẤU TRÚC KẾT QUẢ SO SÁNH ĐỐI KHÁNG THUẬT TOÁN ---
 interface BattleResult {
@@ -25,10 +19,11 @@ interface BattleResult {
   sampleData: Chromosome[]; // Mẫu 3 ca kiểm thử thực tế sinh ra
 }
 
-export const ComparisonArena: React.FC<ComparisonArenaProps> = ({
-  schema,
-  initialSeeds
-}) => {
+export const ComparisonArena: React.FC = () => {
+  const {
+    parsedSchema: schema,
+    initialSeeds
+  } = useAppStore();
   // --- THIẾT LẬP CÁC TRẠNG THÁI (STATE) HOẠT ĐỘNG ---
   const [isBattleRunning, setIsBattleRunning] = useState(false);
   const [battleResults, setBattleResults] = useState<BattleResult[] | null>(null);
@@ -327,20 +322,11 @@ export const ComparisonArena: React.FC<ComparisonArenaProps> = ({
   };
 
   return (
-    <div className="glass-card flex flex-col gap-md teal-border" style={{ marginTop: '16px' }}>
-      {/* TIÊU ĐỀ COMPONENT GIAO DIỆN CHỨA ICON ĐẸP MẮT */}
-      <div className="flex align-center gap-sm">
-        <BarChart3 className="text-teal" size={24} style={{ color: 'var(--color-teal)' }} />
-        <h2>Đấu Trường So Sánh Giải Thuật (Algorithm Battle Arena)</h2>
-      </div>
-
-      <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-        Kích hoạt chạy song song cả 5 giải thuật sinh dữ liệu trên cùng một kịch bản đặc tả hiện tại để kiểm chứng trực quan độ hiệu quả về: Độ bao phủ ràng buộc &amp; biên (Coverage), Tỉ lệ trùng lặp dữ liệu (Duplicate) và Số lượng ca lỗi biên hoặc payload độc hại phát hiện được.
-      </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '4px' }}>
 
       {/* DIỆN MẠO TRƯỚC KHI CHẠY: HIỂN THỊ NÚT BẮT ĐẦU */}
       {!battleResults && !isBattleRunning ? (
-        <div style={{ textAlign: 'center', padding: '64px 0', border: '1px dashed rgba(255,255,255,0.06)', borderRadius: 'var(--radius-sm)', background: 'rgba(255,255,255,0.01)' }}>
+        <div className="glass-card teal-border" style={{ textAlign: 'center', padding: '48px 0', border: '1px dashed rgba(45,212,191,0.3)', borderRadius: 'var(--radius-sm)', background: 'rgba(45,212,191,0.02)' }}>
           <button onClick={handleLaunchBattle} className="btn btn-primary glow-teal">
             <Play size={16} />
             Khởi Trình So Sánh Đối Kháng (Launch Battle!)
@@ -348,7 +334,7 @@ export const ComparisonArena: React.FC<ComparisonArenaProps> = ({
         </div>
       ) : isBattleRunning ? (
         // DIỆN MẠO ĐANG CHẠY: HIỂN THỊ CÁC TIẾN TRÌNH STACK TERMINAL CHUYỂN ĐỘNG TRỰC QUAN
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px 0' }}>
+        <div className="glass-card teal-border" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '24px' }}>
           <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
             <Cpu className="glow-teal" size={40} style={{ color: 'var(--color-teal)', animation: 'spin 3s linear infinite' }} />
             <div style={{ color: 'var(--color-teal)', fontWeight: 'bold', fontSize: '14px' }}>

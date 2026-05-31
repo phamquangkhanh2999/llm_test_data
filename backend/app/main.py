@@ -17,7 +17,7 @@ from .core.database import engine, Base, get_db, SessionLocal
 # Nạp các Models bảng dữ liệu quan hệ
 from . import models
 # Nạp dịch vụ kết nối OpenAI API thật
-from .services.ai_parser import parse_spec_with_openai
+from .services.ai_parser import parse_spec_with_openai, generate_seeds, evaluate_test_quality_with_ai
 # Nạp các bộ thuật toán tối ưu hóa chạy trên Server
 from .algorithms.optimizer_engine import TestSuiteOptimizer
 from .algorithms.boundary_tweak import optimize_testcase_boundaries
@@ -75,6 +75,27 @@ class OptimizeRequest(BaseModel):
     weights: OptimizeWeights
     initial_seeds: List[Dict[str, Any]] # Danh sách F0 mẫu
 
+class SeedGenerationRequest(BaseModel):
+    """
+    Schema cấu hình sinh lại hạt giống F0.
+    """
+    fields: List[Dict[str, Any]]
+    test_method: str
+    boundary_count: int = 4
+    partition_count: int = 3
+    api_key_override: Optional[str] = None
+    raw_text: Optional[str] = ""
+
+class EvaluateRequest(BaseModel):
+    """
+    Schema cấu hình đánh giá chất lượng hạt giống F0.
+    """
+    fields: List[Dict[str, Any]]
+    seeds: List[Dict[str, Any]]
+    test_method: str
+    raw_text: str
+    api_key_override: Optional[str] = None
+
 # --- ĐỊNH NGHĨA CÁC ROUTER ENDPOINTS ---
 
 @app.post("/api/specifications")
@@ -84,9 +105,36 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
     Nhận văn bản thô, gọi OpenAI API trích xuất JSON Schema ràng buộc,
     tự động lưu một Dự án & Đặc tả mới vào CSDL SQLite, rồi trả về cấu trúc cho Client.
     """
-    # 1. Gọi OpenAI API (hoặc bộ dự phòng Fallback) xử lý phân tích ngữ nghĩa
-    ai_result = parse_spec_with_openai(req.raw_text, req.api_key_override)
-    
+    # 0. Kiểm tra Cache trong SQLite: Nếu đoạn văn bản đã từng được phân tích, trả về luôn để tiết kiệm Token!
+    existing_spec = db.query(models.Specification).filter(models.Specification.raw_text == req.raw_text).first()
+    if existing_spec:
+        print(">>> INFO: Cache hit! Trả về dữ liệu đặc tả đã lưu từ trước.")
+        try:
+            fields = json.loads(existing_spec.parsed_schema)
+        except:
+            fields = []
+        try:
+            initial_seeds = json.loads(existing_spec.initial_seeds) if existing_spec.initial_seeds else []
+        except:
+            initial_seeds = []
+            
+        return {
+            "specification_id": existing_spec.id,
+            "project_id": existing_spec.project_id,
+            "fields": fields,
+            "initialPopulation": initial_seeds,
+            "cached": True
+        }
+
+    try:
+        # 1. Gọi OpenAI API (hoặc bộ dự phòng Fallback) xử lý phân tích ngữ nghĩa
+        ai_result = parse_spec_with_openai(req.raw_text, req.api_key_override)
+    except ValueError as ve:
+        if str(ve).startswith("API_KEY_ERROR"):
+            print(f">>> ERROR: {str(ve)}")
+            raise HTTPException(status_code=400, detail=f"Lỗi API Key: {str(ve).replace('API_KEY_ERROR: ', '')}")
+        raise ve
+
     # 2. Tạo một bản ghi Dự án (Project) mới tự động để gom nhóm dữ liệu
     db_project = models.Project(
         name=f"Dự án Test {schemaName_helper(req.raw_text)}",
@@ -100,7 +148,8 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
     db_spec = models.Specification(
         project_id=db_project.id,
         raw_text=req.raw_text,
-        parsed_schema=json.dumps(ai_result.get("fields", [])) # Chuyển mảng Python list sang chuỗi JSON lưu vào CSDL
+        parsed_schema=json.dumps(ai_result.get("fields", [])), # Chuyển mảng Python list sang chuỗi JSON lưu vào CSDL
+        initial_seeds=json.dumps(ai_result.get("initialPopulation", [])) # Lưu lại F0 để tiết kiệm token khi gọi lại
     )
     db.add(db_spec)
     db.commit()
@@ -115,6 +164,56 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
     }
 
 
+@app.post("/api/generate-seeds")
+def api_generate_seeds(req: SeedGenerationRequest):
+    """
+    ENDPOINT 1.5: Tái sinh tập hạt giống F0 dựa trên phương pháp kiểm thử đã chọn.
+    """
+    try:
+        seeds = generate_seeds(
+            fields=req.fields,
+            test_method=req.test_method,
+            boundary_count=req.boundary_count,
+            partition_count=req.partition_count,
+            api_key=req.api_key_override,
+            raw_text=req.raw_text or ""
+        )
+        return {
+            "initialPopulation": seeds
+        }
+    except ValueError as ve:
+        if str(ve).startswith("API_KEY_ERROR"):
+            print(f">>> ERROR: {str(ve)}")
+            raise HTTPException(status_code=400, detail=f"Lỗi API Key: {str(ve).replace('API_KEY_ERROR: ', '')}")
+        raise HTTPException(status_code=500, detail=str(ve))
+    except Exception as e:
+        print(f">>> ERROR in api_generate_seeds: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/evaluate-seeds")
+def api_evaluate_seeds(req: EvaluateRequest):
+    """
+    ENDPOINT: Đánh giá chất lượng tập dữ liệu F0 Initial Seeds.
+    Nhận tập seeds, schemas và gửi cho AI (Gemini/OpenAI) để chấm điểm và đánh giá ưu/nhược điểm.
+    """
+    try:
+        evaluation = evaluate_test_quality_with_ai(
+            fields=req.fields,
+            seeds=req.seeds,
+            test_method=req.test_method,
+            raw_text=req.raw_text,
+            api_key_override=req.api_key_override
+        )
+        return {"success": True, "data": evaluation}
+    except ValueError as ve:
+        if str(ve).startswith("API_KEY_ERROR"):
+            print(f">>> ERROR: {str(ve)}")
+            raise HTTPException(status_code=400, detail=f"Lỗi API Key: {str(ve).replace('API_KEY_ERROR: ', '')}")
+        raise HTTPException(status_code=500, detail=str(ve))
+    except Exception as e:
+        print(f"Error evaluating seeds: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/specifications")
 def api_get_specifications(db: Session = Depends(get_db)):
     """
@@ -127,13 +226,17 @@ def api_get_specifications(db: Session = Depends(get_db)):
             fields = json.loads(spec.parsed_schema)
         except Exception:
             fields = []
+            
+        try:
+            initial_seeds = json.loads(spec.initial_seeds) if spec.initial_seeds else []
+        except Exception:
+            initial_seeds = []
         
-        # Tạo initialPopulation mô phỏng nếu cần thiết (hoặc rỗng)
-        # Giúp đồng bộ cấu trúc nạp preset
         result.append({
             "id": spec.id,
             "raw_text": spec.raw_text,
             "fields": fields,
+            "initialPopulation": initial_seeds,
             "created_at": spec.created_at.isoformat()
         })
     return result

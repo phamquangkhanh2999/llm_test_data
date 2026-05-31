@@ -99,7 +99,7 @@ DATABASE_URL=sqlite:///./testforge.db
 ```
 > [!TIP]
 > **Hỗ trợ Đa AI Engine & Chế độ Ngoại tuyến (Fallback/Mock mode):**
-> 1. **Gemini API:** Được khuyên dùng nhờ tốc độ cao và chi phí tối ưu. Chỉ cần điền `GEMINI_API_KEY` (khóa có dạng bắt đầu bằng `AIzaSy`). Hệ thống sẽ tự động sử dụng mô hình `gemini-1.5-flash`.
+> 1. **Gemini API:** Được khuyên dùng nhờ tốc độ cao và chi phí tối ưu. Chỉ cần điền `GEMINI_API_KEY` (khóa có dạng bắt đầu bằng `AIzaSy`). Hệ thống sẽ tự động sử dụng mô hình `gemini-3s.5-flash`.
 > 2. **OpenAI API:** Điền `OPENAI_API_KEY`, hệ thống sẽ sử dụng mô hình `gpt-3.5-turbo`.
 > 3. **Ngoại tuyến:** Nếu bạn để trống cả hai khóa, hệ thống sẽ **tự động kích hoạt bộ giả lập nghiệp vụ thông minh (Mock Fallback)** giúp trải nghiệm đầy đủ tính năng mà không mất phí!
 

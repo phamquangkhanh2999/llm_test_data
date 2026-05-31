@@ -6,21 +6,16 @@ import { runHillClimbing } from '../algorithms/hillClimbing';
 import type { HillClimbStats } from '../algorithms/hillClimbing';
 import { Play, Pause, RotateCcw, SkipForward, Cpu, CheckCircle, TrendingUp, AlertTriangle, Sparkles } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useAppStore } from '../store/useAppStore';
 
-interface VisualizerProps {
-  schema: FieldConstraint[];
-  initialSeeds: Chromosome[];
-  onEvolutionComplete: (results: Chromosome[], stats: PopulationStats[], hcStats?: HillClimbStats) => void;
-  specificationId: string; // ID của đặc tả trong SQLite CSDL Backend
-  apiKey?: string; // Khóa OpenAI API Key override từ Header
-}
+export const Visualizer: React.FC = () => {
+  const {
+    parsedSchema: schema,
+    initialSeeds,
+    handleEvolutionComplete: onEvolutionComplete,
+    specificationId
+  } = useAppStore();
 
-export const Visualizer: React.FC<VisualizerProps> = ({
-  schema,
-  initialSeeds,
-  onEvolutionComplete,
-  specificationId
-}) => {
   // --- CẤU HÌNH BỘ TỐI ƯU HÓA DỮ LIỆU TEST (GA CONFIG) ---
   const [generations, setGenerations] = useState(60);
   const [popSize, setPopSize] = useState(100);
