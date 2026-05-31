@@ -598,7 +598,7 @@ export class GeneticEngine {
       avgFitness,
       coverage,
       duplicateRate,
-      chromosomes: this.population.slice(0, 10).map(p => ({
+      chromosomes: this.population.map(p => ({
         values: p.values,
         fitness: p.fitness,
         origin: p.origin

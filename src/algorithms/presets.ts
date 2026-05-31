@@ -169,6 +169,56 @@ export const PRESETS: PresetSpec[] = [
       { fullName: 'Hồ Anh Dũng', phone: '0555555555', discountCode: '' }, // boundary empty code
       { fullName: '<svg/onload=alert(1)>', phone: '0777777777', discountCode: 'XSS' } // security seed
     ]
+  },
+  {
+    id: 'health-insurance',
+    title: 'Đăng ký Gói Bảo Hiểm Sức Khỏe VIP (Health Insurance VIP Underwriting)',
+    description: 'Hồ sơ đăng ký bảo hiểm y tế cao cấp với các kiểm soát chặt chẽ về mã đơn bảo hiểm, thu nhập hàng tháng, tình trạng bệnh lý có sẵn và thông tin thụ hưởng.',
+    rawText: `Yêu cầu hồ sơ đăng ký Bảo Hiểm Sức Khỏe VIP:
+- Policy Number: Bắt buộc, định dạng chuỗi gồm 3 chữ và 6 số (Regex ^[A-Z]{3}-\\d{6}$).
+- Monthly Income: Định dạng số nguyên từ 10,000 USD đến 1,000,000 USD.
+- Pre-Existing Conditions: Cho phép một trong các giá trị: None, HeartDisease, Diabetes, Hypertension.
+- Beneficiary Email: Đúng định dạng email thụ hưởng.`,
+    fields: [
+      {
+        name: 'policyNumber',
+        type: 'string',
+        required: true,
+        regex: '^[A-Z]{3}-\\d{6}$',
+        description: 'Định dạng: 3 chữ cái in hoa - 6 chữ số (e.g. VIP-123456)'
+      },
+      {
+        name: 'monthlyIncome',
+        type: 'number',
+        required: true,
+        minValue: 10000,
+        maxValue: 1000000,
+        description: 'Thu nhập hàng tháng từ 10,000 USD đến 1,000,000 USD'
+      },
+      {
+        name: 'preExistingConditions',
+        type: 'string',
+        required: true,
+        allowedValues: ['None', 'HeartDisease', 'Diabetes', 'Hypertension'],
+        description: 'Tình trạng bệnh lý có sẵn: None, HeartDisease, Diabetes, Hypertension'
+      },
+      {
+        name: 'beneficiaryEmail',
+        type: 'email',
+        required: true,
+        description: 'Địa chỉ email của người thụ hưởng hợp lệ'
+      }
+    ],
+    initialPopulation: [
+      { policyNumber: 'VIP-123456', monthlyIncome: 50000, preExistingConditions: 'None', beneficiaryEmail: 'beneficiary@gmail.com' },
+      { policyNumber: 'MED-987654', monthlyIncome: 120000, preExistingConditions: 'Diabetes', beneficiaryEmail: 'spouse@yahoo.com' },
+      { policyNumber: 'invalid-policy', monthlyIncome: 8000, preExistingConditions: 'None', beneficiaryEmail: 'not_an_email' }, // invalid seed
+      { policyNumber: 'ABC-123456', monthlyIncome: 9999, preExistingConditions: 'Hypertension', beneficiaryEmail: 'test@domain.com' }, // boundary error (income under 10k)
+      { policyNumber: 'MAX-999999', monthlyIncome: 1000000, preExistingConditions: 'HeartDisease', beneficiaryEmail: 'heir@estate.co' }, // boundary max seed
+      { policyNumber: 'POL-000001', monthlyIncome: 25000, preExistingConditions: 'Cancer', beneficiaryEmail: 'valid@email.com' }, // invalid enum selection
+      { policyNumber: "VIP-000000' OR '1'='1", monthlyIncome: 30000, preExistingConditions: 'None', beneficiaryEmail: 'sql@attacker.com' }, // security SQLi seed
+      { policyNumber: 'VIP-111111', monthlyIncome: 45000, preExistingConditions: '<script>alert(1)</script>', beneficiaryEmail: 'xss@attacker.com' } // security XSS seed
+    ]
   }
 ];
 
@@ -180,7 +230,12 @@ export async function mockLLMParse(rawText: string): Promise<{ parsedSchema: Fie
   // 1. Try to find a matching preset by simple text matching
   const textLower = rawText.toLowerCase();
   for (const preset of PRESETS) {
-    if (textLower.includes(preset.id) || textLower.includes(preset.title.toLowerCase().substring(0, 10)) || textLower.includes('đăng ký') && preset.id === 'user-signup' && textLower.includes('email')) {
+    if (
+      textLower.includes(preset.id) ||
+      textLower.includes(preset.title.toLowerCase().substring(0, 10)) ||
+      (textLower.includes('đăng ký') && preset.id === 'user-signup' && textLower.includes('email')) ||
+      (preset.id === 'health-insurance' && (textLower.includes('bảo hiểm') || textLower.includes('insurance') || textLower.includes('underwrite') || textLower.includes('y tế')))
+    ) {
       // Create random variations of initial population to simulate fresh LLM responses
       const mutatedSeeds = preset.initialPopulation.map(seed => {
         const copy = { ...seed };

@@ -255,17 +255,22 @@ function App() {
         </div>
 
         {/* Ô nhập trực tiếp API Key trên Giao diện */}
-        <div className="flex align-center gap-sm" style={{ background: 'rgba(0,0,0,0.2)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <Key size={14} style={{ color: 'var(--color-teal)' }} />
-          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>AI API Key:</span>
-          <input
-            type="password"
-            placeholder="Gemini (AIzaSy...) hoặc OpenAI (sk...)"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            className="input-field"
-            style={{ width: '220px', padding: '4px 8px', fontSize: '11px', background: 'rgba(15,23,42,0.8)' }}
-          />
+        <div className="flex flex-col gap-xs" style={{ background: 'rgba(0,0,0,0.25)', padding: '8px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="flex align-center gap-sm">
+            <Key size={14} style={{ color: 'var(--color-teal)' }} />
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>AI API Key (Không bắt buộc):</span>
+            <input
+              type="password"
+              placeholder="Nhập Key gọi AI thật hoặc để trống dùng Mock"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="input-field"
+              style={{ width: '230px', padding: '4px 8px', fontSize: '11px', background: 'rgba(15,23,42,0.8)' }}
+            />
+          </div>
+          <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontStyle: 'italic', paddingLeft: '22px' }}>
+            *Hệ thống tự động sử dụng bộ mock phân tích nội bộ nếu để trống.
+          </span>
         </div>
 
         {/* Các chỉ số hiển thị trạng thái CSDL SQLite và Schema */}
@@ -408,28 +413,28 @@ function App() {
             className={`tab-btn ${activeSection === 'step-spec' ? 'active' : ''}`} 
             style={{ fontSize: '12px', padding: '6px 14px' }}
           >
-            1. Phân Tích Đặc Tả
+            📋 1. Phân Tích Đặc Tả
           </button>
           <button 
             onClick={() => handleScrollToSection('step-opt')} 
             className={`tab-btn ${activeSection === 'step-opt' ? 'active' : ''}`} 
             style={{ fontSize: '12px', padding: '6px 14px' }}
           >
-            2. Tối Ưu Hóa Bộ Test
+            ⚙️ 2. Tối Ưu Hóa Bộ Test
           </button>
           <button 
             onClick={() => handleScrollToSection('step-arena')} 
             className={`tab-btn ${activeSection === 'step-arena' ? 'active' : ''}`} 
             style={{ fontSize: '12px', padding: '6px 14px' }}
           >
-            3. So Sánh Thuật Toán
+            ⚔️ 3. Đấu Trường Thuật Toán
           </button>
           <button 
             onClick={() => handleScrollToSection('step-data')} 
             className={`tab-btn ${activeSection === 'step-data' ? 'active' : ''}`} 
             style={{ fontSize: '12px', padding: '6px 14px' }}
           >
-            4. Trung Tâm Dữ Liệu
+            📥 4. Xuất Script &amp; API Sandbox
           </button>
         </div>
 

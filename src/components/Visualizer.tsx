@@ -4,7 +4,7 @@ import { GeneticEngine } from '../algorithms/genetic';
 import type { PopulationStats, Chromosome, GeneticConfig } from '../algorithms/genetic';
 import { runHillClimbing } from '../algorithms/hillClimbing';
 import type { HillClimbStats } from '../algorithms/hillClimbing';
-import { Play, Pause, RotateCcw, SkipForward, Cpu, CheckCircle, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Play, Pause, RotateCcw, SkipForward, Cpu, CheckCircle, TrendingUp, AlertTriangle, Sparkles } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface VisualizerProps {
@@ -149,7 +149,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
         avgFitness: engine.population.reduce((sum, ind) => sum + ind.fitness, 0) / engine.population.length,
         coverage: 0.2,
         duplicateRate: 0.1,
-        chromosomes: engine.population.slice(0, 10).map(p => ({
+        chromosomes: engine.population.map(p => ({
           values: p.values,
           fitness: p.fitness,
           origin: p.origin
@@ -176,7 +176,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
         avgFitness: engine.population.reduce((sum, ind) => sum + ind.fitness, 0) / engine.population.length,
         coverage: 0.2,
         duplicateRate: 0.1,
-        chromosomes: engine.population.slice(0, 10).map(p => ({
+        chromosomes: engine.population.map(p => ({
           values: p.values,
           fitness: p.fitness,
           origin: p.origin
@@ -444,16 +444,11 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   // Cấu hình định dạng biểu đồ tiến trình
   const chartData = history.map(h => ({
     gen: h.generation,
-    best: parseFloat(h.bestFitness.toFixed(3)),
-    avg: parseFloat(h.avgFitness.toFixed(3))
+    coverage: parseFloat((h.coverage * 100).toFixed(1)),
+    duplicateRate: parseFloat((h.duplicateRate * 100).toFixed(1))
   }));
 
-  // Hàm ánh xạ điểm chất lượng sang màu sắc ô lưới test case
-  const getCellClass = (fit: number) => {
-    if (fit < 0.4) return 'cell-fit-low';
-    if (fit < 0.75) return 'cell-fit-mid';
-    return 'cell-fit-high';
-  };
+  // (Removed unused getCellClass)
 
   // Tính cơ cấu điểm chất lượng của ca test đang soi
   const getBreakdown = () => {
@@ -478,6 +473,146 @@ export const Visualizer: React.FC<VisualizerProps> = ({
     if (o.startsWith('INIT_BOUNDARY')) return '🟡 Boundary Case (Phân Tích Giá Trị Biên)';
     if (o.startsWith('INIT_SECURITY')) return '🔴 Security Payload (Kiểm Thử An Ninh)';
     return `👾 Tối ưu hóa: ${origin}`;
+  };
+
+  // Phân loại ca kiểm thử để vẽ lên lưới
+  const getTestCaseCategory = (c: any) => {
+    let isSecurity = false;
+    Object.values(c.values).forEach(val => {
+      const str = String(val);
+      if (str.includes("'") || str.includes("<script") || str.includes("--")) isSecurity = true;
+    });
+    if (isSecurity) return 'security';
+    if (c.fitness < 0.4) return 'negative';
+    if (c.fitness > 0.75) return 'boundary';
+    return 'positive';
+  };
+
+  // Phân tích động ca kiểm thử dành cho QA/Tester (QA Explanations & Insights)
+  const getTestCaseExplanation = (c: any, schema: FieldConstraint[]) => {
+    if (!c) return null;
+    const category = getTestCaseCategory(c);
+    
+    let categoryName = '';
+    let objective = '';
+    let risk = '';
+    let color = '';
+    let emoji = '';
+    
+    switch (category) {
+      case 'security':
+        categoryName = 'Kiểm Thử Bảo Mật (Security Test Case)';
+        emoji = '💀';
+        color = 'var(--color-violet)';
+        objective = 'Kiểm thử khả năng phòng thủ và lọc đầu vào của hệ thống trước các cuộc tấn công phổ biến như chèn mã SQL (SQL Injection), chèn tập lệnh chéo trang (Cross-Site Scripting - XSS) hoặc cố tình phá vỡ cấu trúc tham số.';
+        risk = 'Cực kỳ nguy hiểm. Nếu hệ thống chấp nhận các giá trị độc hại này mà không lọc bỏ (sanitize) hoặc mã hóa dữ liệu (escape), hacker có thể đánh cắp toàn bộ cơ sở dữ liệu hoặc chiếm quyền kiểm soát phiên đăng nhập của người dùng khác.';
+        break;
+      case 'negative':
+        categoryName = 'Kiểm Thử Tiêu Cực (Negative Test Case)';
+        emoji = '🔴';
+        color = 'var(--color-rose)';
+        objective = 'Kiểm thử phản ứng của hệ thống khi nhận giá trị rỗng, giá trị vượt xa giới hạn cho phép hoặc định dạng hoàn toàn sai lệch. Mục đích là đảm bảo hệ thống có bộ chặn lỗi thông minh thay vì bị sập.';
+        risk = 'Lỗi hệ thống hoặc lộ thông tin nhạy cảm. Nếu ca kiểm thử này thất bại, hệ thống có thể bị sập (lỗi 500 trắng màn hình), lộ lỗi Stack Trace chi tiết của cơ sở dữ liệu tạo cơ hội cho kẻ tấn công tìm hiểu cấu trúc hệ thống.';
+        break;
+      case 'boundary':
+        categoryName = 'Phân Tích Giá Trị Biên (Boundary Test Case)';
+        emoji = '🟢';
+        color = 'var(--color-teal)';
+        objective = 'Tập trung chính xác vào các ngưỡng ranh giới cực đại hoặc cực tiểu quy định (ví dụ: vừa đủ 18 tuổi, đúng độ dài 8 ký tự mật khẩu...). Thuật toán tinh chỉnh biên để phát hiện sai lệch ở các mốc dấu bằng.';
+        risk = 'Lập trình viên rất dễ viết nhầm các toán tử so sánh (ví dụ dùng ">" thay vì ">="). Nếu kiểm thử biên thất bại, hệ thống có thể từ chối các giao dịch hợp lệ hoặc chấp nhận dữ liệu sai biên ở sát nút mốc quy định.';
+        break;
+      case 'positive':
+      default:
+        categoryName = 'Kiểm Thử Nghiệp Vụ Hợp Lệ (Happy Path)';
+        emoji = '🟡';
+        color = '#facc15';
+        objective = 'Kiểm tra luồng nghiệp vụ cơ bản hoạt động trơn tru trong điều kiện lý tưởng với dữ liệu đầu vào hoàn toàn hợp lệ và chuẩn xác. Đây là nền tảng để tính năng chạy được.';
+        risk = 'Lỗi cốt lõi của tính năng. Nếu một ca kiểm thử Happy Path thông thường cũng thất bại, điều đó đồng nghĩa với việc tính năng chính hoàn toàn không hoạt động, làm gián đoạn mọi trải nghiệm cơ bản của người dùng.';
+        break;
+    }
+
+    const fieldExplanations: { field: string; val: string; explanation: string }[] = [];
+    schema.forEach(field => {
+      const val = c.values[field.name];
+      const valStr = String(val);
+      let exp = '';
+      
+      if (valStr === '') {
+        exp = `Được bỏ trống (${field.required ? '⚠️ Trường này Bắt buộc nhưng hệ thống đang sinh trống để test bộ validate validation' : 'Trường này không bắt buộc'})`;
+      } else if (valStr.includes("'") || valStr.includes("--")) {
+        exp = `Chèn dấu nháy đơn/gạch nối SQL (${valStr}) để cố gắng phá vỡ câu lệnh SQL dưới database, kiểm tra phòng chống SQL Injection`;
+      } else if (valStr.includes("<script") || valStr.includes("<svg") || valStr.includes("onload")) {
+        exp = `Chèn mã lệnh script HTML/SVG (${valStr}) nhằm kiểm thử khả năng lọc mã nguồn độc, chống tấn công XSS`;
+      } else if (field.type === 'number') {
+        const numVal = Number(val);
+        if (field.minValue !== undefined && numVal === field.minValue) {
+          exp = `Chạm chính xác ngưỡng cận dưới tối thiểu cho phép (Min = ${field.minValue})`;
+        } else if (field.maxValue !== undefined && numVal === field.maxValue) {
+          exp = `Chạm chính xác ngưỡng cận trên tối đa cho phép (Max = ${field.maxValue})`;
+        } else if (field.minValue !== undefined && numVal < field.minValue) {
+          exp = `Giá trị nằm ngoài biên dưới tối thiểu (Giá trị ${numVal} < Min ${field.minValue})`;
+        } else if (field.maxValue !== undefined && numVal > field.maxValue) {
+          exp = `Giá trị nằm ngoài biên trên tối đa (Giá trị ${numVal} > Max ${field.maxValue})`;
+        } else {
+          exp = `Giá trị số hợp lệ thông thường (${numVal})`;
+        }
+      } else if (field.type === 'string') {
+        const len = valStr.length;
+        if (field.minLength !== undefined && len === field.minLength) {
+          exp = `Độ dài chuỗi chạm chính xác ngưỡng cận dưới tối thiểu (Độ dài = ${len} ký tự)`;
+        } else if (field.maxLength !== undefined && len === field.maxLength) {
+          exp = `Độ dài chuỗi chạm chính xác ngưỡng cận trên tối đa (Độ dài = ${len} ký tự)`;
+        } else if (field.minLength !== undefined && len < field.minLength) {
+          exp = `Độ dài chuỗi quá ngắn, vi phạm ràng buộc (Độ dài ${len} < Min ${field.minLength})`;
+        } else if (field.maxLength !== undefined && len > field.maxLength) {
+          exp = `Độ dài chuỗi quá dài, vi phạm ràng buộc (Độ dài ${len} > Max ${field.maxLength})`;
+        } else if (field.regex) {
+          const r = new RegExp(field.regex);
+          if (r.test(valStr)) {
+            exp = `Khớp biểu thức RegExp định dạng quy định (Độ dài: ${len} ký tự)`;
+          } else {
+            exp = `⚠️ Vi phạm biểu thức RegExp định dạng quy định để test tính nghiêm ngặt của Regex`;
+          }
+        } else {
+          exp = `Chuỗi thông thường hợp lệ (Độ dài: ${len} ký tự)`;
+        }
+      } else if (field.type === 'email') {
+        if (!valStr.includes('@') || !valStr.includes('.')) {
+          exp = `⚠️ Vi phạm định dạng email tiêu chuẩn nhằm kiểm thử xem hệ thống có bắt lỗi định dạng email hay không`;
+        } else {
+          exp = `Địa chỉ email đúng định dạng tiêu chuẩn`;
+        }
+      } else if (field.type === 'card') {
+        if (valStr.length !== 16 || !/^\d+$/.test(valStr)) {
+          exp = `⚠️ Vi phạm định dạng thẻ tín dụng (Không đủ 16 chữ số hoặc chứa ký tự lạ) nhằm kiểm thử bộ lọc thẻ`;
+        } else {
+          exp = `Số thẻ 16 chữ số hợp chuẩn`;
+        }
+      } else if (field.type === 'phone') {
+        if (!/^(03|05|07|08|09)\d{8}$/.test(valStr)) {
+          exp = `⚠️ Số điện thoại vi phạm định dạng nhà mạng Việt Nam nhằm kiểm chứng tính nghiêm ngặt của form nhập`;
+        } else {
+          exp = `Số điện thoại Việt Nam hợp quy`;
+        }
+      } else {
+        exp = `Dữ liệu hợp lệ thông thường`;
+      }
+      
+      fieldExplanations.push({
+        field: field.name,
+        val: valStr,
+        explanation: exp
+      });
+    });
+
+    return {
+      categoryName,
+      emoji,
+      color,
+      objective,
+      risk,
+      fieldExplanations
+    };
   };
 
   return (
@@ -866,6 +1001,40 @@ export const Visualizer: React.FC<VisualizerProps> = ({
         </div>
       </div>
 
+      {/* KHU VỰC HƯỚNG DẪN ĐỌC HIỂU HOẠT ĐỘNG THUẬT TOÁN (QA GUIDE BANNER) */}
+      {history.length > 0 && (
+        <div 
+          className="glass-card flex flex-col gap-sm" 
+          style={{ 
+            padding: '16px 20px', 
+            background: 'rgba(45,212,191,0.03)', 
+            border: '1px dashed rgba(45,212,191,0.2)', 
+            borderRadius: '8px',
+            marginBottom: '8px',
+            boxShadow: '0 0 12px rgba(45,212,191,0.05)'
+          }}
+        >
+          <div style={{ fontSize: '13.5px', fontWeight: 'bold', color: 'var(--color-teal)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Sparkles size={16} />
+            HƯỚNG DẪN QA: ĐỌC HIỂU KẾT QUẢ TỐI ƯU HÓA BỘ TEST CASES
+          </div>
+          <ul style={{ color: 'var(--text-secondary)', fontSize: '12.5px', margin: '4px 0 0 16px', padding: 0, lineHeight: '1.6' }}>
+            <li>
+              <b>Mỗi ô vuông trong lưới bên dưới đại diện cho 1 Ca Kiểm Thử (Test Case)</b>. Màu 🟢 càng đậm chứng tỏ độ bao phủ biên và độ bảo mật càng tối ưu.
+            </li>
+            <li>
+              <b>👉 Hãy CLICK chọn bất kỳ ô ca test nào</b> để soi chi tiết dữ liệu (Username, Email, Password sinh ra...) ở bảng <b>"BẢNG SOI CHI TIẾT CA KIỂM THỬ"</b> xuất hiện ở ngay phía dưới.
+            </li>
+            <li>
+              <b>Đồ thị bên phải</b> thể hiện xu hướng chất lượng tăng dần của bộ test qua từng vòng cải tiến của thuật toán AI di truyền.
+            </li>
+            <li>
+              Khi ưng ý, hãy nhấn nút <b>"Chuyển Nhanh Đến Tải File (Bước 4)"</b> để tải bộ test dạng <b>CSV/Excel</b> hoặc <b>JSON</b> về máy!
+            </li>
+          </ul>
+        </div>
+      )}
+
       {/* 3. CHART & GRID VISUALIZATION */}
       {history.length > 0 && (
         <div className="grid-2">
@@ -909,39 +1078,85 @@ export const Visualizer: React.FC<VisualizerProps> = ({
                     else if (isCrossover) animClass = 'crossover-active-anim';
 
                     const isSelected = selectedTestCase?.values === c.values;
+                    const category = getTestCaseCategory(c);
+                    
+                    let cellBg = 'rgba(250,204,21,0.06)';
+                    let cellBorder = '1px solid rgba(250,204,21,0.2)';
+                    let cellColor = '#facc15';
+                    let cellEmoji = '🟡';
+
+                    if (category === 'security') {
+                      cellBg = 'rgba(167,139,250,0.08)';
+                      cellBorder = isSelected ? '2px solid #fff' : '1px solid rgba(167,139,250,0.4)';
+                      cellColor = 'var(--color-violet)';
+                      cellEmoji = '💀';
+                    } else if (category === 'negative') {
+                      cellBg = 'rgba(244,63,94,0.08)';
+                      cellBorder = isSelected ? '2px solid #fff' : '1px solid rgba(244,63,94,0.4)';
+                      cellColor = 'var(--color-rose)';
+                      cellEmoji = '🔴';
+                    } else if (category === 'boundary') {
+                      cellBg = 'rgba(45,212,191,0.08)';
+                      cellBorder = isSelected ? '2px solid #fff' : '1px solid rgba(45,212,191,0.4)';
+                      cellColor = 'var(--color-teal)';
+                      cellEmoji = '🟢';
+                    } else {
+                      cellBorder = isSelected ? '2px solid #fff' : '1px solid rgba(250,204,21,0.3)';
+                    }
 
                     return (
                       <div
                         key={idx}
                         onClick={() => setSelectedTestCase(c)}
-                        className={`chromosome-cell ${getCellClass(c.fitness)} ${animClass}`}
+                        className={`chromosome-cell ${animClass}`}
                         style={{
-                          border: isSelected ? '2px solid #fff' : '',
-                          boxShadow: isSelected ? '0 0 12px #fff' : '',
-                          transform: isSelected ? 'scale(1.1)' : ''
+                          background: cellBg,
+                          border: cellBorder,
+                          color: cellColor,
+                          boxShadow: isSelected ? `0 0 12px ${cellColor}` : 'none',
+                          transform: isSelected ? 'scale(1.1)' : '',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '2px 0',
+                          lineHeight: '1.2',
+                          cursor: 'pointer',
+                          borderRadius: '6px',
+                          transition: 'all 0.2s'
                         }}
-                        title={`Độ phủ & Tối ưu: ${c.fitness.toFixed(3)}`}
+                        title={`Ca Kiểm Thử #${idx + 1} - Phân loại: ${category.toUpperCase()} (Độ phủ: ${c.fitness.toFixed(3)})`}
                       >
-                        {c.fitness.toFixed(2)}
+                        <span style={{ fontSize: '9px', opacity: 0.75 }}>#{idx + 1}</span>
+                        <span style={{ fontSize: '12px', marginTop: '1px' }}>{cellEmoji}</span>
                       </div>
                     );
                   })}
                   
                   {/* Fill empty cells */}
                   {Array(Math.max(0, 100 - history[history.length - 1].chromosomes.length)).fill(0).map((_, i) => (
-                    <div key={`empty-${i}`} className="chromosome-cell cell-fit-low" style={{ opacity: 0.1 }}>
+                    <div key={`empty-${i}`} className="chromosome-cell" style={{ opacity: 0.1, border: '1px dashed rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.01)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       -
                     </div>
                   ))}
                 </div>
 
                 {/* Legend */}
-                <div className="flex flex-col gap-sm" style={{ fontSize: '11px', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '10px', marginTop: 'auto' }}>
-                  <div style={{ fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '2px' }}>🎯 PHÂN LOẠI CA KIỂM THỬ ĐỂ GIẢI THÍCH CHO TESTER:</div>
-                  <div className="flex gap-md" style={{ flexWrap: 'wrap' }}>
-                    <span className="flex align-center gap-sm"><span style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'rgba(244,63,94,0.15)', border: '1px solid var(--color-rose)' }}></span> 🔴 <b>Ca Test Biên Dị Thường (&lt; 0.40)</b>: Chứa giá trị trống, tràn số, hoặc chuỗi lỗi. Phù hợp cho <b>Negative Testing</b>.</span>
-                    <span className="flex align-center gap-sm"><span style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'rgba(167,139,250,0.15)', border: '1px solid var(--color-violet)' }}></span> 🟡 <b>Ca Test Tiêu Chuẩn (0.40 - 0.75)</b>: Khớp định dạng chuẩn cơ bản. Phù hợp cho <b>Happy Path / Positive Testing</b>.</span>
-                    <span className="flex align-center gap-sm"><span style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'rgba(45,212,191,0.15)', border: '1px solid var(--color-teal)' }}></span> 🟢 <b>Ca Test Biên &amp; Bảo Mật Xuất Sắc (&gt; 0.75)</b>: Chạm chính xác mốc Min/Max hoặc chứa SQLi/XSS. Phù hợp cho <b>Security &amp; Edge Case Testing</b>.</span>
+                <div className="flex flex-col gap-sm" style={{ fontSize: '11px', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '12px', marginTop: 'auto' }}>
+                  <div style={{ fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '4px', letterSpacing: '0.03em' }}>🎯 PHÂN LOẠI CÁC CA KIỂM THỬ TRÊN LƯỚI TRỰC QUAN:</div>
+                  <div className="flex gap-md" style={{ flexWrap: 'wrap', gap: '8px' }}>
+                    <span className="flex align-center gap-xs" style={{ background: 'rgba(250,204,21,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(250,204,21,0.15)', color: '#facc15', display: 'flex', alignItems: 'center' }}>
+                      🟡 <b>Positive</b>: Dữ liệu chuẩn nghiệp vụ
+                    </span>
+                    <span className="flex align-center gap-xs" style={{ background: 'rgba(45,212,191,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(45,212,191,0.15)', color: 'var(--color-teal)', display: 'flex', alignItems: 'center' }}>
+                      🟢 <b>Boundary</b>: Chạm mốc Min/Max/Length
+                    </span>
+                    <span className="flex align-center gap-xs" style={{ background: 'rgba(244,63,94,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(244,63,94,0.15)', color: 'var(--color-rose)', display: 'flex', alignItems: 'center' }}>
+                      🔴 <b>Negative</b>: Dữ liệu trống, Null, Stress test
+                    </span>
+                    <span className="flex align-center gap-xs" style={{ background: 'rgba(167,139,250,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(167,139,250,0.15)', color: 'var(--color-violet)', display: 'flex', alignItems: 'center' }}>
+                      💀 <b>Security</b>: Chèn payload SQLi, XSS tấn công
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1002,10 +1217,10 @@ export const Visualizer: React.FC<VisualizerProps> = ({
           {/* RIGHT PANEL: REAL-TIME FITNESS GRAPH */}
           <div className="glass-card flex flex-col gap-md violet-border" style={{ minHeight: '440px' }}>
             <div className="flex align-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
-              <h3>Đồ Thị Chất Lượng Bộ Test (Quality Trend)</h3>
+              <h3>Đồ Thị Tiến Trình Tối Ưu Hóa (QA Metrics Evolution)</h3>
               <div className="flex gap-md" style={{ fontSize: '12px' }}>
-                <span className="flex align-center gap-sm"><span style={{ width: '8px', height: '8px', background: 'var(--color-teal)', borderRadius: '50%' }}></span> Chất lượng Max</span>
-                <span className="flex align-center gap-sm"><span style={{ width: '8px', height: '8px', background: 'var(--color-violet)', borderRadius: '50%' }}></span> Chất lượng Trung bình</span>
+                <span className="flex align-center gap-sm"><span style={{ width: '8px', height: '8px', background: 'var(--color-teal)', borderRadius: '50%' }}></span> Độ phủ kiểm thử (Coverage %)</span>
+                <span className="flex align-center gap-sm"><span style={{ width: '8px', height: '8px', background: 'var(--color-rose)', borderRadius: '50%' }}></span> Tỷ lệ trùng lặp (Duplicate %)</span>
               </div>
             </div>
 
@@ -1014,13 +1229,14 @@ export const Visualizer: React.FC<VisualizerProps> = ({
                 <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                   <XAxis dataKey="gen" stroke="var(--text-muted)" fontSize={11} />
-                  <YAxis domain={[0.0, 1.0]} stroke="var(--text-muted)" fontSize={11} />
+                  <YAxis domain={[0, 100]} stroke="var(--text-muted)" fontSize={11} tickFormatter={(val) => `${val}%`} />
                   <Tooltip 
                     contentStyle={{ background: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px' }}
                     labelFormatter={(label) => `Vòng lặp cải tiến: ${label}`}
+                    formatter={(value) => [`${value}%`]}
                   />
-                  <Line type="monotone" dataKey="best" stroke="var(--color-teal)" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="avg" stroke="var(--color-violet)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+                  <Line type="monotone" dataKey="coverage" name="Độ phủ" stroke="var(--color-teal)" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="duplicateRate" name="Trùng lặp" stroke="var(--color-rose)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -1063,9 +1279,13 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
       {/* 4. ACTIVE CHROMOSOME DETAIL INSPECTOR CARD */}
       {selectedTestCase && (
-        <div className="glass-card flex flex-col gap-md violet-border" style={{ background: 'rgba(15,23,42,0.85)' }}>
-          <div className="flex justify-between align-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
-            <div className="flex align-center gap-sm">
+        <div className="glass-card flex flex-col gap-md violet-border animate-glow" style={{ background: 'rgba(15,23,42,0.85)', boxShadow: '0 0 20px rgba(167,139,250,0.15)', border: '1px solid var(--color-violet)' }}>
+          <div className="flex justify-between align-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
+            <div className="flex align-center gap-sm" style={{ flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '16px' }}>🔍</span>
+              <h4 style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 'bold', color: '#fff' }}>
+                BẢNG SOI CHI TIẾT DỮ LIỆU CA KIỂM THỬ ĐANG CHỌN (TEST CASE INSPECTOR)
+              </h4>
               <span 
                 className={`cell-fit-high`}
                 style={{ 
@@ -1079,14 +1299,33 @@ export const Visualizer: React.FC<VisualizerProps> = ({
               >
                 Nguồn gốc: {getOriginLabel(selectedTestCase.origin)}
               </span>
-              <h4 style={{ fontFamily: 'var(--font-mono)' }}>Chi Tiết Ca Kiểm Thử (Điểm chất lượng: {selectedTestCase.fitness.toFixed(4)})</h4>
             </div>
 
-            {selectedTestCase.fitness > 0.85 && (
-              <span className="flex align-center gap-sm" style={{ color: 'var(--color-teal)', fontSize: '12px' }}>
-                <CheckCircle size={14} /> Ca kiểm thử biên chất lượng cao
-              </span>
-            )}
+            <div className="flex align-center gap-sm" style={{ marginLeft: 'auto' }}>
+              {selectedTestCase.fitness > 0.85 && (
+                <span className="flex align-center gap-sm" style={{ color: 'var(--color-teal)', fontSize: '12px', marginRight: '8px' }}>
+                  <CheckCircle size={14} /> Ca kiểm thử biên xuất sắc
+                </span>
+              )}
+              <button 
+                onClick={() => {
+                  const element = document.getElementById('step-data');
+                  if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className="btn btn-primary"
+                style={{ 
+                  fontSize: '12px', 
+                  padding: '8px 14px', 
+                  background: 'linear-gradient(135deg, var(--color-rose) 0%, #be123c 100%)', 
+                  border: 'none',
+                  color: '#fff',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                👉 Chuyển Nhanh Đến Tải File (Bước 4)
+              </button>
+            </div>
           </div>
 
           <div className="grid-2" style={{ gap: '16px' }}>
@@ -1165,6 +1404,161 @@ export const Visualizer: React.FC<VisualizerProps> = ({
                 Đang chạy chế độ Server Playback. Điểm chất lượng chi tiết đã được tối ưu hóa toàn bộ.
               </div>
             )}
+          </div>
+
+          {/* DƯỚI ĐÂY LÀ PHẦN GIẢI THÍCH CHI TIẾT DÀNH CHO QA/TESTER */}
+          {(() => {
+            const explanation = getTestCaseExplanation(selectedTestCase, schema);
+            if (!explanation) return null;
+            
+            return (
+              <div 
+                style={{ 
+                  borderTop: '1px solid rgba(255,255,255,0.06)', 
+                  paddingTop: '16px', 
+                  marginTop: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-teal)', fontWeight: 'bold', fontSize: '13px' }}>
+                  <Sparkles size={14} />
+                  💡 BẢN PHÂN TÍCH CHUYÊN SÂU TỪ QA ANALYST (QA INSIGHTS & PURPOSE)
+                </div>
+                
+                <div className="grid-2" style={{ gap: '16px' }}>
+                  {/* Mục tiêu & Rủi ro */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(255,255,255,0.01)', padding: '12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.02)' }}>
+                    <div>
+                      <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '2px' }}>
+                        Phân nhóm Ca Kiểm Thử
+                      </div>
+                      <span style={{ fontSize: '13px', fontWeight: 'bold', color: explanation.color, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {explanation.emoji} {explanation.categoryName}
+                      </span>
+                    </div>
+                    
+                    <div>
+                      <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '2px' }}>
+                        Mục tiêu kỹ thuật (Test Objective)
+                      </div>
+                      <p style={{ fontSize: '12.5px', color: 'var(--text-primary)', margin: 0, lineHeight: '1.5' }}>
+                        {explanation.objective}
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--color-rose)', fontWeight: 'bold', marginBottom: '2px' }}>
+                        Hệ quả rủi ro nếu bỏ qua (Potential Business Risk)
+                      </div>
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.45' }}>
+                        {explanation.risk}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Phân tích dữ liệu thực tế sinh ra */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.01)', padding: '12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.02)', maxHeight: '200px', overflowY: 'auto' }}>
+                    <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 'bold', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px' }}>
+                      Ý nghĩa bộ giá trị sinh ra (Data Breakdown)
+                    </div>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                      {explanation.fieldExplanations.map(fe => (
+                        <div key={fe.field} style={{ fontSize: '12px', lineHeight: '1.4' }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-teal)', fontWeight: 'bold' }}>{fe.field}</span>
+                          <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>=</span>
+                          <code style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 4px', borderRadius: '3px', color: '#fff', fontSize: '11.5px', marginRight: '6px', fontFamily: 'var(--font-mono)' }}>
+                            {fe.val === '' ? 'chuỗi rỗng' : fe.val}
+                          </code>
+                          <br />
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '11.5px', fontStyle: 'italic', display: 'inline-block', marginTop: '2px', paddingLeft: '8px', borderLeft: '2px solid rgba(45,212,191,0.3)' }}>
+                            ↳ {fe.explanation}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* 5. ĐÃ HOÀN TẤT TIẾN HÓA: THANH CHUYỂN TIẾP THÂN THIỆN (NEXT-STEP TRANSITION PANEL) */}
+      {isComplete && (
+        <div 
+          className="glass-card flex flex-col gap-md"
+          style={{ 
+            background: 'linear-gradient(135deg, rgba(45,212,191,0.08) 0%, rgba(167,139,250,0.08) 100%)', 
+            border: '1px solid var(--color-teal)',
+            boxShadow: '0 0 25px rgba(45,212,191,0.18)',
+            padding: '24px',
+            borderRadius: '12px',
+            marginTop: '20px',
+            animation: 'pulse 3s infinite',
+            textAlign: 'left'
+          }}
+        >
+          <div className="flex align-center gap-sm">
+            <Sparkles className="text-teal" size={24} style={{ color: 'var(--color-teal)' }} />
+            <h3 style={{ fontSize: '17px', fontWeight: 'bold', color: '#fff', margin: 0, letterSpacing: '0.02em' }}>
+              🎉 TIẾN TRÌNH TIẾN HÓA HOÀN TẤT THÀNH CÔNG! BỘ TEST CASES TỐI ƯU SẴN SÀNG
+            </h3>
+          </div>
+          
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', margin: 0, lineHeight: '1.6' }}>
+            Thuật toán di truyền di trú GA đã phối hợp leo đồi HC gọt giũa thành công <b>{history[history.length - 1]?.chromosomes.length} ca test</b> lý tưởng. Dữ liệu đã phủ kín biên điều kiện đầu vào, chèn payload bảo mật và triệt tiêu trùng lặp. Bạn muốn thực hiện thao tác nào tiếp theo?
+          </p>
+
+          <div className="flex gap-md" style={{ flexWrap: 'wrap', marginTop: '6px' }}>
+            <button 
+              onClick={() => {
+                const element = document.getElementById('step-arena');
+                if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              className="btn btn-primary"
+              style={{ 
+                fontSize: '12.5px', 
+                padding: '10px 18px', 
+                background: 'linear-gradient(135deg, var(--color-violet) 0%, #7c3aed 100%)',
+                border: 'none',
+                color: '#fff',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                gap: '6px',
+                transition: 'all 0.3s'
+              }}
+            >
+              ⚔️ Sang Đấu Trường Đối Kháng (Bước 3) &rarr;
+            </button>
+
+            <button 
+              onClick={() => {
+                const element = document.getElementById('step-data');
+                if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              className="btn btn-primary glow-teal"
+              style={{ 
+                fontSize: '12.5px', 
+                padding: '10px 18px', 
+                background: 'linear-gradient(135deg, var(--color-teal) 0%, #0d9488 100%)',
+                border: 'none',
+                color: '#fff',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                gap: '6px',
+                transition: 'all 0.3s'
+              }}
+            >
+              📥 Đi Tải File &amp; Test API Sandbox (Bước 4) &rarr;
+            </button>
           </div>
         </div>
       )}
