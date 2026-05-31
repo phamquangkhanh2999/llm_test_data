@@ -37,7 +37,7 @@ app = FastAPI(
 # Cho phép ứng dụng Frontend React chạy ở cổng 5173 truy cập và gọi các Endpoint của Backend ở cổng 8000 một cách an toàn.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], # Chỉ định cổng React được gọi
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174"], # Chỉ định cổng React được gọi
     allow_credentials=True,
     allow_methods=["*"], # Cho phép tất cả các phương thức HTTP (GET, POST, OPTIONS, v.v.)
     allow_headers=["*"], # Cho phép truyền tất cả các loại HTTP Headers
