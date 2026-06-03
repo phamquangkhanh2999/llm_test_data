@@ -853,6 +853,52 @@ export const SpecInput: React.FC = () => {
                 )}
               </div>
 
+              {/* BẢNG GIẢI THÍCH CHI TIẾT VỀ VÙNG BIÊN VÀ USECASE TEST */}
+              <div 
+                style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
+                  gap: '12px',
+                  background: 'rgba(255,255,255,0.01)',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                  padding: '14px',
+                  borderRadius: '6px',
+                  marginTop: '8px'
+                }}
+              >
+                <div>
+                  <h4 style={{ fontSize: '12.5px', color: 'var(--color-teal)', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    📏 Giá Trị Vùng Biên (Boundary Value) Là Gì?
+                  </h4>
+                  <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
+                    Giá trị biên là ranh giới phân cách giữa miền dữ liệu <b>Hợp lệ (Valid)</b> và <b>Không hợp lệ (Invalid)</b>. 
+                    Ví dụ, nếu yêu cầu tuổi từ 18-100:
+                    <br />
+                    - <b>Biên hợp lệ (Valid Boundary):</b> Đúng 18, đúng 100. Hệ thống <b>phải chấp nhận</b> và xử lý đúng dữ liệu.
+                    <br />
+                    - <b>Biên lỗi (Invalid Boundary):</b> 17 (dưới biên Min), 101 (vượt biên Max). Hệ thống <b>phải từ chối</b> và trả lỗi validation chính xác.
+                    <br />
+                    <i>Lập trình viên rất dễ viết nhầm toán tử so sánh (nhầm <code>&gt;</code> thành <code>&gt;=</code>), do đó kiểm thử biên giúp bắt các lỗi này hiệu quả nhất.</i>
+                  </p>
+                </div>
+                
+                <div style={{ borderLeft: '1px solid rgba(255,255,255,0.05)', paddingLeft: '12px' }}>
+                  <h4 style={{ fontSize: '12.5px', color: 'var(--color-violet)', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    📋 Kiểm Thử Ca Sử Dụng (Usecase Test) Là Gì?
+                  </h4>
+                  <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
+                    Usecase Test là kỹ thuật thiết kế ca kiểm thử mô phỏng theo **hành trình nghiệp vụ thực tế** của người dùng (ví dụ: đăng ký tài khoản, thanh toán hóa đơn).
+                    <br />
+                    - Trong nền tảng này, mỗi Usecase được đại diện bằng văn bản nghiệp vụ thô (raw spec).
+                    <br />
+                    - AI sẽ phân tích văn bản này để trích xuất các trường dữ liệu và ràng buộc.
+                    <br />
+                    - Mỗi bản ghi được sinh ra ( Happy Path, Biên, hay Mã độc bảo mật) chính là các ca kiểm thử cụ thể (Test Cases) để <b>quét lỗi thực tế cho Usecase đó</b> khi tích hợp vào Automation Script (Playwright/Cypress).
+                  </p>
+                </div>
+              </div>
+
+
               {/* INTERACTIVE COLOR CAPSULES PREVIEW */}
               {testMethod === 'bva' && (
                 <div style={{ marginTop: '4px' }}>

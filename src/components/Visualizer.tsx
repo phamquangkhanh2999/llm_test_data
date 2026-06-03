@@ -470,18 +470,89 @@ export const Visualizer: React.FC = () => {
     return `👾 Tối ưu hóa: ${origin}`;
   };
 
-  // Phân loại ca kiểm thử để vẽ lên lưới
+  // Phân loại ca kiểm thử để vẽ lên lưới chính xác theo nghiệp vụ
   const getTestCaseCategory = (c: any) => {
     let isSecurity = false;
+    const securityKeywords = ["' or", '" or', "'or", '"or', '--', 'union', 'select', 'drop table', '<script', 'onload=', 'onerror=', 'javascript:'];
+    
+    // 1. Kiểm tra an ninh (Security)
     Object.values(c.values).forEach(val => {
-      const str = String(val);
-      if (str.includes("'") || str.includes("<script") || str.includes("--")) isSecurity = true;
+      const str = String(val).toLowerCase();
+      if (securityKeywords.some(kw => str.includes(kw))) {
+        isSecurity = true;
+      }
     });
     if (isSecurity) return 'security';
-    if (c.fitness < 0.4) return 'negative';
-    if (c.fitness > 0.75) return 'boundary';
+
+    // 2. Kiểm tra tính đúng đắn (Validation) để phân biệt Positive / Negative / Boundary
+    let hasInvalid = false;
+    let hasBoundary = false;
+
+    schema.forEach(field => {
+      const val = c.values[field.name];
+      if (val === undefined || val === null) {
+        if (field.required) hasInvalid = true;
+        return;
+      }
+
+      const strVal = String(val);
+      let fieldValid = true;
+
+      // Check required
+      if (field.required && strVal === '') {
+        fieldValid = false;
+      }
+
+      // Check type and limits
+      if (fieldValid) {
+        if (field.type === 'email') {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(strVal)) fieldValid = false;
+        } else if (field.type === 'card') {
+          const cardRegex = /^\d{16}$/;
+          if (!cardRegex.test(strVal)) fieldValid = false;
+        } else if (field.type === 'phone') {
+          const phoneRegex = /^(03|05|07|08|09)\d{8}$/;
+          if (!phoneRegex.test(strVal)) fieldValid = false;
+        } else if (field.type === 'number') {
+          const num = Number(val);
+          if (isNaN(num)) {
+            fieldValid = false;
+          } else {
+            if (field.minValue !== undefined && num < field.minValue) fieldValid = false;
+            if (field.maxValue !== undefined && num > field.maxValue) fieldValid = false;
+            
+            // Check boundary for number
+            if (fieldValid) {
+              if (field.minValue !== undefined && num === field.minValue) hasBoundary = true;
+              if (field.maxValue !== undefined && num === field.maxValue) hasBoundary = true;
+            }
+          }
+        }
+      }
+
+      // String limits
+      if (fieldValid && field.type !== 'number') {
+        if (field.minLength !== undefined && strVal.length < field.minLength) fieldValid = false;
+        if (field.maxLength !== undefined && strVal.length > field.maxLength) fieldValid = false;
+
+        // Check boundary for string length
+        if (fieldValid) {
+          if (field.minLength !== undefined && strVal.length === field.minLength) hasBoundary = true;
+          if (field.maxLength !== undefined && strVal.length === field.maxLength) hasBoundary = true;
+        }
+      }
+
+      if (!fieldValid) {
+        hasInvalid = true;
+      }
+    });
+
+    if (hasInvalid) return 'negative';
+    if (hasBoundary) return 'boundary';
     return 'positive';
   };
+
 
   // Phân tích động ca kiểm thử dành cho QA/Tester (QA Explanations & Insights)
   const getTestCaseExplanation = (c: any, schema: FieldConstraint[]) => {

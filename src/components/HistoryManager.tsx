@@ -9,7 +9,8 @@ export const HistoryManager: React.FC = () => {
     historyRuns,
     handleLoadPastRun: onLoadPastRun,
     handleClearHistory: onClearHistory,
-    schemaName
+    schemaName,
+    parsedSchema
   } = useAppStore();
   // Trạng thái (state) hiển thị thông báo đã sao chép chuỗi JSON vào bộ nhớ đệm
   const [copied, setCopied] = useState(false);
@@ -384,17 +385,40 @@ describe('${schemaName} Automation Form Tests', () => {
     }, 800);
   };
 
-  // --- PHÂN LOẠI CA KIỂM THỬ ĐỂ HỖ TRỢ BỘ LỌC ---
+  // --- PHÂN LOẠI CA KIỂM THỬ ĐỂ HỖ TRỢ BỘ LỌC CHÍNH XÁC ---
   const getRowCategory = (row: Chromosome): 'happy' | 'boundary' | 'security' => {
-    let isEdge = false;
     let isSecurity = false;
+    const securityKeywords = ["' or", '" or', "'or", '"or', '--', 'union', 'select', 'drop table', '<script', 'onload=', 'onerror=', 'javascript:'];
+    
+    // 1. Kiểm tra an ninh (Security)
     Object.values(row).forEach(val => {
-      const str = String(val);
-      if (str.includes("'") || str.includes("<script") || str.includes("--")) isSecurity = true;
-      if (str === '' || str === '0') isEdge = true;
+      const str = String(val).toLowerCase();
+      if (securityKeywords.some(kw => str.includes(kw))) {
+        isSecurity = true;
+      }
     });
     if (isSecurity) return 'security';
-    if (isEdge) return 'boundary';
+
+    // 2. Kiểm tra biên (Boundary) dựa trên parsedSchema
+    let isBoundary = false;
+    parsedSchema.forEach(field => {
+      const val = row[field.name];
+      if (val !== undefined && val !== null) {
+        const strVal = String(val);
+        if (field.type === 'number') {
+          const num = Number(val);
+          if (!isNaN(num)) {
+            if (field.minValue !== undefined && num === field.minValue) isBoundary = true;
+            if (field.maxValue !== undefined && num === field.maxValue) isBoundary = true;
+          }
+        } else {
+          if (field.minLength !== undefined && strVal.length === field.minLength) isBoundary = true;
+          if (field.maxLength !== undefined && strVal.length === field.maxLength) isBoundary = true;
+        }
+      }
+    });
+
+    if (isBoundary) return 'boundary';
     return 'happy';
   };
 

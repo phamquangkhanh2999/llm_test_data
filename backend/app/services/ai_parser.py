@@ -225,14 +225,26 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
         if t == "email":
             if mode == 'invalid':
                 return "invalid-email"
+            if length is not None:
+                # Tạo email đúng độ dài yêu cầu
+                suffix = "@gmail.com"
+                if length <= len(suffix):
+                    return "a" * length
+                return "a" * (length - len(suffix)) + suffix
             return f"test{random.randint(10,99)}@gmail.com"
         elif t == "card":
             if mode == 'invalid':
                 return "1234-invalid"
+            if length is not None:
+                return "".join(str(random.randint(0,9)) for _ in range(length))
             return "".join(str(random.randint(0,9)) for _ in range(16))
         elif t == "phone":
             if mode == 'invalid':
                 return "028123"
+            if length is not None:
+                if length <= 2:
+                    return "09"[:length]
+                return "09" + "".join(str(random.randint(0,9)) for _ in range(length - 2))
             return "09" + "".join(str(random.randint(0,9)) for _ in range(8))
         elif t == "number":
             min_val = field.get("minValue", 0)
@@ -295,7 +307,7 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
                 if max_v is not None:
                     for o in get_bva_offsets(boundary_count, is_min=False):
                         targets.append(max_v + o)
-            elif ftype == "string":
+            elif ftype in ["string", "email", "card", "phone"]:
                 min_l = f.get("minLength")
                 max_l = f.get("maxLength")
                 

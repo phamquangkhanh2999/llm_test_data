@@ -106,6 +106,10 @@ def optimize_testcase_boundaries(test_case, schema, fitness_evaluator, max_itera
             best_neighbor_fitness = current_fitness
 
             for candidate_val in neighbors:
+                # Chuyển đổi float của số nguyên thành kiểu int để trả ra đúng định dạng data
+                if isinstance(candidate_val, float) and candidate_val.is_integer():
+                    candidate_val = int(candidate_val)
+                    
                 candidate_testcase = {**optimized, field_name: candidate_val}
                 score = fitness_evaluator(candidate_testcase)
 
@@ -117,6 +121,8 @@ def optimize_testcase_boundaries(test_case, schema, fitness_evaluator, max_itera
             # --- 3. Chấp nhận phương án tối ưu cục bộ tốt nhất (Steepest Ascent) ---
             if best_neighbor is not None:
                 prev_val = optimized[field_name]
+                if isinstance(prev_val, float) and prev_val.is_integer():
+                    prev_val = int(prev_val)
                 optimized[field_name] = best_neighbor
                 current_fitness = best_neighbor_fitness
                 tweaks_count += 1
