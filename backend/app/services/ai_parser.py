@@ -79,10 +79,14 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
     # Bước 2: Nếu hoàn toàn không có API Key, tự động chuyển sang chế độ Dự phòng (Smart Fallback)
     if not active_key or active_key.strip() == "":
         print(">>> WARNING: AI API Key khong tim thay. Kich hoat bo sinh du phong thong minh (Mock Fallback)...")
-        return get_mock_fallback_data(raw_text)
+        res = get_mock_fallback_data(raw_text)
+        res["is_mock"] = True
+        res["engine"] = "mock"
+        return res
 
-    # Nhận diện xem Key thuộc về Gemini hay OpenAI (Key Gemini thường bắt đầu bằng AIzaSy)
-    is_gemini = active_key.strip().startswith("AIzaSy") or (os.getenv("GEMINI_API_KEY") == active_key if os.getenv("GEMINI_API_KEY") else False)
+    # Nhận diện xem Key thuộc về Gemini hay OpenAI (Key OpenAI bắt đầu bằng sk-)
+    is_openai = active_key.strip().startswith("sk-")
+    is_gemini = not is_openai
     
     system_instructions = (
         "You are an expert senior software developer and automated QA engineer.\n"
@@ -165,6 +169,8 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
                     resp_json = json.loads(resp_data)
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                     parsed_result = json.loads(text_content)
+                    parsed_result["is_mock"] = False
+                    parsed_result["engine"] = "gemini"
                     
                     # In log dữ liệu trả về từ Gemini REST API đẹp đẽ lên console của Backend
                     print(">>> INFO: Gemini REST API Response:\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
@@ -180,6 +186,8 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
                     resp_json = json.loads(resp_data)
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                     parsed_result = json.loads(text_content)
+                    parsed_result["is_mock"] = False
+                    parsed_result["engine"] = "gemini"
                     
                     # In log dữ liệu trả về từ Gemini REST API đẹp đẽ lên console của Backend (chế độ Unverified SSL)
                     print(">>> INFO: Gemini REST API Response (Unverified SSL):\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
@@ -199,6 +207,10 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
                 max_tokens=1500
             )
             
+            parsed_result = json.loads(response.choices[0].message.content)
+            parsed_result["is_mock"] = False
+            parsed_result["engine"] = "openai"
+            
             # In log dữ liệu trả về từ OpenAI API đẹp đẽ lên console của Backend
             print(">>> INFO: OpenAI API Response:\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
             return parsed_result
@@ -210,7 +222,10 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
         
         # Nếu có bất kỳ lỗi kết nối hay lỗi API nào khác, kích hoạt Fallback để không làm sập Server
         print(f">>> ERROR: Loi ket noi AI API ({error_msg}). Kich hoat bo sinh du phong thong minh...")
-        return get_mock_fallback_data(raw_text)
+        res = get_mock_fallback_data(raw_text)
+        res["is_mock"] = True
+        res["engine"] = "mock"
+        return res
 
 
 def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, partition_count: int) -> list:
@@ -261,6 +276,26 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
                 if mode == 'invalid':
                     return "INVALID_VAL"
                 return random.choice(field["allowedValues"])
+            
+            # Check if this is a password field
+            name_lower = field.get("name", "").lower()
+            desc_lower = field.get("description", "").lower()
+            if "pass" in name_lower or "mật khẩu" in desc_lower:
+                if mode == 'invalid':
+                    return "123"
+                actual_len = length if length is not None else random.randint(min_len, max_len)
+                if actual_len < 4:
+                    actual_len = 4
+                u = random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+                l = random.choice("abcdefghijklmnopqrstuvwxyz")
+                d = random.choice("0123456789")
+                s = random.choice("!@#$%^&*")
+                remaining = actual_len - 4
+                chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+                rest = "".join(random.choice(chars) for _ in range(remaining))
+                pw = list(u + l + d + s + rest)
+                random.shuffle(pw)
+                return "".join(pw)
             
             actual_len = length if length is not None else random.randint(min_len, max_len)
             if mode == 'invalid' and length is None:
@@ -440,7 +475,9 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
         print(f">>> INFO: No API key found. Running local seed generator for method '{test_method}'...")
         return generate_seeds_locally(fields, test_method, boundary_count, partition_count)
 
-    is_gemini = active_key.strip().startswith("AIzaSy") or (os.getenv("GEMINI_API_KEY") == active_key if os.getenv("GEMINI_API_KEY") else False)
+    # Nhận diện xem Key thuộc về Gemini hay OpenAI (Key OpenAI bắt đầu bằng sk-)
+    is_openai = active_key.strip().startswith("sk-")
+    is_gemini = not is_openai
 
     # Prepare custom system instructions based on test method
     if test_method == "bva":
@@ -616,10 +653,10 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
 
     except Exception as e:
         error_msg = str(e)
-        if "429" in error_msg or "401" in error_msg or "400" in error_msg or "403" in error_msg or "503" in error_msg:
+        if "401" in error_msg or "403" in error_msg:
             raise ValueError(f"API_KEY_ERROR: {error_msg}")
             
-        print(f">>> ERROR: AI API failed for seed regeneration ({error_msg}). Running local generator fallback...")
+        print(f">>> WARNING: AI API failed for seed regeneration ({error_msg}). Running local generator fallback...")
         return generate_seeds_locally(fields, test_method, boundary_count, partition_count)
 
 
@@ -681,11 +718,14 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
     
     if not active_key:
         print(">>> WARNING: No API Key provided for evaluation. Using mock data.")
-        return mock_response
+        res = mock_response.copy()
+        res["is_mock"] = True
+        return res
         
     try:
         active_key = active_key.strip()
-        if active_key.startswith("AIza"):
+        is_openai = active_key.startswith("sk-")
+        if not is_openai:
             import ssl
             import urllib.request
             req_data = {
@@ -713,7 +753,9 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
                     resp_data = response.read().decode("utf-8")
                     resp_json = json.loads(resp_data)
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
-                    return json.loads(text_content)
+                    res = json.loads(text_content)
+                    res["is_mock"] = False
+                    return res
             except urllib.error.HTTPError as http_err:
                 raise http_err
         else:
@@ -727,12 +769,16 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
                 ],
                 temperature=0.2
             )
-            return json.loads(response.choices[0].message.content)
+            res = json.loads(response.choices[0].message.content)
+            res["is_mock"] = False
+            return res
             
     except Exception as e:
         error_msg = str(e)
-        if "429" in error_msg or "401" in error_msg or "400" in error_msg or "403" in error_msg or "503" in error_msg:
+        if "401" in error_msg or "403" in error_msg:
             raise ValueError(f"API_KEY_ERROR: {error_msg}")
             
         print(f">>> ERROR: Evaluation API failed: {error_msg}. Using mock data.")
-        return mock_response
+        res = mock_response.copy()
+        res["is_mock"] = True
+        return res

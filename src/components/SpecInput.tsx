@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PRESETS } from '../algorithms/presets';
 import type { FieldConstraint } from '../algorithms/presets';
 import { FileText, Plus, Trash2, Database, CheckCircle, BrainCircuit, Zap, FileJson, Sparkles } from 'lucide-react';
@@ -12,7 +12,7 @@ export const SpecInput: React.FC = () => {
     parsedSchema,
     setParsedSchema,
     isParsing,
-    handleParseSpec,
+    setIsParsing,
     handlePresetSelect,
     initialSeeds,
     setInitialSeeds,
@@ -23,7 +23,10 @@ export const SpecInput: React.FC = () => {
     specificationHistory,
     isFetchingHistory,
     fetchSpecificationHistory,
-    handleHistorySelect
+    handleHistorySelect,
+    setSpecificationId,
+    setSchemaName,
+    setOptimizedDataset
   } = useAppStore();
 
   const hasApiKey = apiKey.trim().length > 10;
@@ -44,6 +47,17 @@ export const SpecInput: React.FC = () => {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<any | null>(null);
 
+  // State quản lý việc buộc AI phân tích lại (Bypass cache)
+  const [forceReanalyze, setForceReanalyze] = useState(false);
+
+  // Lưu trữ hạt giống F0 theo từng phương pháp riêng biệt để hiển thị bảng riêng
+  const [methodSeeds, setMethodSeeds] = useState<Record<string, any[]>>({
+    random: [],
+    bva: [],
+    ep: [],
+    decision: []
+  });
+
   const downloadHistoryJson = (item: any) => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(item, null, 2));
     const downloadAnchorNode = document.createElement('a');
@@ -55,51 +69,244 @@ export const SpecInput: React.FC = () => {
   };
 
   // --- CẤU HÌNH PHƯƠNG PHÁP KIỂM THỬ KHỞI TẠO (F0 SEEDS) ---
-  // Chọn thuật toán sinh dữ liệu ban đầu
-  const [testMethod, setTestMethod] = useState<'random' | 'bva' | 'ep' | 'decision'>('random');
+  // Chọn các thuật toán sinh dữ liệu ban đầu (Hỗ trợ chọn nhiều phương pháp đồng thời)
+  const [selectedMethods, setSelectedMethods] = useState<('random' | 'bva' | 'ep' | 'decision')[]>(['random']);
   // Cấu hình số lượng điểm biên (dành riêng cho phương pháp BVA: 2, 3 hoặc 5 điểm)
   const [boundaryCount, setBoundaryCount] = useState<number>(3);
   // Cấu hình số lượng phân vùng tương đương (dành riêng cho phương pháp EP)
   const [partitionCount, setPartitionCount] = useState<number>(3);
   const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
 
-  const handleRegenerateSeeds = async () => {
+  const toggleMethod = (method: 'random' | 'bva' | 'ep' | 'decision') => {
+    setSelectedMethods(prev => {
+      if (prev.includes(method)) {
+        if (prev.length === 1) return prev; // Đảm bảo luôn chọn ít nhất 1 phương pháp
+        return prev.filter(m => m !== method);
+      } else {
+        return [...prev, method];
+      }
+    });
+  };
+
+  const isInitialLoad = useRef(true);
+
+  // Tự động tái sinh F0 seeds khi người dùng đổi lựa chọn phương pháp, số lượng biên/vùng, hoặc schema ràng buộc
+  useEffect(() => {
+    // Bỏ qua lần chạy đầu tiên khi mount component để tránh ghi đè dữ liệu mặc định của preset
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      return;
+    }
+
+    // Chỉ tự động chạy nếu đã phân tích xong đặc tả (có parsedSchema)
     if (!parsedSchema || parsedSchema.length === 0) return;
-    setIsRegenerating(true);
+    if (selectedMethods.length === 0) return;
+
+    const runAutoRegenerate = async () => {
+      setIsRegenerating(true);
+      try {
+        const results = [];
+        for (const method of selectedMethods) {
+          const response = await fetch("http://localhost:8000/api/generate-seeds", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              fields: parsedSchema,
+              test_method: method,
+              boundary_count: boundaryCount,
+              partition_count: partitionCount,
+              api_key_override: sessionStorage.getItem("openai_api_key") || null,
+              raw_text: rawText
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`Không thể sinh hạt giống cho phương pháp ${method}`);
+          }
+
+          const data = await response.json();
+          results.push({
+            method,
+            population: data.initialPopulation || [],
+            isMock: data.is_mock || false
+          });
+
+          // Tránh lỗi Rate Limit (429) khi gọi liên tiếp nhiều API bằng cách nghỉ ngắn 250ms
+          if (selectedMethods.length > 1) {
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+        }
+        
+        // Cập nhật local state methodSeeds cho từng phương pháp
+        const newMethodSeeds: Record<string, any[]> = {
+          random: [],
+          bva: [],
+          ep: [],
+          decision: []
+        };
+        results.forEach(r => {
+          newMethodSeeds[r.method] = r.population;
+        });
+        setMethodSeeds(newMethodSeeds);
+
+        const populations = results.map(r => r.population);
+        
+        // Gộp và loại bỏ trùng lặp tuyệt đối
+        const seen = new Set<string>();
+        const combinedSeeds: any[] = [];
+        populations.flat().forEach((item) => {
+          const sortedObj = Object.keys(item).sort().reduce((acc, key) => {
+            acc[key] = item[key];
+            return acc;
+          }, {} as any);
+          const str = JSON.stringify(sortedObj);
+          if (!seen.has(str)) {
+            seen.add(str);
+            combinedSeeds.push(item);
+          }
+        });
+
+        if (setInitialSeeds) {
+          setInitialSeeds(combinedSeeds);
+        }
+      } catch (e) {
+        console.error("Lỗi khi tự động tái sinh F0:", e);
+      } finally {
+        setIsRegenerating(false);
+      }
+    };
+
+    // Debounce 300ms để tránh gọi API liên tục khi click nhanh
+    const timer = setTimeout(runAutoRegenerate, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMethods, boundaryCount, partitionCount]);
+
+  const handleParseAndGenerateSeeds = async () => {
+    if (!rawText.trim()) return;
+    if (selectedMethods.length === 0) {
+      alert("Vui lòng chọn ít nhất một phương pháp thiết kế ca kiểm thử để sinh F0!");
+      return;
+    }
+    setIsParsing(true);
     try {
-      const response = await fetch("http://localhost:8000/api/generate-seeds", {
+      // 1. Phân tích đặc tả bóc tách Schema
+      const response = await fetch("http://localhost:8000/api/specifications", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          fields: parsedSchema,
-          test_method: testMethod,
-          boundary_count: boundaryCount,
-          partition_count: partitionCount,
-          api_key_override: sessionStorage.getItem("openai_api_key") || null,
-          raw_text: rawText
+          raw_text: rawText,
+          api_key_override: apiKey ? apiKey.trim() : null,
+          force_reanalyze: forceReanalyze
         })
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || "Không thể kết nối tới server tái sinh hạt giống!");
+        throw new Error(errorData.detail || "Không thể kết nối với Backend Server!");
       }
 
-      const data = await response.json();
-      if (setInitialSeeds && data.initialPopulation) {
-        setInitialSeeds(data.initialPopulation);
-        alert(`Tái sinh tập hạt giống F0 thành công bằng phương pháp: ${testMethod === 'bva' ? 'Phân tích giá trị biên (BVA)' :
-          testMethod === 'ep' ? 'Phân vùng tương đương (EP)' :
-            testMethod === 'decision' ? 'Bảng quyết định' : 'Ngẫu nhiên / Hybrid'
-          }!`);
+      const res = await response.json();
+      
+      setParsedSchema(res.fields);
+      setSpecificationId(res.specification_id);
+      setSchemaName(rawText.substring(0, 25) + (rawText.length > 25 ? '...' : ''));
+      setOptimizedDataset([]);
+
+      // 2. Gọi tuần tự sinh hạt giống F0 cho các phương pháp đã chọn (tránh lỗi Rate Limit 429)
+      const results = [];
+      for (const method of selectedMethods) {
+        const response = await fetch("http://localhost:8000/api/generate-seeds", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            fields: res.fields,
+            test_method: method,
+            boundary_count: boundaryCount,
+            partition_count: partitionCount,
+            api_key_override: apiKey ? apiKey.trim() : null,
+            raw_text: rawText
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || `Không thể sinh hạt giống bằng phương pháp ${method}`);
+        }
+
+        const data = await response.json();
+        results.push({
+          method,
+          population: data.initialPopulation || [],
+          isMock: data.is_mock || false
+        });
+
+        // Nghỉ ngắn 250ms giữa các lần gọi nếu chọn nhiều phương pháp
+        if (selectedMethods.length > 1) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
       }
+
+      const isAnyMock = results.some(r => r.isMock);
+
+      // Cập nhật local state methodSeeds cho từng phương pháp
+      const newMethodSeeds: Record<string, any[]> = {
+        random: [],
+        bva: [],
+        ep: [],
+        decision: []
+      };
+      results.forEach(r => {
+        newMethodSeeds[r.method] = r.population;
+      });
+      setMethodSeeds(newMethodSeeds);
+
+      const populations = results.map(r => r.population);
+
+      // Gộp và loại bỏ trùng lặp tuyệt đối để có tập F0 chuẩn hóa tối ưu nhất
+      const seen = new Set<string>();
+      const combinedSeeds: any[] = [];
+      populations.flat().forEach((item) => {
+        const sortedObj = Object.keys(item).sort().reduce((acc, key) => {
+          acc[key] = item[key];
+          return acc;
+        }, {} as any);
+        const str = JSON.stringify(sortedObj);
+        if (!seen.has(str)) {
+          seen.add(str);
+          combinedSeeds.push(item);
+        }
+      });
+
+      if (setInitialSeeds) {
+        setInitialSeeds(combinedSeeds);
+      }
+
+      const methodNames = selectedMethods.map(m => 
+        m === 'bva' ? 'BVA' : m === 'ep' ? 'EP' : m === 'decision' ? 'Bảng quyết định' : 'Ngẫu nhiên'
+      ).join(', ');
+
+      if (res.is_mock || isAnyMock) {
+        alert(`⚠️ Cảnh báo: Chưa gán API Key (Gemini/OpenAI) hợp lệ!\n\nHệ thống đã sinh dữ liệu mẫu F0 ở chế độ OFFLINE bằng thuật toán cục bộ.\nĐã gộp và lọc sạch trùng lặp từ các phương pháp: ${methodNames}.\nNhận được tổng cộng ${combinedSeeds.length} ca test mầm cục bộ.\n\n(Vui lòng cấu hình API Key ở góc trên bên phải màn hình để thực hiện sinh bằng AI thật)`);
+      } else if (res.reanalyzed) {
+        alert(`Đã ép phân tích lại đặc tả bằng AI thành công (Bypass Cache)!\nTái sinh thành công ${combinedSeeds.length} ca test mầm F0 từ các phương pháp: ${methodNames}.`);
+      } else if (res.cached) {
+        alert(`Nạp dữ liệu phân tích đặc tả thành công (Lấy từ bộ nhớ cache hệ thống)!\nTái sinh thành công ${combinedSeeds.length} ca test mầm F0 từ các phương pháp: ${methodNames}.`);
+      } else {
+        alert(`Phân tích đặc tả & Sinh tập hạt giống F0 thành công bằng AI!\n\nĐã gộp và lọc sạch trùng lặp từ các phương pháp: ${methodNames}.\nNhận được tổng cộng ${combinedSeeds.length} ca test mầm chuẩn nhất.`);
+      }
+
     } catch (e: any) {
       console.error(e);
-      alert(`Đã xảy ra lỗi khi sinh lại dữ liệu biên: ${e.message}`);
+      alert(`Đã xảy ra lỗi kết nối: ${e.message || "Hãy đảm bảo FastAPI Backend đang chạy ở cổng 8000!"}`);
     } finally {
-      setIsRegenerating(false);
+      setIsParsing(false);
     }
   };
 
@@ -138,6 +345,12 @@ export const SpecInput: React.FC = () => {
   const onPresetClick = (preset: typeof PRESETS[0]) => {
     setSelectedPresetId(preset.id);
     handlePresetSelect(preset);
+    setMethodSeeds({
+      random: [],
+      bva: [],
+      ep: [],
+      decision: []
+    });
   };
 
   // --- HÀM THÊM THỦ CÔNG MỘT TRƯỜNG DỮ LIỆU MỚI VÀO SCHEMA ---
@@ -177,6 +390,91 @@ export const SpecInput: React.FC = () => {
 
     // Reset ô nhập liệu tên trường về chuỗi rỗng
     setNewFieldName('');
+  };
+
+  const getFieldBoundaryExplanation = (field: FieldConstraint) => {
+    const isNum = field.type === 'number';
+    
+    if (isNum) {
+      const min = field.minValue;
+      const max = field.maxValue;
+      if (min === undefined && max === undefined) return null;
+      
+      const bvaPoints: { val: number; label: string; valid: boolean }[] = [];
+      const epRanges: string[] = [];
+      
+      // Tính toán các điểm BVA
+      if (min !== undefined) {
+        bvaPoints.push({ val: min - 1, label: `Dưới cận dưới (Min-1)`, valid: false });
+        bvaPoints.push({ val: min, label: `Cận dưới (Min)`, valid: true });
+        bvaPoints.push({ val: min + 1, label: `Sát trên cận dưới (Min+1)`, valid: true });
+      }
+      if (max !== undefined) {
+        bvaPoints.push({ val: max - 1, label: `Sát dưới cận trên (Max-1)`, valid: true });
+        bvaPoints.push({ val: max, label: `Cận trên (Max)`, valid: true });
+        bvaPoints.push({ val: max + 1, label: `Vượt cận trên (Max+1)`, valid: false });
+      }
+      
+      // Tính toán phân vùng EP
+      if (min !== undefined && max !== undefined) {
+        epRanges.push(`<${min} (Lỗi 🔴)`);
+        const step = (max - min) / Math.max(1, partitionCount);
+        for (let i = 0; i < partitionCount; i++) {
+          const start = Math.round(min + i * step);
+          const end = Math.round(min + (i + 1) * step) - (i === partitionCount - 1 ? 0 : 1);
+          epRanges.push(`${start}-${end} (Hợp lệ 🟢)`);
+        }
+        epRanges.push(`>${max} (Lỗi 🔴)`);
+      } else if (min !== undefined) {
+        epRanges.push(`<${min} (Lỗi 🔴)`);
+        epRanges.push(`>=${min} (Hợp lệ 🟢)`);
+      } else if (max !== undefined) {
+        epRanges.push(`<=${max} (Hợp lệ 🟢)`);
+        epRanges.push(`>${max} (Lỗi 🔴)`);
+      }
+      
+      return { bvaPoints, epRanges };
+    } else {
+      // Giới hạn độ dài chuỗi
+      const min = field.minLength;
+      const max = field.maxLength;
+      if (min === undefined && max === undefined) return null;
+      
+      const bvaPoints: { val: number; label: string; valid: boolean }[] = [];
+      const epRanges: string[] = [];
+      
+      if (min !== undefined) {
+        if (min - 1 >= 0) {
+          bvaPoints.push({ val: min - 1, label: `Độ dài thiếu (Min-1)`, valid: false });
+        }
+        bvaPoints.push({ val: min, label: `Độ dài tối thiểu (Min)`, valid: true });
+        bvaPoints.push({ val: min + 1, label: `Độ dài tối thiểu + 1 (Min+1)`, valid: true });
+      }
+      if (max !== undefined) {
+        bvaPoints.push({ val: max - 1, label: `Độ dài tối đa - 1 (Max-1)`, valid: true });
+        bvaPoints.push({ val: max, label: `Độ dài tối đa (Max)`, valid: true });
+        bvaPoints.push({ val: max + 1, label: `Độ dài vượt giới hạn (Max+1)`, valid: false });
+      }
+      
+      if (min !== undefined && max !== undefined) {
+        epRanges.push(`<${min} ký tự (Lỗi 🔴)`);
+        const step = (max - min) / Math.max(1, partitionCount);
+        for (let i = 0; i < partitionCount; i++) {
+          const start = Math.round(min + i * step);
+          const end = Math.round(min + (i + 1) * step) - (i === partitionCount - 1 ? 0 : 1);
+          epRanges.push(`${start}-${end} ký tự (Hợp lệ 🟢)`);
+        }
+        epRanges.push(`>${max} ký tự (Lỗi 🔴)`);
+      } else if (min !== undefined) {
+        epRanges.push(`<${min} ký tự (Lỗi 🔴)`);
+        epRanges.push(`>=${min} ký tự (Hợp lệ 🟢)`);
+      } else if (max !== undefined) {
+        epRanges.push(`<=${max} ký tự (Hợp lệ 🟢)`);
+        epRanges.push(`>${max} ký tự (Lỗi 🔴)`);
+      }
+      
+      return { bvaPoints, epRanges };
+    }
   };
 
   // --- HÀM XÓA BỎ MỘT TRƯỜNG DỮ LIỆU KHỎI SCHEMA ---
@@ -228,12 +526,11 @@ export const SpecInput: React.FC = () => {
       <div className="glass-card flex flex-col gap-md teal-border glow-teal">
         <div className="flex align-center gap-sm">
           <FileText className="text-teal" size={24} style={{ color: 'var(--color-teal)' }} />
-          <h2>BƯỚC 1: PHÂN TÍCH YÊU CẦU KIỂM THỬ</h2>
+          <h2>BƯỚC 1: ĐẶC TẢ &amp; PHƯƠNG PHÁP KIỂM THỬ</h2>
         </div>
 
         <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-          Mô tả yêu cầu kiểm thử của bạn bằng ngôn ngữ tự nhiên — AI sẽ tự động trích xuất các trường dữ liệu và ràng buộc miền giá trị.
-          Chưa biết bắt đầu từ đâu? Chọn một <b style={{ color: 'var(--color-teal)' }}>ví dụ về đặc tả</b> bên dưới để xem thử.
+          Mô tả yêu cầu nghiệp vụ của bạn bằng ngôn ngữ tự nhiên — AI sẽ tự động trích xuất các trường dữ liệu và ràng buộc miền giá trị.
         </p>
 
         {/* Label rõ ràng: đây là ví dụ đặc tả mẫu */}
@@ -402,22 +699,168 @@ export const SpecInput: React.FC = () => {
           }} />
         </div>
 
-        {/* Nút bấm gử yêu cầu lên API Backend AI trích xuất thông tin */}
+        {/* CHỨC NĂNG BUỘC AI PHÂN TÍCH LẠI */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '12px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={forceReanalyze}
+              onChange={(e) => setForceReanalyze(e.target.checked)}
+              style={{ width: '15px', height: '15px', accentColor: 'var(--color-teal)', cursor: 'pointer' }}
+            />
+            <span>Buộc AI phân tích lại đặc tả (Bypass Cache hệ thống)</span>
+          </label>
+        </div>
+
+        {/* CẤU HÌNH PHƯƠNG PHÁP KIỂM THỬ KHỞI TẠO (F0 SEEDS) */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          marginTop: '12px',
+          padding: '14px',
+          background: 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid rgba(255, 255, 255, 0.05)',
+          borderRadius: '10px'
+        }}>
+          <span style={{
+            fontSize: '12px',
+            fontWeight: 'bold',
+            color: 'var(--color-teal)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
+          }}>
+            ⚙️ Cấu hình phương pháp sinh F0 Seeds
+          </span>
+
+          {/* Phương pháp check boxes */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={selectedMethods.includes('random')}
+                onChange={() => toggleMethod('random')}
+                style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
+              />
+              <span>Ngẫu Nhiên / Lai Ghép</span>
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={selectedMethods.includes('bva')}
+                onChange={() => toggleMethod('bva')}
+                style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
+              />
+              <span>Phân Tích Biên (BVA)</span>
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={selectedMethods.includes('ep')}
+                onChange={() => toggleMethod('ep')}
+                style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
+              />
+              <span>Phân Vùng Tương Đương (EP)</span>
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={selectedMethods.includes('decision')}
+                onChange={() => toggleMethod('decision')}
+                style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
+              />
+              <span>Bảng Quyết Định</span>
+            </label>
+          </div>
+
+          {/* Cấu hình bổ sung cho BVA (nếu được chọn) */}
+          {selectedMethods.includes('bva') && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              padding: '8px 10px',
+              background: 'rgba(45, 212, 191, 0.04)',
+              borderLeft: '2px solid var(--color-teal)',
+              borderRadius: '4px',
+              marginTop: '4px'
+            }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Số điểm biên cần kiểm tra (BVA):
+              </span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {[2, 3, 5].map((num) => (
+                  <button
+                    key={num}
+                    onClick={() => setBoundaryCount(num)}
+                    type="button"
+                    style={{
+                      flex: 1,
+                      padding: '4px 8px',
+                      fontSize: '12px',
+                      background: boundaryCount === num ? 'var(--color-teal)' : 'rgba(255,255,255,0.05)',
+                      color: boundaryCount === num ? '#000' : 'var(--text-primary)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {num} biên
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cấu hình bổ sung cho EP (nếu được chọn) */}
+          {selectedMethods.includes('ep') && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              padding: '8px 10px',
+              background: 'rgba(59, 130, 246, 0.04)',
+              borderLeft: '2px solid #3b82f6',
+              borderRadius: '4px',
+              marginTop: '4px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                <span>Số phân vùng tương đương:</span>
+                <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>{partitionCount} phân vùng</span>
+              </div>
+              <input
+                type="range"
+                min="2"
+                max="6"
+                value={partitionCount}
+                onChange={(e) => setPartitionCount(Number(e.target.value))}
+                style={{ width: '100%', accentColor: '#3b82f6', cursor: 'pointer' }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Nút bấm gửi yêu cầu lên API Backend AI trích xuất thông tin và sinh hạt giống F0 */}
         <button
-          onClick={handleParseSpec}
+          onClick={handleParseAndGenerateSeeds}
           disabled={isParsing || !rawText.trim()}
           className={`btn btn-primary ${isParsing || !rawText.trim() ? 'btn-disabled' : ''}`}
-          style={{ marginTop: '4px', alignSelf: 'flex-start' }}
+          style={{ marginTop: '12px', alignSelf: 'flex-start', width: '100%', padding: '12px' }}
         >
           {isParsing ? (
             <>
               <div style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
-              AI Đang Phân Tích...
+              Đang Phân Tích &amp; Sinh F0...
             </>
           ) : (
             <>
               <Sparkles size={18} />
-              Yêu Cầu AI (Gemini) Phân Tích Đặc Tả
+              Phân Tích Đặc Tả &amp; Sinh F0 Seeds
             </>
           )}
         </button>
@@ -432,7 +875,7 @@ export const SpecInput: React.FC = () => {
       <div className="glass-card flex flex-col gap-md violet-border">
         <div className="flex align-center gap-sm">
           <FileJson className="text-yellow" size={24} style={{ color: 'var(--color-yellow)' }} />
-          <h2>BƯỚC 2: XÁC ĐỊNH RÀNG BUỘC MIỀN GIÁ TRỊ</h2>
+          <h2>BƯỚC 2: RÀNG BUỘC MIỀN GIÁ TRỊ (AI EXTRACTED)</h2>
         </div>
 
         <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
@@ -440,7 +883,7 @@ export const SpecInput: React.FC = () => {
         </p>
 
         {/* Danh sách cuộn mượt các trường dữ liệu */}
-        <div className="flex flex-col gap-sm" style={{ maxHeight: '320px', overflowY: 'auto', paddingRight: '4px', margin: '8px 0' }}>
+        <div className="flex flex-col gap-sm" style={{ maxHeight: '480px', overflowY: 'auto', paddingRight: '4px', margin: '8px 0' }}>
           {isParsing ? (
             <>
               <style>{`
@@ -482,7 +925,7 @@ export const SpecInput: React.FC = () => {
             parsedSchema.map((field, idx) => (
               <div
                 key={field.name}
-                className="flex align-center gap-sm"
+                className="flex align-start gap-sm"
                 style={{
                   background: 'rgba(255,255,255,0.02)',
                   border: '1px solid rgba(255,255,255,0.04)',
@@ -563,13 +1006,65 @@ export const SpecInput: React.FC = () => {
                       style={{ padding: '4px 8px', fontSize: '11px', width: '130px', fontFamily: 'var(--font-mono)' }}
                     />
                   </div>
+
+                  {/* Bảng giải thích chi tiết BVA/EP cho từng trường */}
+                  {(() => {
+                    const explanation = getFieldBoundaryExplanation(field);
+                    if (!explanation) return null;
+                    const { bvaPoints, epRanges } = explanation;
+                    return (
+                      <div style={{
+                        marginTop: '8px',
+                        padding: '10px',
+                        background: 'rgba(15, 23, 42, 0.4)',
+                        borderLeft: '3px solid var(--color-teal)',
+                        borderRadius: '4px',
+                        fontSize: '11px'
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div>
+                            <span style={{ color: 'var(--color-teal)', fontWeight: 'bold' }}>📏 Giá trị biên (BVA): </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
+                              {bvaPoints.map((pt: { val: number | string; label: string; valid: boolean }, pIdx: number) => (
+                                <span key={pIdx} style={{
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  background: pt.valid ? 'rgba(45, 212, 191, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+                                  border: `1px solid ${pt.valid ? 'rgba(45, 212, 191, 0.25)' : 'rgba(244, 63, 94, 0.25)'}`,
+                                  color: pt.valid ? 'var(--color-teal)' : 'var(--color-rose)'
+                                }}>
+                                  <code>{pt.val}</code> ({pt.label})
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <span style={{ color: 'var(--color-yellow)', fontWeight: 'bold' }}>📊 Phân vùng tương đương (EP): </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
+                              {epRanges.map((range: string, rIdx: number) => (
+                                <span key={rIdx} style={{
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  background: 'rgba(255, 255, 255, 0.03)',
+                                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                                  color: 'var(--text-secondary)'
+                                }}>
+                                  {range}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Nút xóa bỏ trường kiểm thử này */}
                 <button
                   onClick={() => handleRemoveField(idx)}
                   className="btn btn-secondary"
-                  style={{ padding: '8px', color: 'var(--color-rose)', borderColor: 'rgba(244,63,94,0.1)' }}
+                  style={{ padding: '8px', color: 'var(--color-rose)', borderColor: 'rgba(244,63,94,0.1)', marginTop: '2px' }}
                   title="Xóa trường"
                 >
                   <Trash2 size={16} />
@@ -619,529 +1114,58 @@ export const SpecInput: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. KHU VỰC CẤU HÌNH & HIỂN THỊ DỮ LIỆU F0 (NẰM DƯỚI CÙNG, TRẢI DÀI 2 CỘT) */}
-      {parsedSchema.length > 0 && (
-        <div className="glass-card flex flex-col gap-md violet-border glow-violet" style={{ gridColumn: '1 / -1', marginTop: '20px' }}>
-          <div className="flex align-center gap-sm">
-            <Database className="text-violet" size={24} style={{ color: 'var(--color-violet)' }} />
-            <h2>BƯỚC 3: THIẾT KẾ CA KIỂM THỬ CƠ SỞ (BASE TEST CASES)</h2>
-          </div>
 
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-            Dựa trên cấu trúc đã phân tích, chọn một kỹ thuật thiết kế ca kiểm thử chuẩn (Test Design Techniques) để sinh bộ dữ liệu mầm (Initial Seeds).
-          </p>
-
-          <div className="flex align-center justify-between" style={{ flexWrap: 'wrap', gap: '12px' }}>
-            <div className="flex align-center gap-sm">
-              <BrainCircuit className="text-violet" size={24} style={{ color: 'var(--color-violet)' }} />
-              <h2 style={{ fontSize: '18px', color: '#fff', margin: 0 }}>
-                Kỹ Thuật Thiết Kế Ca Kiểm Thử
-              </h2>
-            </div>
-
-            <span style={{
-              fontSize: '11px',
-              padding: '4px 10px',
-              borderRadius: '20px',
-              background: hasApiKey ? 'rgba(45,212,191,0.1)' : 'rgba(255,255,255,0.03)',
-              border: hasApiKey ? '1px solid rgba(45,212,191,0.2)' : '1px solid rgba(255,255,255,0.08)',
-              color: hasApiKey ? 'var(--color-teal)' : 'var(--text-muted)'
-            }}>
-              {hasApiKey ? '✨ Gemini AI hỗ trợ sinh biên' : '💻 Sử dụng sinh cục bộ dự phòng'}
-            </span>
-          </div>
-
-          <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', margin: 0 }}>
-            Sau khi có cấu trúc trường, bạn hãy chọn phương pháp sinh dữ liệu mẫu F0. Giải thuật di truyền (GA) ở bước sau sẽ thừa hưởng tập dữ liệu hạt giống này để tiến hành tối ưu hóa vượt bậc.
-          </p>
-
-          {/* Grid lựa chọn phương pháp */}
-          <div className="grid-4" style={{ gap: '12px', marginTop: '8px' }}>
-            {/* Phương pháp Random */}
-            <div
-              onClick={() => setTestMethod('random')}
-              style={{
-                padding: '14px',
-                borderRadius: 'var(--radius-sm)',
-                background: testMethod === 'random' ? 'rgba(45, 212, 191, 0.08)' : 'rgba(255,255,255,0.01)',
-                border: '1px solid',
-                borderColor: testMethod === 'random' ? 'var(--color-teal)' : 'rgba(255,255,255,0.05)',
-                cursor: 'pointer',
-                transition: 'all 0.25s ease',
-                boxShadow: testMethod === 'random' ? '0 0 12px rgba(45, 212, 191, 0.2)' : 'none',
-                position: 'relative',
-                transform: testMethod === 'random' ? 'scale(1.02)' : 'scale(1)'
-              }}
-            >
-              {testMethod === 'random' && (
-                <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
-                  <CheckCircle size={15} style={{ color: 'var(--color-teal)' }} />
-                </div>
-              )}
-              <div style={{ fontWeight: 'bold', fontSize: '14px', color: testMethod === 'random' ? 'var(--color-teal)' : '#fff', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                🎲 Ngẫu nhiên / Hybrid
-              </div>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                Sinh hỗn hợp ca đúng, ca biên ngẫu nhiên và SQLi/XSS bảo mật.
-              </span>
-            </div>
-
-            {/* Phương pháp BVA */}
-            <div
-              onClick={() => setTestMethod('bva')}
-              style={{
-                padding: '14px',
-                borderRadius: 'var(--radius-sm)',
-                background: testMethod === 'bva' ? 'rgba(167, 139, 250, 0.08)' : 'rgba(255,255,255,0.01)',
-                border: '1px solid',
-                borderColor: testMethod === 'bva' ? 'var(--color-violet)' : 'rgba(255,255,255,0.05)',
-                cursor: 'pointer',
-                transition: 'all 0.25s ease',
-                boxShadow: testMethod === 'bva' ? '0 0 12px rgba(167, 139, 250, 0.2)' : 'none',
-                position: 'relative',
-                transform: testMethod === 'bva' ? 'scale(1.02)' : 'scale(1)'
-              }}
-            >
-              {testMethod === 'bva' && (
-                <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
-                  <CheckCircle size={15} style={{ color: 'var(--color-violet)' }} />
-                </div>
-              )}
-              <div style={{ fontWeight: 'bold', fontSize: '14px', color: testMethod === 'bva' ? 'var(--color-violet)' : '#fff', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                📏 Phân tích giá trị biên (BVA)
-              </div>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                Tập trung sinh các giá trị sát nút quanh ngưỡng biên giới hạn.
-              </span>
-            </div>
-
-            {/* Phương pháp EP */}
-            <div
-              onClick={() => setTestMethod('ep')}
-              style={{
-                padding: '14px',
-                borderRadius: 'var(--radius-sm)',
-                background: testMethod === 'ep' ? 'rgba(59, 130, 246, 0.08)' : 'rgba(255,255,255,0.01)',
-                border: '1px solid',
-                borderColor: testMethod === 'ep' ? '#3b82f6' : 'rgba(255,255,255,0.05)',
-                cursor: 'pointer',
-                transition: 'all 0.25s ease',
-                boxShadow: testMethod === 'ep' ? '0 0 12px rgba(59, 130, 246, 0.2)' : 'none',
-                position: 'relative',
-                transform: testMethod === 'ep' ? 'scale(1.02)' : 'scale(1)'
-              }}
-            >
-              {testMethod === 'ep' && (
-                <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
-                  <CheckCircle size={15} style={{ color: '#3b82f6' }} />
-                </div>
-              )}
-              <div style={{ fontWeight: 'bold', fontSize: '14px', color: testMethod === 'ep' ? '#3b82f6' : '#fff', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                📊 Phân vùng tương đương (EP)
-              </div>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                Chia nhóm miền dữ liệu để sinh giá trị đại diện từng phân vùng.
-              </span>
-            </div>
-
-            {/* Phương pháp Decision Table */}
-            <div
-              onClick={() => setTestMethod('decision')}
-              style={{
-                padding: '14px',
-                borderRadius: 'var(--radius-sm)',
-                background: testMethod === 'decision' ? 'rgba(244, 63, 94, 0.08)' : 'rgba(255,255,255,0.01)',
-                border: '1px solid',
-                borderColor: testMethod === 'decision' ? 'var(--color-rose)' : 'rgba(255,255,255,0.05)',
-                cursor: 'pointer',
-                transition: 'all 0.25s ease',
-                boxShadow: testMethod === 'decision' ? '0 0 12px rgba(244, 63, 94, 0.2)' : 'none',
-                position: 'relative',
-                transform: testMethod === 'decision' ? 'scale(1.02)' : 'scale(1)'
-              }}
-            >
-              {testMethod === 'decision' && (
-                <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
-                  <CheckCircle size={15} style={{ color: 'var(--color-rose)' }} />
-                </div>
-              )}
-              <div style={{ fontWeight: 'bold', fontSize: '14px', color: testMethod === 'decision' ? 'var(--color-rose)' : '#fff', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                📋 Bảng quyết định (Logic Table)
-              </div>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                Sinh các ca phối hợp kiểm định logic chéo các trường nghiệp vụ.
-              </span>
-            </div>
-          </div>
-
-          {/* Cấu hình chi tiết cho từng phương pháp */}
-          {(testMethod === 'bva' || testMethod === 'ep') && (
-            <div
-              style={{
-                background: 'rgba(255, 255, 255, 0.02)',
-                border: '1px solid rgba(255,255,255,0.05)',
-                padding: '18px',
-                borderRadius: 'var(--radius-sm)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '14px'
-              }}
-            >
-              {/* Slider / Picker */}
-              {testMethod === 'bva' && (
-                <div className="flex align-center gap-md" style={{ flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: '13.5px', color: 'var(--text-secondary)', minWidth: '180px' }}>
-                    Chọn số lượng biên quanh giới hạn:
-                  </div>
-                  <div className="flex align-center gap-sm">
-                    {/* Các nút chọn số lượng điểm kiểm thử quanh một giá trị biên */}
-                    {[2, 3, 5].map((num) => (
-                      <button
-                        key={num}
-                        onClick={() => setBoundaryCount(num)}
-                        className={`tab-btn ${boundaryCount === num ? 'active' : ''}`}
-                        style={{ padding: '6px 16px', fontSize: '13px' }}
-                        title={num === 2 ? 'Biên cơ bản (2 điểm)' : num === 3 ? 'Biên mở rộng (3 điểm)' : 'Biên toàn diện (5 điểm)'}
-                      >
-                        {num} Biên
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {testMethod === 'ep' && (
-                <div className="flex align-center gap-md" style={{ flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: '13.5px', color: 'var(--text-secondary)', minWidth: '180px' }}>
-                    Chọn số phân vùng miền giá trị:
-                  </div>
-                  <div className="flex align-center gap-sm">
-                    {[2, 3, 4, 5].map((num) => (
-                      <button
-                        key={num}
-                        onClick={() => setPartitionCount(num)}
-                        className={`tab-btn ${partitionCount === num ? 'active' : ''}`}
-                        style={{ padding: '6px 16px', fontSize: '13px' }}
-                      >
-                        {num} Phân vùng
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Dòng ví dụ minh họa động */}
-              <div
-                style={{
-                  fontSize: '13px',
-                  color: 'var(--color-teal)',
-                  background: 'rgba(45, 212, 191, 0.03)',
-                  borderLeft: '3px solid var(--color-teal)',
-                  padding: '12px 16px',
-                  borderRadius: '0 4px 4px 0',
-                  lineHeight: '1.5'
-                }}
-              >
-                {testMethod === 'bva' ? (
-                  <>
-                    💡 <b>Ví dụ trực quan:</b> Nếu có trường <b>password</b> yêu cầu độ dài tối thiểu là <b>8 ký tự</b>. Chọn <b>{boundaryCount} biên</b> → AI / Thuật toán sẽ tính toán và sinh ra các mật khẩu có độ dài thực tế: <b>{boundaryCount === 2 ? '7, 8' : boundaryCount === 3 ? '7, 8, 9' : '6, 7, 8, 9, 10'}</b> ký tự (gồm đúng biên 8, các độ dài thiếu ký tự lỗi và thừa ký tự hợp lệ).
-                  </>
-                ) : (
-                  <>
-                    💡 <b>Ví dụ trực quan:</b> Nếu có trường <b>age</b> từ <b>18 đến 100 tuổi</b>. Chọn <b>{partitionCount} phân vùng</b> → Hệ thống sẽ phân hoạch dải tuổi thành <b>{partitionCount} đoạn hợp lệ bằng nhau</b>, lấy đại diện trung điểm từng đoạn, đồng thời tự động thêm các phân vùng lỗi ngoài biên (như &lt;18 tuổi hoặc &gt;100 tuổi).
-                  </>
-                )}
-              </div>
-
-              {/* BẢNG GIẢI THÍCH CHI TIẾT VỀ VÙNG BIÊN VÀ USECASE TEST */}
-              <div 
-                style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
-                  gap: '12px',
-                  background: 'rgba(255,255,255,0.01)',
-                  border: '1px solid rgba(255,255,255,0.05)',
-                  padding: '14px',
-                  borderRadius: '6px',
-                  marginTop: '8px'
-                }}
-              >
-                <div>
-                  <h4 style={{ fontSize: '12.5px', color: 'var(--color-teal)', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    📏 Giá Trị Vùng Biên (Boundary Value) Là Gì?
-                  </h4>
-                  <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
-                    Giá trị biên là ranh giới phân cách giữa miền dữ liệu <b>Hợp lệ (Valid)</b> và <b>Không hợp lệ (Invalid)</b>. 
-                    Ví dụ, nếu yêu cầu tuổi từ 18-100:
-                    <br />
-                    - <b>Biên hợp lệ (Valid Boundary):</b> Đúng 18, đúng 100. Hệ thống <b>phải chấp nhận</b> và xử lý đúng dữ liệu.
-                    <br />
-                    - <b>Biên lỗi (Invalid Boundary):</b> 17 (dưới biên Min), 101 (vượt biên Max). Hệ thống <b>phải từ chối</b> và trả lỗi validation chính xác.
-                    <br />
-                    <i>Lập trình viên rất dễ viết nhầm toán tử so sánh (nhầm <code>&gt;</code> thành <code>&gt;=</code>), do đó kiểm thử biên giúp bắt các lỗi này hiệu quả nhất.</i>
-                  </p>
-                </div>
-                
-                <div style={{ borderLeft: '1px solid rgba(255,255,255,0.05)', paddingLeft: '12px' }}>
-                  <h4 style={{ fontSize: '12.5px', color: 'var(--color-violet)', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    📋 Kiểm Thử Ca Sử Dụng (Usecase Test) Là Gì?
-                  </h4>
-                  <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
-                    Usecase Test là kỹ thuật thiết kế ca kiểm thử mô phỏng theo **hành trình nghiệp vụ thực tế** của người dùng (ví dụ: đăng ký tài khoản, thanh toán hóa đơn).
-                    <br />
-                    - Trong nền tảng này, mỗi Usecase được đại diện bằng văn bản nghiệp vụ thô (raw spec).
-                    <br />
-                    - AI sẽ phân tích văn bản này để trích xuất các trường dữ liệu và ràng buộc.
-                    <br />
-                    - Mỗi bản ghi được sinh ra ( Happy Path, Biên, hay Mã độc bảo mật) chính là các ca kiểm thử cụ thể (Test Cases) để <b>quét lỗi thực tế cho Usecase đó</b> khi tích hợp vào Automation Script (Playwright/Cypress).
-                  </p>
-                </div>
-              </div>
-
-
-              {/* INTERACTIVE COLOR CAPSULES PREVIEW */}
-              {testMethod === 'bva' && (
-                <div style={{ marginTop: '4px' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 'bold', letterSpacing: '0.03em' }}>
-                    🎯 CÁC ĐỘ DÀI/GIÁ TRỊ CẬN BIÊN BVA SẼ ĐƯỢC TẬP TRUNG SINH (BVA CAPSULES PREVIEW):
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {(boundaryCount === 2 ? [-1, 0] : boundaryCount === 3 ? [-1, 0, 1] : [-2, -1, 0, 1, 2]).map((offset, i) => {
-                      const val = 8 + offset;
-                      const isInvalid = val < 8;
-                      const isExactBoundary = val === 8;
-                      return (
-                        <div
-                          key={i}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: '20px',
-                            background: isInvalid
-                              ? 'rgba(244, 63, 94, 0.08)'
-                              : isExactBoundary
-                                ? 'rgba(45, 212, 191, 0.12)'
-                                : 'rgba(59, 130, 246, 0.06)',
-                            border: '1px solid',
-                            borderColor: isInvalid
-                              ? 'rgba(244, 63, 94, 0.25)'
-                              : isExactBoundary
-                                ? 'rgba(45, 212, 191, 0.45)'
-                                : 'rgba(59, 130, 246, 0.18)',
-                            color: isInvalid
-                              ? 'var(--color-rose)'
-                              : isExactBoundary
-                                ? 'var(--color-teal)'
-                                : 'rgba(255, 255, 255, 0.8)',
-                            fontSize: '11.5px',
-                            fontWeight: 'bold',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            boxShadow: isExactBoundary ? '0 0 10px rgba(45, 212, 191, 0.12)' : 'none'
-                          }}
-                        >
-                          <span style={{ fontSize: '9px' }}>{isInvalid ? '🔴' : isExactBoundary ? '🎯' : '🟢'}</span>
-                          <span>{val} {isInvalid ? '(Lỗi - Dưới biên)' : isExactBoundary ? '(Biên chuẩn Min)' : '(Hợp lệ)'}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {testMethod === 'ep' && (
-                <div style={{ marginTop: '4px' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 'bold', letterSpacing: '0.03em' }}>
-                    🎯 CÁC PHÂN VÙNG TƯƠNG ĐƯƠNG ĐẦU VÀO ĐƯỢC CHỌN MẪU (EP CAPSULES PREVIEW):
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {/* Invalid partition 1 */}
-                    <div style={{
-                      padding: '6px 12px',
-                      borderRadius: '20px',
-                      background: 'rgba(244, 63, 94, 0.08)',
-                      border: '1px solid rgba(244, 63, 94, 0.25)',
-                      color: 'var(--color-rose)',
-                      fontSize: '11.5px',
-                      fontWeight: 'bold',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}>
-                      <span style={{ fontSize: '9px' }}>🔴</span>
-                      <span>&lt; 18 (Lỗi dưới)</span>
-                    </div>
-
-                    {/* Valid partitions */}
-                    {Array.from({ length: partitionCount }, (_, i) => {
-                      const step = (100 - 18) / partitionCount;
-                      const start = Math.round(18 + i * step);
-                      const end = Math.round(18 + (i + 1) * step) - (i === partitionCount - 1 ? 0 : 1);
-                      return (
-                        <div
-                          key={i}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: '20px',
-                            background: 'rgba(45, 212, 191, 0.06)',
-                            border: '1px solid rgba(45, 212, 191, 0.2)',
-                            color: 'var(--color-teal)',
-                            fontSize: '11.5px',
-                            fontWeight: 'bold',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px'
-                          }}
-                        >
-                          <span style={{ fontSize: '9px' }}>🟢</span>
-                          <span>Vùng {i + 1}: {start} - {end} (Hợp lệ)</span>
-                        </div>
-                      );
-                    })}
-
-                    {/* Invalid partition 2 */}
-                    <div style={{
-                      padding: '6px 12px',
-                      borderRadius: '20px',
-                      background: 'rgba(244, 63, 94, 0.08)',
-                      border: '1px solid rgba(244, 63, 94, 0.25)',
-                      color: 'var(--color-rose)',
-                      fontSize: '11.5px',
-                      fontWeight: 'bold',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}>
-                      <span style={{ fontSize: '9px' }}>🔴</span>
-                      <span>&gt; 100 (Lỗi trên)</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Nút hành động áp dụng */}
-          <div className="flex justify-between align-center" style={{ marginTop: '8px', flexWrap: 'wrap', gap: '12px' }}>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              * Sau khi chọn phương pháp, hãy bấm "Áp dụng" để thay thế dữ liệu F0 cũ.
-            </span>
-            <button
-              onClick={handleRegenerateSeeds}
-              disabled={isRegenerating}
-              className={`btn btn-primary ${isRegenerating ? 'btn-disabled' : ''}`}
-              style={{
-                background: 'linear-gradient(135deg, var(--color-violet), var(--color-teal))',
-                border: 'none',
-                boxShadow: '0 4px 12px rgba(167, 139, 250, 0.25)',
-                fontWeight: 'bold',
-                padding: '10px 20px',
-                fontSize: '13.5px'
-              }}
-            >
-              {isRegenerating ? (
-                <>
-                  <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
-                  Đang tái sinh F0 Seeds...
-                </>
-              ) : (
-                <>
-                  ⚙️ Áp dụng &amp; Sinh lại F0 Seeds
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* 3. PHẦN DƯỚI: HIỂN THỊ DỮ LIỆU HẠT GIỐNG F0 (PREVIEW INITIAL SEEDS) */}
       {(isParsing || (initialSeeds && initialSeeds.length > 0)) && (
-        <div className="glass-card flex flex-col gap-md violet-border" style={{ gridColumn: 'span 2', marginTop: '16px' }}>
-          <div className="flex justify-between align-center" style={{ flexWrap: 'wrap', gap: '12px' }}>
+        <div className="glass-card flex flex-col gap-md violet-border glow-violet" style={{ gridColumn: 'span 2', marginTop: '20px' }}>
+          <div className="flex justify-between align-center" style={{ flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '14px', marginBottom: '10px' }}>
             <div className="flex align-center gap-sm">
               <Database className="text-violet" size={24} style={{ color: 'var(--color-violet)' }} />
-              <h2 style={{ fontSize: '18px', margin: 0 }}>Tập Dữ Liệu Hạt Giống F0 (Initial Seeds Dataset)</h2>
+              <h2 style={{ fontSize: '18px', margin: 0 }}>KẾT QUẢ &amp; CẤU HÌNH: TẬP DỮ LIỆU HẠT GIỐNG F0 (INITIAL SEEDS)</h2>
             </div>
-
-            {/* Badge Hiển Thị Phương Pháp */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '6px',
-              padding: '6px 12px', borderRadius: '20px',
-              background: testMethod === 'bva' ? 'rgba(167, 139, 250, 0.15)' :
-                testMethod === 'ep' ? 'rgba(59, 130, 246, 0.15)' :
-                  testMethod === 'decision' ? 'rgba(244, 63, 94, 0.15)' :
-                    'rgba(45, 212, 191, 0.15)',
-              border: `1px solid ${testMethod === 'bva' ? 'var(--color-violet)' :
-                testMethod === 'ep' ? '#3b82f6' :
-                  testMethod === 'decision' ? 'var(--color-rose)' :
-                    'var(--color-teal)'
-                }`
-            }}>
-              <Zap size={14} style={{
-                color:
-                  testMethod === 'bva' ? 'var(--color-violet)' :
-                    testMethod === 'ep' ? '#3b82f6' :
-                      testMethod === 'decision' ? 'var(--color-rose)' :
-                        'var(--color-teal)'
-              }} />
-              <span style={{
-                fontSize: '12.5px', fontWeight: 'bold',
-                color: testMethod === 'bva' ? 'var(--color-violet)' :
-                  testMethod === 'ep' ? '#3b82f6' :
-                    testMethod === 'decision' ? 'var(--color-rose)' :
-                      'var(--color-teal)'
-              }}>
-                {testMethod === 'bva' ? `Phân Tích Biên (BVA) - ${boundaryCount} Điểm` :
-                  testMethod === 'ep' ? 'Phân Vùng Tương Đương (EP)' :
-                    testMethod === 'decision' ? 'Bảng Quyết Định' :
-                      'Ngẫu Nhiên / Lai Ghép (Hybrid)'}
+            {isRegenerating && (
+              <span style={{ fontSize: '12.5px', color: 'var(--color-violet)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span className="status-dot-pulse" style={{ width: '8px', height: '8px', background: 'var(--color-violet)', borderRadius: '50%', display: 'inline-block' }} />
+                Đang cập nhật hạt giống...
               </span>
-            </div>
+            )}
           </div>
 
-          {/* Hộp Insight Box Đẹp Mắt */}
+          {/* Bảng giải thích chiến lược kiểm thử */}
           <div style={{
+            background: 'rgba(15, 23, 42, 0.4)',
             padding: '16px',
-            background: 'rgba(15, 23, 42, 0.6)',
-            borderLeft: `4px solid ${testMethod === 'bva' ? 'var(--color-violet)' :
-              testMethod === 'ep' ? '#3b82f6' :
-                testMethod === 'decision' ? 'var(--color-rose)' :
-                  'var(--color-teal)'
-              }`,
-            borderRadius: '4px 8px 8px 4px',
-            marginTop: '4px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+            borderRadius: '8px',
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            marginBottom: '10px'
           }}>
-            <div style={{ color: '#fff', fontSize: '13.5px', lineHeight: '1.6' }}>
-              {testMethod === 'bva' ? (
-                <>
-                  <span style={{ color: 'var(--color-violet)', fontWeight: 'bold' }}>Chiến lược AI đang áp dụng:</span> Hệ thống đang tự động trích xuất các ranh giới từ đặc tả và sinh ra các ca kiểm thử nhắm chính xác vào cấu hình <b>{boundaryCount} điểm biên</b>. Các giá trị được chọn tập trung vào vùng rủi ro cao nhất: <code style={{ color: '#fff', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>{boundaryCount === 2 ? '(Min, Max)' : boundaryCount === 3 ? '(Min-1, Min, Max)' : '(Min-1, Min, Min+1, Max-1, Max, Max+1)'}</code>.
-                </>
-              ) : testMethod === 'ep' ? (
-                <>
-                  <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>Chiến lược AI đang áp dụng:</span> Hệ thống đang phân tích không gian dữ liệu đầu vào và chia thành các vùng đại diện hợp lệ/không hợp lệ. Thay vì vét cạn toàn bộ, AI lấy ngẫu nhiên 1-2 mẫu đặc trưng từ mỗi vùng để đảm bảo độ bao phủ với số lượng tối thiểu.
-                </>
-              ) : testMethod === 'decision' ? (
-                <>
-                  <span style={{ color: 'var(--color-rose)', fontWeight: 'bold' }}>Chiến lược AI đang áp dụng:</span> AI đang lập ma trận các điều kiện nghiệp vụ để tìm ra mọi tổ hợp chéo (Cross-Conditions). Các ca test được sinh ra sẽ quét qua mọi kịch bản rẽ nhánh IF/ELSE phức tạp nhằm phát hiện lỗ hổng logic.
-                </>
-              ) : (
-                <>
-                  <span style={{ color: 'var(--color-teal)', fontWeight: 'bold' }}>Chiến lược AI đang áp dụng:</span> Phương pháp lai ghép đa dạng (Hybrid). Trộn lẫn các ca test thông thường (Happy Path), một số điểm lỗi ngẫu nhiên và chèn các kịch bản tấn công (SQLi, XSS) để mô phỏng một luồng dữ liệu tự nhiên nhất.
-                </>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '12.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              <Sparkles size={16} style={{ color: 'var(--color-teal)', flexShrink: 0, marginTop: '2px' }} />
-              <i>Dữ liệu này đóng vai trò là <b>"Hạt giống F0"</b>, sẽ được đưa vào bộ Tiến Hóa Di Truyền (GA) ở bước tiếp theo để lai ghép và đột biến ra hàng ngàn bộ dữ liệu tối ưu hơn.</i>
+            <h3 style={{ fontSize: '14px', color: 'var(--color-teal)', margin: '0 0 12px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Sparkles size={16} />
+              GIẢI THÍCH CHIẾN LƯỢC KIỂM THỬ VÙNG BIÊN (BVA/EP) &amp; PHƯƠNG PHÁP SINH
+            </h3>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                <p style={{ margin: '0 0 8px 0' }}>
+                  🎲 <b>Ngẫu nhiên / Lai Ghép (Hybrid):</b> Sinh dữ liệu thông thường kết hợp một số payloads lỗi và tấn công bảo mật để kiểm thử các lỗ hổng hệ thống.
+                </p>
+                <p style={{ margin: 0 }}>
+                  📏 <b>Phân tích biên (BVA):</b> Sinh các giá trị tập trung sát ranh giới rủi ro cao (Min, Max, Min-1, Max+1...) vì đây là nơi lập trình viên dễ làm sai nhất.
+                </p>
+              </div>
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                <p style={{ margin: '0 0 8px 0' }}>
+                  📊 <b>Phân vùng tương đương (EP):</b> Chia miền giá trị thành các khoảng tương đương và lấy mẫu đại diện để tối ưu số ca test mà vẫn đảm bảo độ phủ.
+                </p>
+                <p style={{ margin: 0 }}>
+                  📋 <b>Bảng quyết định (Logic Table):</b> Kết hợp logic các điều kiện nghiệp vụ nhằm tìm ra lỗ hổng trong cấu trúc điều kiện rẽ nhánh (IF/ELSE logic).
+                </p>
+              </div>
             </div>
           </div>
 
-          {isParsing ? (
+          {(isParsing || isRegenerating) ? (
             <div style={{
               padding: '40px 24px',
               display: 'flex',
@@ -1165,7 +1189,9 @@ export const SpecInput: React.FC = () => {
                 }}
               />
               <span style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: '500' }}>
-                AI đang làm việc... Đang trích xuất cấu trúc ràng buộc và tự động tạo tập dữ liệu hạt giống F0...
+                {isParsing 
+                  ? 'AI đang làm việc... Đang trích xuất cấu trúc ràng buộc và tự động tạo tập dữ liệu hạt giống F0...'
+                  : 'Đang tái sinh tập hạt giống F0 mới...'}
               </span>
 
               {/* Bảng skeleton micro thể hiện tiến trình loading */}
@@ -1178,58 +1204,154 @@ export const SpecInput: React.FC = () => {
             </div>
           ) : (
             <>
-              <div style={{ overflowX: 'auto', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 'var(--radius-sm)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                      <th style={{ padding: '10px 16px', color: 'var(--text-muted)', width: '80px' }}>STT</th>
-                      {parsedSchema.map((field) => (
-                        <th key={field.name} style={{ padding: '10px 16px', color: 'var(--color-teal)', fontWeight: '600' }}>
-                          {field.name}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {initialSeeds.map((seed, idx) => (
-                      <tr
-                        key={idx}
-                        style={{
-                          borderBottom: idx < initialSeeds.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-                          background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                          transition: 'background 0.2s'
-                        }}
-                        className="table-row-hover"
-                      >
-                        <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>F0 #{idx + 1}</td>
-                        {parsedSchema.map((field) => {
-                          const value = seed[field.name];
-                          const valStr = value !== undefined ? String(value) : '-';
+              {(() => {
+                const hasMethodSeeds = Object.values(methodSeeds).some(arr => arr && arr.length > 0);
+                if (!hasMethodSeeds && initialSeeds && initialSeeds.length > 0) {
+                  // Hiển thị bảng gộp duy nhất (Ví dụ: khi nạp từ Lịch sử hoặc Preset mà chưa kịp tái sinh)
+                  return (
+                    <div className="glass-card" style={{ padding: '16px', border: `1px solid rgba(255,255,255,0.06)`, background: 'rgba(255,255,255,0.01)' }}>
+                      <h3 style={{ fontSize: '14.5px', color: 'var(--color-violet)', margin: '0 0 12px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Zap size={14} style={{ color: 'var(--color-violet)' }} />
+                        Tập Dữ Liệu Hạt Giống F0 (Đã Nạp/Gộp) ({initialSeeds.length} hạt giống)
+                      </h3>
+                      <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                          <thead>
+                            <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                              <th style={{ padding: '10px 16px', color: 'var(--text-muted)', width: '80px' }}>STT</th>
+                              {parsedSchema.map((field) => (
+                                <th key={field.name} style={{ padding: '10px 16px', color: 'var(--color-teal)', fontWeight: '600' }}>
+                                  {field.name}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {initialSeeds.map((seed, idx) => (
+                              <tr
+                                key={idx}
+                                style={{
+                                  borderBottom: idx < initialSeeds.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                                  background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
+                                  transition: 'background 0.2s'
+                                }}
+                                className="table-row-hover"
+                              >
+                                <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>F0 #{idx + 1}</td>
+                                {parsedSchema.map((field) => {
+                                  const value = seed[field.name];
+                                  const valStr = value !== undefined ? String(value) : '-';
+                                  const isAttack = valStr.toLowerCase().includes("' or") ||
+                                    valStr.toLowerCase().includes("--") ||
+                                    valStr.toLowerCase().includes("<script");
 
-                          // Tô đỏ nhẹ các payload bảo mật/độc hại để người dùng nhận ra
-                          const isAttack = valStr.toLowerCase().includes("' or") ||
-                            valStr.toLowerCase().includes("--") ||
-                            valStr.toLowerCase().includes("<script");
+                                  return (
+                                    <td
+                                      key={field.name}
+                                      style={{
+                                        padding: '12px 16px',
+                                        color: isAttack ? 'var(--color-rose)' : 'var(--text-primary)',
+                                        fontWeight: isAttack ? '600' : 'normal',
+                                        fontFamily: field.type === 'number' || isAttack ? 'var(--font-mono)' : 'inherit'
+                                      }}
+                                    >
+                                      {valStr}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                }
 
-                          return (
-                            <td
-                              key={field.name}
-                              style={{
-                                padding: '12px 16px',
-                                color: isAttack ? 'var(--color-rose)' : 'var(--text-primary)',
-                                fontWeight: isAttack ? '600' : 'normal',
-                                fontFamily: field.type === 'number' || isAttack ? 'var(--font-mono)' : 'inherit'
-                              }}
-                            >
-                              {valStr}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                // Hiển thị từng bảng riêng biệt cho các phương pháp đang chọn
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {selectedMethods.map((method) => {
+                      const seeds = methodSeeds[method] || [];
+                      const methodName = method === 'bva' ? 'Phân Tích Biên (BVA)' :
+                                         method === 'ep' ? 'Phân Vùng Tương Đương (EP)' :
+                                         method === 'decision' ? 'Bảng Quyết Định (Decision Table)' :
+                                         'Ngẫu Nhiên / Lai Ghép (Hybrid)';
+                      
+                      const methodColor = method === 'bva' ? 'var(--color-violet)' :
+                                          method === 'ep' ? '#3b82f6' :
+                                          method === 'decision' ? 'var(--color-rose)' :
+                                          'var(--color-teal)';
+
+                      return (
+                        <div key={method} className="glass-card" style={{ padding: '16px', border: `1px solid rgba(255,255,255,0.06)`, background: 'rgba(255,255,255,0.01)' }}>
+                          <h3 style={{ fontSize: '14.5px', color: methodColor, margin: '0 0 12px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Zap size={14} style={{ color: methodColor }} />
+                            {methodName} ({seeds.length} hạt giống)
+                          </h3>
+
+                          {seeds.length === 0 ? (
+                            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                              Đang tạo dữ liệu mầm cho phương pháp này...
+                            </div>
+                          ) : (
+                            <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)' }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                                <thead>
+                                  <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                                    <th style={{ padding: '8px 12px', color: 'var(--text-muted)', width: '70px' }}>STT</th>
+                                    {parsedSchema.map((field) => (
+                                      <th key={field.name} style={{ padding: '8px 12px', color: 'var(--color-teal)', fontWeight: '600' }}>
+                                        {field.name}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {seeds.map((seed, idx) => (
+                                    <tr
+                                      key={idx}
+                                      style={{
+                                        borderBottom: idx < seeds.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                                        background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
+                                        transition: 'background 0.2s'
+                                      }}
+                                      className="table-row-hover"
+                                    >
+                                      <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>F0 #{idx + 1}</td>
+                                      {parsedSchema.map((field) => {
+                                        const value = seed[field.name];
+                                        const valStr = value !== undefined ? String(value) : '-';
+                                        const isAttack = valStr.toLowerCase().includes("' or") ||
+                                          valStr.toLowerCase().includes("--") ||
+                                          valStr.toLowerCase().includes("<script");
+
+                                        return (
+                                          <td
+                                            key={field.name}
+                                            style={{
+                                              padding: '10px 12px',
+                                              color: isAttack ? 'var(--color-rose)' : 'var(--text-primary)',
+                                              fontWeight: isAttack ? '600' : 'normal',
+                                              fontFamily: field.type === 'number' || isAttack ? 'var(--font-mono)' : 'inherit'
+                                            }}
+                                          >
+                                            {valStr}
+                                          </td>
+                                        );
+                                      })}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
 
               {/* Nút bấm AI Đánh Giá và Chuyển bước */}
               <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1299,7 +1421,7 @@ export const SpecInput: React.FC = () => {
                 {/* Khối Nút Bấm */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                   <button
-                    onClick={() => handleEvaluateSeeds(testMethod)}
+                    onClick={() => handleEvaluateSeeds(selectedMethods.join(', '))}
                     disabled={isEvaluating}
                     className="btn"
                     style={{
@@ -1439,6 +1561,12 @@ export const SpecInput: React.FC = () => {
                       handleHistorySelect(selectedHistoryItem);
                       setIsHistoryModalOpen(false);
                       setSelectedHistoryItem(null);
+                      setMethodSeeds({
+                        random: [],
+                        bva: [],
+                        ep: [],
+                        decision: []
+                      });
                     }} className="btn btn-primary glow-teal" style={{ background: 'var(--color-teal)', border: 'none', color: '#000' }}>
                       🚀 Nạp vào Editor
                     </button>

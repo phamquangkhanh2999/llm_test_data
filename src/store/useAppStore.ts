@@ -159,7 +159,13 @@ export const useAppStore = create<AppState>((set, get) => {
           isParsing: false
         });
         
-        alert("Phân tích đặc tả nghiệp vụ bằng AI thành công!\n\nQuy tắc ràng buộc (JSON Rules) và tập dữ liệu hạt giống F0 đã được tạo lập tự động ở phía dưới.\nBạn có thể tự do thêm bớt trường hoặc tinh chỉnh các giá trị Max/Min, Regex ngay tại đây, sau đó bấm nút 'Tiếp tục' ở cuối trang để tiến hành bước tối ưu hóa bộ test!");
+        if (res.is_mock) {
+          alert("⚠️ Cảnh báo: Chưa gán API Key (Gemini/OpenAI) hợp lệ!\n\nHệ thống đã sinh dữ liệu mẫu bằng bộ phân tích giả lập (Mock Fallback).\nVui lòng cấu hình API Key ở góc trên bên phải màn hình để thực hiện phân tích bằng AI thật.");
+        } else if (res.cached) {
+          alert("Nạp dữ liệu phân tích đặc tả thành công (Lấy từ bộ nhớ cache hệ thống)!");
+        } else {
+          alert("Phân tích đặc tả nghiệp vụ bằng AI thành công!\n\nQuy tắc ràng buộc (JSON Rules) và tập dữ liệu hạt giống F0 đã được tạo lập tự động ở phía dưới.");
+        }
         
       } catch (e: any) {
         console.error(e);

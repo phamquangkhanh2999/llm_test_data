@@ -53,6 +53,7 @@ class SpecRequest(BaseModel):
     """
     raw_text: str  # Văn bản nghiệp vụ tiếng Việt/Anh thô
     api_key_override: Optional[str] = None  # Khóa OpenAI API Key tạm thời nhập từ màn hình Client
+    force_reanalyze: Optional[bool] = False  # Bật để bỏ qua cache và phân tích lại bằng AI
 
 class OptimizeWeights(BaseModel):
     """
@@ -105,9 +106,9 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
     Nhận văn bản thô, gọi OpenAI API trích xuất JSON Schema ràng buộc,
     tự động lưu một Dự án & Đặc tả mới vào CSDL SQLite, rồi trả về cấu trúc cho Client.
     """
-    # 0. Kiểm tra Cache trong SQLite: Nếu đoạn văn bản đã từng được phân tích, trả về luôn để tiết kiệm Token!
+    # 0. Kiểm tra Cache trong SQLite: Nếu đoạn văn bản đã từng được phân tích, trả về luôn để tiết kiệm Token (nếu không yêu cầu phân tích lại)!
     existing_spec = db.query(models.Specification).filter(models.Specification.raw_text == req.raw_text).first()
-    if existing_spec:
+    if existing_spec and not req.force_reanalyze:
         print(">>> INFO: Cache hit! Trả về dữ liệu đặc tả đã lưu từ trước.")
         try:
             fields = json.loads(existing_spec.parsed_schema)
@@ -135,6 +136,21 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail=f"Lỗi API Key: {str(ve).replace('API_KEY_ERROR: ', '')}")
         raise ve
 
+    # Nếu đã tồn tại bản ghi trong CSDL và yêu cầu phân tích lại, cập nhật đè bản ghi cũ
+    if existing_spec:
+        existing_spec.parsed_schema = json.dumps(ai_result.get("fields", []))
+        existing_spec.initial_seeds = json.dumps(ai_result.get("initialPopulation", []))
+        db.commit()
+        db.refresh(existing_spec)
+        return {
+            "specification_id": existing_spec.id,
+            "project_id": existing_spec.project_id,
+            "fields": ai_result.get("fields", []),
+            "initialPopulation": ai_result.get("initialPopulation", []),
+            "is_mock": ai_result.get("is_mock", False),
+            "reanalyzed": True
+        }
+
     # 2. Tạo một bản ghi Dự án (Project) mới tự động để gom nhóm dữ liệu
     db_project = models.Project(
         name=f"Dự án Test {schemaName_helper(req.raw_text)}",
@@ -160,7 +176,8 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
         "specification_id": db_spec.id,
         "project_id": db_project.id,
         "fields": ai_result.get("fields", []),
-        "initialPopulation": ai_result.get("initialPopulation", [])
+        "initialPopulation": ai_result.get("initialPopulation", []),
+        "is_mock": ai_result.get("is_mock", False)
     }
 
 
@@ -170,6 +187,8 @@ def api_generate_seeds(req: SeedGenerationRequest):
     ENDPOINT 1.5: Tái sinh tập hạt giống F0 dựa trên phương pháp kiểm thử đã chọn.
     """
     try:
+        active_key = req.api_key_override if req.api_key_override else (os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY"))
+        is_mock = not active_key or active_key.strip() == ""
         seeds = generate_seeds(
             fields=req.fields,
             test_method=req.test_method,
@@ -179,7 +198,8 @@ def api_generate_seeds(req: SeedGenerationRequest):
             raw_text=req.raw_text or ""
         )
         return {
-            "initialPopulation": seeds
+            "initialPopulation": seeds,
+            "is_mock": is_mock
         }
     except ValueError as ve:
         if str(ve).startswith("API_KEY_ERROR"):
