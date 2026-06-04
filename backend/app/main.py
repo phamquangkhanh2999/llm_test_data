@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 import json
 import re
 import sys
+import os
 import asyncio
 
 # Đảm bảo Windows console hỗ trợ UTF-8 đầy đủ cho các bản ghi logs
@@ -189,8 +190,29 @@ def api_generate_seeds(req: SeedGenerationRequest, db: Session = Depends(get_db)
     try:
         active_key = req.api_key_override if req.api_key_override else (os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY"))
         is_mock = not active_key or active_key.strip() == ""
+        
+        # Ép kiểu các tham số giới hạn số và chuỗi về int để tránh lỗi float khi xử lý
+        fields = req.fields
+        for field in fields:
+            if "minLength" in field and field["minLength"] is not None:
+                field["minLength"] = int(field["minLength"])
+            if "maxLength" in field and field["maxLength"] is not None:
+                field["maxLength"] = int(field["maxLength"])
+            if "minValue" in field and field["minValue"] is not None:
+                try:
+                    val = float(field["minValue"])
+                    field["minValue"] = int(val) if val.is_integer() else val
+                except (ValueError, TypeError):
+                    pass
+            if "maxValue" in field and field["maxValue"] is not None:
+                try:
+                    val = float(field["maxValue"])
+                    field["maxValue"] = int(val) if val.is_integer() else val
+                except (ValueError, TypeError):
+                    pass
+
         seeds = generate_seeds(
-            fields=req.fields,
+            fields=fields,
             test_method=req.test_method,
             boundary_count=req.boundary_count,
             partition_count=req.partition_count,
@@ -323,6 +345,24 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="Không tìm thấy đặc tả nghiệp vụ tương ứng!")
 
     schema_rules = json.loads(db_spec.parsed_schema)
+    # Ép kiểu các tham số giới hạn số và chuỗi về int để tránh lỗi float khi xử lý
+    for field in schema_rules:
+        if "minLength" in field and field["minLength"] is not None:
+            field["minLength"] = int(field["minLength"])
+        if "maxLength" in field and field["maxLength"] is not None:
+            field["maxLength"] = int(field["maxLength"])
+        if "minValue" in field and field["minValue"] is not None:
+            try:
+                val = float(field["minValue"])
+                field["minValue"] = int(val) if val.is_integer() else val
+            except (ValueError, TypeError):
+                pass
+        if "maxValue" in field and field["maxValue"] is not None:
+            try:
+                val = float(field["maxValue"])
+                field["maxValue"] = int(val) if val.is_integer() else val
+            except (ValueError, TypeError):
+                pass
 
     # 2. Khởi tạo bộ tối ưu hóa TestSuiteOptimizer chạy bằng Python trên Server
     config_dict = {
@@ -470,6 +510,24 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
             return
 
         schema_rules = json.loads(db_spec.parsed_schema)
+        # Ép kiểu các tham số giới hạn số và chuỗi về int để tránh lỗi float khi xử lý
+        for field in schema_rules:
+            if "minLength" in field and field["minLength"] is not None:
+                field["minLength"] = int(field["minLength"])
+            if "maxLength" in field and field["maxLength"] is not None:
+                field["maxLength"] = int(field["maxLength"])
+            if "minValue" in field and field["minValue"] is not None:
+                try:
+                    val = float(field["minValue"])
+                    field["minValue"] = int(val) if val.is_integer() else val
+                except (ValueError, TypeError):
+                    pass
+            if "maxValue" in field and field["maxValue"] is not None:
+                try:
+                    val = float(field["maxValue"])
+                    field["maxValue"] = int(val) if val.is_integer() else val
+                except (ValueError, TypeError):
+                    pass
 
         config_dict = {
             "generations": generations,
@@ -616,6 +674,8 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
     except WebSocketDisconnect:
         print(f">>> Client WebSocket disconnected for spec: {specification_id}")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f">>> ERROR in WebSocket optimizer route: {str(e)}")
         try:
             await websocket.send_json({"event": "ERROR", "message": f"Lỗi máy chủ: {str(e)}"})

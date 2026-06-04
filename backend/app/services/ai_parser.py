@@ -371,16 +371,28 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
                 return "09" + "".join(str(random.randint(0,9)) for _ in range(length - 2))
             return "09" + "".join(str(random.randint(0,9)) for _ in range(8))
         elif t == "number":
-            min_val = field.get("minValue", 0)
-            max_val = field.get("maxValue", 1000)
+            try:
+                min_val = field.get("minValue")
+                max_val = field.get("maxValue")
+                min_val = float(min_val) if min_val is not None else 0.0
+                max_val = float(max_val) if max_val is not None else 1000.0
+            except (ValueError, TypeError):
+                min_val, max_val = 0.0, 1000.0
+
+            is_float = not min_val.is_integer() or not max_val.is_integer()
             if mode == 'invalid':
-                return min_val - 5 if random.random() > 0.5 else max_val + 5
+                offset = 5.0 if is_float else 5
+                return min_val - offset if random.random() > 0.5 else max_val + offset
             if length is not None:
                 return length
-            return random.randint(min_val, max_val)
+
+            if is_float:
+                return random.uniform(min_val, max_val)
+            else:
+                return random.randint(int(min_val), int(max_val))
         else: # string
-            min_len = field.get("minLength", 3)
-            max_len = field.get("maxLength", 20)
+            min_len = int(field.get("minLength", 3) or 3)
+            max_len = int(field.get("maxLength", 20) or 20)
             if field.get("allowedValues"):
                 if mode == 'invalid':
                     return "INVALID_VAL"

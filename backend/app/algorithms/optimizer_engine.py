@@ -94,13 +94,29 @@ def generate_random_field_value(field, mode="valid"):
         return phone
 
     elif f_type == "number":
-        min_v = field.get("minValue", 0)
-        max_v = field.get("maxValue", 1000)
-        if mode == "invalid":
-            return min_v - 5 if random.random() > 0.5 else max_v + 5
-        if mode == "boundary":
-            return min_v if random.random() > 0.5 else max_v
-        return random.randint(min_v, max_v)
+        try:
+            min_v = field.get("minValue")
+            max_v = field.get("maxValue")
+            min_v = float(min_v) if min_v is not None else 0.0
+            max_v = float(max_v) if max_v is not None else 1000.0
+        except (ValueError, TypeError):
+            min_v, max_v = 0.0, 1000.0
+
+        is_float = not min_v.is_integer() or not max_v.is_integer()
+        if is_float:
+            if mode == "invalid":
+                return min_v - 5.0 if random.random() > 0.5 else max_v + 5.0
+            if mode == "boundary":
+                return min_v if random.random() > 0.5 else max_v
+            return random.uniform(min_v, max_v)
+        else:
+            min_i = int(min_v)
+            max_i = int(max_v)
+            if mode == "invalid":
+                return min_i - 5 if random.random() > 0.5 else max_i + 5
+            if mode == "boundary":
+                return min_i if random.random() > 0.5 else max_i
+            return random.randint(min_i, max_i)
 
     else: # type == string
         if field.get("allowedValues"):
@@ -108,8 +124,8 @@ def generate_random_field_value(field, mode="valid"):
                 return "INVALID_VAL"
             return random.choice(field["allowedValues"])
 
-        min_l = field.get("minLength", 3)
-        max_l = field.get("maxLength", 20)
+        min_l = int(field.get("minLength", 3) or 3)
+        max_l = int(field.get("maxLength", 20) or 20)
 
         length = random.randint(min_l, max_l)
         if mode == "invalid":
