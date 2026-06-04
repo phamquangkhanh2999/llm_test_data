@@ -895,11 +895,17 @@ ${values};
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                   <thead>
                     <tr style={{ background: 'rgba(15,23,42,0.8)', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
-                      <th style={{ padding: '10px 12px', width: '80px' }}>Phân Loại</th>
+                      <th style={{ padding: '10px 12px', width: '80px', minWidth: '100px' }}>
+                        <div style={{ minWidth: '100px' }}>Phân Loại</div>
+                      </th>
                       {Object.keys(optimizedDataset[0]).map(k => (
-                        <th key={k} style={{ padding: '10px 12px' }}>{k}</th>
+                        <th key={k} style={{ padding: '10px 12px' }}>
+                          <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{k}</div>
+                        </th>
                       ))}
-                      <th style={{ padding: '10px 12px', width: '90px', textAlign: 'center' }}>Hành Động</th>
+                      <th style={{ padding: '10px 12px', width: '90px', minWidth: '90px', textAlign: 'center' }}>
+                        <div style={{ minWidth: '90px' }}>Hành Động</div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -913,7 +919,7 @@ ${values};
                           }}
                         >
                           {/* Render badge phân loại */}
-                          <td style={{ padding: '10px 12px' }}>
+                          <td style={{ padding: '10px 12px', minWidth: '100px', verticalAlign: 'top' }}>
                             <span 
                               style={{ 
                                 padding: '2px 6px', 
@@ -936,17 +942,25 @@ ${values};
                                 title={valStr} // Tooltip khi hover xem đầy đủ payload
                                 style={{ 
                                   padding: '10px 12px', 
-                                  fontFamily: 'var(--font-mono)',
-                                  color: category === 'security' && (valStr.includes("'") || valStr.includes("<script") || valStr.includes("--")) ? 'var(--color-rose)' : 'inherit',
-                                  fontWeight: isSpecial ? 'bold' : 'normal',
-                                  // Giới hạn độ dài, tránh vỡ cột bảng
-                                  maxWidth: '180px',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap'
+                                  verticalAlign: 'top'
                                 }}
                               >
-                                {valStr === '' ? <i style={{ color: 'var(--text-muted)' }}>(Chuỗi rỗng / Empty)</i> : valStr}
+                                <div
+                                  style={{
+                                    fontFamily: 'var(--font-mono)',
+                                    color: category === 'security' && (valStr.includes("'") || valStr.includes("<script") || valStr.includes("--")) ? 'var(--color-rose)' : 'inherit',
+                                    fontWeight: isSpecial ? 'bold' : 'normal',
+                                    minWidth: '120px',
+                                    maxWidth: '280px',
+                                    maxHeight: '80px',
+                                    overflowY: 'auto',
+                                    wordBreak: 'break-word',
+                                    whiteSpace: 'normal',
+                                    paddingRight: '4px'
+                                  }}
+                                >
+                                  {valStr === '' ? <i style={{ color: 'var(--text-muted)' }}>(Chuỗi rỗng / Empty)</i> : valStr}
+                                </div>
                               </td>
                             );
                           })}

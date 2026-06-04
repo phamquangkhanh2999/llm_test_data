@@ -41,11 +41,13 @@ interface AppState {
   specificationHistory: any[];
   isFetchingHistory: boolean;
   parseError: string | null;
+  methodSeeds: Record<string, any[]>;
 
   // Actions
   setRawText: (text: string) => void;
   setParsedSchema: (schema: FieldConstraint[] | ((prev: FieldConstraint[]) => FieldConstraint[])) => void;
   setInitialSeeds: (seeds: Chromosome[] | ((prev: Chromosome[]) => Chromosome[])) => void;
+  setMethodSeeds: (seeds: Record<string, any[]> | ((prev: Record<string, any[]>) => Record<string, any[]>)) => void;
   setSchemaName: (name: string) => void;
   setSpecificationId: (id: string) => void;
   setApiKey: (key: string) => void;
@@ -101,6 +103,12 @@ export const useAppStore = create<AppState>((set, get) => {
     specificationHistory: [],
     isFetchingHistory: false,
     parseError: null,
+    methodSeeds: {
+      random: [],
+      bva: [],
+      ep: [],
+      decision: []
+    },
 
     // Simple Setters
     setRawText: (text) => set({ rawText: text }),
@@ -109,6 +117,9 @@ export const useAppStore = create<AppState>((set, get) => {
     })),
     setInitialSeeds: (seeds) => set((state) => ({ 
       initialSeeds: typeof seeds === 'function' ? seeds(state.initialSeeds) : seeds 
+    })),
+    setMethodSeeds: (seeds) => set((state) => ({ 
+      methodSeeds: typeof seeds === 'function' ? seeds(state.methodSeeds) : seeds 
     })),
     setSchemaName: (name) => set({ schemaName: name }),
     setSpecificationId: (id) => set({ specificationId: id }),
@@ -182,7 +193,13 @@ export const useAppStore = create<AppState>((set, get) => {
         initialSeeds: preset.initialPopulation,
         schemaName: preset.title.split(' (')[0],
         specificationId: '',
-        optimizedDataset: []
+        optimizedDataset: [],
+        methodSeeds: {
+          random: [],
+          bva: [],
+          ep: [],
+          decision: []
+        }
       });
     },
 
@@ -300,7 +317,13 @@ export const useAppStore = create<AppState>((set, get) => {
         initialSeeds: historyItem.initialPopulation,
         schemaName: historyItem.raw_text.substring(0, 25) + (historyItem.raw_text.length > 25 ? '...' : ''),
         specificationId: historyItem.id,
-        optimizedDataset: []
+        optimizedDataset: [],
+        methodSeeds: {
+          random: [],
+          bva: [],
+          ep: [],
+          decision: []
+        }
       });
       toast.success("Đã nạp thành công đặc tả từ lịch sử!");
     },
@@ -313,7 +336,13 @@ export const useAppStore = create<AppState>((set, get) => {
         specificationId: '',
         optimizedDataset: [],
         evaluationResult: null,
-        parseError: null
+        parseError: null,
+        methodSeeds: {
+          random: [],
+          bva: [],
+          ep: [],
+          decision: []
+        }
       });
     }
   };

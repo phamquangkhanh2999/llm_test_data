@@ -4,6 +4,45 @@ import urllib.request
 import random
 from openai import OpenAI
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+
+
+# Hàm helper ghi nhận nhật ký cuộc gọi AI vào console và SQLite database
+def log_ai_call(db: Session, endpoint: str, provider: str, model: str, input_summary: str, output_summary: str, status: str, token_count: int = None, error_message: str = None):
+    # In ra console rõ ràng
+    print(f"\n=================== [LLM CALL LOG] ===================")
+    print(f"Endpoint:  {endpoint}")
+    print(f"Provider:  {provider} ({model})")
+    print(f"Status:    {status}")
+    if error_message:
+        print(f"Error:     {error_message}")
+    else:
+        # In tóm tắt ngắn lên console
+        input_clean = input_summary.replace('\n', ' ') if input_summary else ""
+        output_clean = output_summary.replace('\n', ' ') if output_summary else ""
+        print(f"Input:     {input_clean[:120] + '...' if len(input_clean) > 120 else input_clean}")
+        print(f"Output:    {output_clean[:120] + '...' if len(output_clean) > 120 else output_clean}")
+    print(f"======================================================\n")
+
+    if db is None:
+        return
+    try:
+        from ..models import AICallLog
+        db_log = AICallLog(
+            endpoint=endpoint,
+            provider=provider,
+            model=model,
+            input_summary=input_summary,
+            output_summary=output_summary,
+            token_count_estimate=token_count if token_count is not None else (len(input_summary or "") + len(output_summary or "")) // 4,
+            status=status,
+            error_message=error_message
+        )
+        db.add(db_log)
+        db.commit()
+        db.refresh(db_log)
+    except Exception as e:
+        print(f">>> ERROR logging AI call to DB: {e}")
 
 
 # Nạp các biến cấu hình cục bộ từ tệp .env
@@ -124,7 +163,7 @@ def get_mock_fallback_data(raw_text: str):
     }
 
 
-def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
+def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Session = None) -> dict:
     """
     Hàm kết nối trực tiếp với AI API (Hỗ trợ cả Gemini API và OpenAI API).
     Nó nhận diện API Key từ cấu hình hệ thống hoặc từ giá trị tạm thời do Client gửi lên.
@@ -144,6 +183,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
         res = get_mock_fallback_data(raw_text)
         res["is_mock"] = True
         res["engine"] = "mock"
+        log_ai_call(db, "/api/specifications", "Mock", "mock-ai-local", raw_text, json.dumps(res, ensure_ascii=False), "SUCCESS")
         return res
 
     # Nhận diện xem Key thuộc về Gemini hay OpenAI (Key OpenAI bắt đầu bằng sk-)
@@ -216,7 +256,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
                 method="POST"
             )
             
-            # Khởi tạo SSL Context an toàn sử dụng certifi hoặc dự phòng unverified
+            # Khởi tạo SSL Context an sau dụng certifi hoặc dự phòng unverified
             import ssl
             ssl_context = None
             try:
@@ -236,6 +276,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
                     
                     # In log dữ liệu trả về từ Gemini REST API đẹp đẽ lên console của Backend
                     print(">>> INFO: Gemini REST API Response:\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
+                    log_ai_call(db, "/api/specifications", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
                     return parsed_result
             except urllib.error.HTTPError as http_err:
                 raise http_err
@@ -253,6 +294,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
                     
                     # In log dữ liệu trả về từ Gemini REST API đẹp đẽ lên console của Backend (chế độ Unverified SSL)
                     print(">>> INFO: Gemini REST API Response (Unverified SSL):\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
+                    log_ai_call(db, "/api/specifications", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
                     return parsed_result
         else:
             print(">>> INFO: Phat hien OpenAI API Key. Dang su dung GPT lam AI engine...")
@@ -275,10 +317,13 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
             
             # In log dữ liệu trả về từ OpenAI API đẹp đẽ lên console của Backend
             print(">>> INFO: OpenAI API Response:\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
+            log_ai_call(db, "/api/specifications", "OpenAI", "gpt-3.5-turbo", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
             return parsed_result
 
     except Exception as e:
         error_msg = str(e)
+        log_ai_call(db, "/api/specifications", "Gemini" if is_gemini else "OpenAI", "gemini-2.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nRaw text: {raw_text}", None, "FAILED", error_message=error_msg)
+        
         if "429" in error_msg or "401" in error_msg or "400" in error_msg or "403" in error_msg or "503" in error_msg:
             raise ValueError(f"API_KEY_ERROR: {error_msg}")
         
@@ -287,7 +332,9 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
         res = get_mock_fallback_data(raw_text)
         res["is_mock"] = True
         res["engine"] = "mock"
+        log_ai_call(db, "/api/specifications (Fallback)", "Mock", "mock-ai-local", raw_text, json.dumps(res, ensure_ascii=False), "SUCCESS")
         return res
+
 
 
 def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, partition_count: int) -> list:
@@ -527,15 +574,19 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
     return population
 
 
-def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, partition_count: int = 3, api_key: str = None, raw_text: str = "") -> list:
+def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, partition_count: int = 3, api_key: str = None, raw_text: str = "", db: Session = None) -> list:
     """
     Main entrypoint to generate seeds based on selected test method (AI-powered or local fallback).
     """
     active_key = api_key if api_key else (os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY"))
     
+    user_prompt = f"Fields Schema: {json.dumps(fields, ensure_ascii=False)}\n\nOriginal business requirements context (if any):\n{raw_text}"
+
     if not active_key or active_key.strip() == "":
         print(f">>> INFO: No API key found. Running local seed generator for method '{test_method}'...")
-        return generate_seeds_locally(fields, test_method, boundary_count, partition_count)
+        seeds = generate_seeds_locally(fields, test_method, boundary_count, partition_count)
+        log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Mock", "mock-ai-local", user_prompt, json.dumps(seeds, ensure_ascii=False), "SUCCESS")
+        return seeds
 
     # Nhận diện xem Key thuộc về Gemini hay OpenAI (Key OpenAI bắt đầu bằng sk-)
     is_openai = active_key.strip().startswith("sk-")
@@ -639,8 +690,6 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             "}"
         )
 
-    user_prompt = f"Fields Schema: {json.dumps(fields, ensure_ascii=False)}\n\nOriginal business requirements context (if any):\n{raw_text}"
-
     try:
         if is_gemini:
             print(f">>> INFO: Calling Gemini API for seed regeneration (Method: {test_method})...")
@@ -682,7 +731,9 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
                     resp_json = json.loads(resp_data)
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                     parsed_result = json.loads(text_content)
-                    return parsed_result.get("initialPopulation", [])
+                    seeds = parsed_result.get("initialPopulation", [])
+                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    return seeds
             except urllib.error.HTTPError as http_err:
                 raise http_err
             except Exception as ssl_err:
@@ -693,7 +744,9 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
                     resp_json = json.loads(resp_data)
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                     parsed_result = json.loads(text_content)
-                    return parsed_result.get("initialPopulation", [])
+                    seeds = parsed_result.get("initialPopulation", [])
+                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    return seeds
         else:
             print(f">>> INFO: Calling OpenAI API for seed regeneration (Method: {test_method})...")
             client = OpenAI(api_key=active_key)
@@ -711,22 +764,28 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             
             raw_response_content = response.choices[0].message.content
             parsed_result = json.loads(raw_response_content)
-            return parsed_result.get("initialPopulation", [])
+            seeds = parsed_result.get("initialPopulation", [])
+            log_ai_call(db, f"/api/generate-seeds?method={test_method}", "OpenAI", "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+            return seeds
 
     except Exception as e:
         error_msg = str(e)
+        log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini" if is_gemini else "OpenAI", "gemini-2.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
         if "401" in error_msg or "403" in error_msg:
             raise ValueError(f"API_KEY_ERROR: {error_msg}")
             
         print(f">>> WARNING: AI API failed for seed regeneration ({error_msg}). Running local generator fallback...")
-        return generate_seeds_locally(fields, test_method, boundary_count, partition_count)
+        seeds = generate_seeds_locally(fields, test_method, boundary_count, partition_count)
+        log_ai_call(db, f"/api/generate-seeds?method={test_method} (Fallback)", "Mock", "mock-ai-local", user_prompt, json.dumps(seeds, ensure_ascii=False), "SUCCESS")
+        return seeds
 
 
-def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, raw_text: str, api_key_override: str = None) -> dict:
+
+def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, raw_text: str, api_key_override: str = None, db: Session = None) -> dict:
     """
     Gửi bộ F0 Seeds và Schema lên AI (Gemini/OpenAI) để đánh giá chất lượng độ phủ, biên, và bảo mật.
     """
-    active_key = api_key_override or os.getenv("OPENAI_API_KEY")
+    active_key = api_key_override or os.getenv("OPENAI_API_KEY") or os.getenv("GEMINI_API_KEY")
     
     system_instructions = """
     Bạn là một chuyên gia kiểm thử phần mềm (QA Manager/Test Architect) xuất sắc.
@@ -782,11 +841,12 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
         print(">>> WARNING: No API Key provided for evaluation. Using mock data.")
         res = mock_response.copy()
         res["is_mock"] = True
+        log_ai_call(db, "/api/evaluate-seeds", "Mock", "mock-ai-local", user_prompt, json.dumps(res, ensure_ascii=False), "SUCCESS")
         return res
         
+    is_openai = active_key.strip().startswith("sk-")
     try:
         active_key = active_key.strip()
-        is_openai = active_key.startswith("sk-")
         if not is_openai:
             import ssl
             import urllib.request
@@ -817,6 +877,7 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                     res = json.loads(text_content)
                     res["is_mock"] = False
+                    log_ai_call(db, "/api/evaluate-seeds", "Gemini", "gemini-3.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(res, ensure_ascii=False), "SUCCESS")
                     return res
             except urllib.error.HTTPError as http_err:
                 raise http_err
@@ -833,14 +894,18 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
             )
             res = json.loads(response.choices[0].message.content)
             res["is_mock"] = False
+            log_ai_call(db, "/api/evaluate-seeds", "OpenAI", "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(res, ensure_ascii=False), "SUCCESS")
             return res
             
     except Exception as e:
         error_msg = str(e)
+        log_ai_call(db, "/api/evaluate-seeds", "Gemini" if not is_openai else "OpenAI", "gemini-3.5-flash" if not is_openai else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
         if "401" in error_msg or "403" in error_msg:
             raise ValueError(f"API_KEY_ERROR: {error_msg}")
             
         print(f">>> ERROR: Evaluation API failed: {error_msg}. Using mock data.")
         res = mock_response.copy()
         res["is_mock"] = True
+        log_ai_call(db, "/api/evaluate-seeds (Fallback)", "Mock", "mock-ai-local", user_prompt, json.dumps(res, ensure_ascii=False), "SUCCESS")
         return res
+

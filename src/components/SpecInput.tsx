@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PRESETS } from '../algorithms/presets';
 import type { FieldConstraint } from '../algorithms/presets';
 import { FileText, Plus, Trash2, Database, CheckCircle, BrainCircuit, Zap, FileJson, Sparkles } from 'lucide-react';
@@ -27,7 +27,9 @@ export const SpecInput: React.FC = () => {
     setSpecificationId,
     setSchemaName,
     setOptimizedDataset,
-    handleClearSpecData
+    handleClearSpecData,
+    methodSeeds,
+    setMethodSeeds
   } = useAppStore();
 
   const hasApiKey = apiKey.trim().length > 10;
@@ -54,14 +56,6 @@ export const SpecInput: React.FC = () => {
   // States to control collapsible UI elements
   const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
   const [showSchemaDetails, setShowSchemaDetails] = useState(false);
-
-  // Lưu trữ hạt giống F0 theo từng phương pháp riêng biệt để hiển thị bảng riêng
-  const [methodSeeds, setMethodSeeds] = useState<Record<string, any[]>>({
-    random: [],
-    bva: [],
-    ep: [],
-    decision: []
-  });
 
   const downloadHistoryJson = (item: any) => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(item, null, 2));
@@ -93,101 +87,86 @@ export const SpecInput: React.FC = () => {
     });
   };
 
-  const isInitialLoad = useRef(true);
-
-  // Tự động tái sinh F0 seeds khi người dùng đổi lựa chọn phương pháp, số lượng biên/vùng, hoặc schema ràng buộc
-  useEffect(() => {
-    // Bỏ qua lần chạy đầu tiên khi mount component để tránh ghi đè dữ liệu mặc định của preset
-    if (isInitialLoad.current) {
-      isInitialLoad.current = false;
+  const handleRegenerateSeedsOnly = async () => {
+    if (!parsedSchema || parsedSchema.length === 0) return;
+    if (selectedMethods.length === 0) {
+      alert("Vui lòng chọn ít nhất một phương pháp thiết kế ca kiểm thử để sinh F0!");
       return;
     }
-
-    // Chỉ tự động chạy nếu đã phân tích xong đặc tả (có parsedSchema)
-    if (!parsedSchema || parsedSchema.length === 0) return;
-    if (selectedMethods.length === 0) return;
-
-    const runAutoRegenerate = async () => {
-      setIsRegenerating(true);
-      try {
-        const results = [];
-        for (const method of selectedMethods) {
-          const response = await fetch("http://localhost:8000/api/generate-seeds", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              fields: parsedSchema,
-              test_method: method,
-              boundary_count: boundaryCount,
-              partition_count: partitionCount,
-              api_key_override: sessionStorage.getItem("openai_api_key") || null,
-              raw_text: rawText
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error(`Không thể sinh hạt giống cho phương pháp ${method}`);
-          }
-
-          const data = await response.json();
-          results.push({
-            method,
-            population: data.initialPopulation || [],
-            isMock: data.is_mock || false
-          });
-
-          // Tránh lỗi Rate Limit (429) khi gọi liên tiếp nhiều API bằng cách nghỉ ngắn 250ms
-          if (selectedMethods.length > 1) {
-            await new Promise((resolve) => setTimeout(resolve, 250));
-          }
-        }
-        
-        // Cập nhật local state methodSeeds cho từng phương pháp
-        const newMethodSeeds: Record<string, any[]> = {
-          random: [],
-          bva: [],
-          ep: [],
-          decision: []
-        };
-        results.forEach(r => {
-          newMethodSeeds[r.method] = r.population;
-        });
-        setMethodSeeds(newMethodSeeds);
-
-        const populations = results.map(r => r.population);
-        
-        // Gộp và loại bỏ trùng lặp tuyệt đối
-        const seen = new Set<string>();
-        const combinedSeeds: any[] = [];
-        populations.flat().forEach((item) => {
-          const sortedObj = Object.keys(item).sort().reduce((acc, key) => {
-            acc[key] = item[key];
-            return acc;
-          }, {} as any);
-          const str = JSON.stringify(sortedObj);
-          if (!seen.has(str)) {
-            seen.add(str);
-            combinedSeeds.push(item);
-          }
+    setIsRegenerating(true);
+    try {
+      const results = [];
+      for (const method of selectedMethods) {
+        const response = await fetch("http://localhost:8000/api/generate-seeds", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            fields: parsedSchema,
+            test_method: method,
+            boundary_count: boundaryCount,
+            partition_count: partitionCount,
+            api_key_override: apiKey ? apiKey.trim() : null,
+            raw_text: rawText
+          })
         });
 
-        if (setInitialSeeds) {
-          setInitialSeeds(combinedSeeds);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || `Không thể sinh hạt giống bằng phương pháp ${method}`);
         }
-      } catch (e) {
-        console.error("Lỗi khi tự động tái sinh F0:", e);
-      } finally {
-        setIsRegenerating(false);
+
+        const data = await response.json();
+        results.push({
+          method,
+          population: data.initialPopulation || [],
+          isMock: data.is_mock || false
+        });
+
+        // Nghỉ ngắn 250ms giữa các lần gọi nếu chọn nhiều phương pháp
+        if (selectedMethods.length > 1) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
       }
-    };
 
-    // Debounce 300ms để tránh gọi API liên tục khi click nhanh
-    const timer = setTimeout(runAutoRegenerate, 300);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMethods, boundaryCount, partitionCount]);
+      // Cập nhật store methodSeeds cho từng phương pháp
+      const newMethodSeeds: Record<string, any[]> = {
+        random: [],
+        bva: [],
+        ep: [],
+        decision: []
+      };
+      results.forEach(r => {
+        newMethodSeeds[r.method] = r.population;
+      });
+      setMethodSeeds(newMethodSeeds);
+
+      const populations = results.map(r => r.population);
+      
+      // Gộp và loại bỏ trùng lặp tuyệt đối
+      const seen = new Set<string>();
+      const combinedSeeds: any[] = [];
+      populations.flat().forEach((item) => {
+        const sortedObj = Object.keys(item).sort().reduce((acc, key) => {
+          acc[key] = item[key];
+          return acc;
+        }, {} as any);
+        const str = JSON.stringify(sortedObj);
+        if (!seen.has(str)) {
+          seen.add(str);
+          combinedSeeds.push(item);
+        }
+      });
+
+      setInitialSeeds(combinedSeeds);
+    } catch (e: any) {
+      console.error("Lỗi khi tái sinh F0:", e);
+      alert(e.message || "Lỗi khi tái sinh F0");
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
 
   const handleParseAndGenerateSeeds = async () => {
     if (!rawText.trim()) return;
@@ -224,7 +203,19 @@ export const SpecInput: React.FC = () => {
 
       // 2. Gọi tuần tự sinh hạt giống F0 cho các phương pháp đã chọn (tránh lỗi Rate Limit 429)
       const results = [];
-      for (const method of selectedMethods) {
+      
+      // Tái sử dụng hạt giống F0 được sinh ra trực tiếp từ bước Phân tích đặc tả cho phương pháp 'random'
+      // Việc này giúp tránh gọi LLM hai lần liên tục, tiết kiệm tối đa lượng token tiêu thụ.
+      if (selectedMethods.includes('random')) {
+        results.push({
+          method: 'random',
+          population: res.initialPopulation || [],
+          isMock: res.is_mock || false
+        });
+      }
+
+      const otherMethods = selectedMethods.filter(method => method !== 'random');
+      for (const method of otherMethods) {
         const response = await fetch("http://localhost:8000/api/generate-seeds", {
           method: "POST",
           headers: {
@@ -253,7 +244,7 @@ export const SpecInput: React.FC = () => {
         });
 
         // Nghỉ ngắn 250ms giữa các lần gọi nếu chọn nhiều phương pháp
-        if (selectedMethods.length > 1) {
+        if (otherMethods.length > 1) {
           await new Promise((resolve) => setTimeout(resolve, 250));
         }
       }
@@ -738,7 +729,7 @@ export const SpecInput: React.FC = () => {
         </div>
 
         {/* THANH ĐIỀU KHIỂN TINH GỌN (CONTROL TOOLBAR) */}
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '12px', width: '100%' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '12px', width: '100%', flexWrap: 'wrap' }}>
           {/* Nút Cấu hình sinh hạt giống */}
           <button
             onClick={() => setShowAdvancedConfig(!showAdvancedConfig)}
@@ -746,11 +737,60 @@ export const SpecInput: React.FC = () => {
             className="btn btn-secondary"
             style={{ fontSize: '13px', padding: '9px 14px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            ⚙️ {showAdvancedConfig ? 'Ẩn Cấu HÌnh' : 'Cấu Hình Sinh'}
+            ⚙️ {showAdvancedConfig ? 'Ẩn Cấu Hình' : 'Cấu Hình Sinh'}
           </button>
 
+          {/* Nút Tinh Chỉnh Ràng Buộc Schema */}
+          {parsedSchema.length > 0 && (
+            <button
+              onClick={() => setShowSchemaDetails(!showSchemaDetails)}
+              type="button"
+              className="btn btn-secondary"
+              style={{
+                fontSize: '13px',
+                padding: '9px 14px',
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: showSchemaDetails ? 'rgba(167,139,250,0.1)' : 'rgba(255,255,255,0.03)',
+                borderColor: showSchemaDetails ? 'var(--color-violet)' : 'rgba(255,255,255,0.08)',
+                color: showSchemaDetails ? 'var(--color-violet)' : 'var(--text-secondary)'
+              }}
+            >
+              🔧 {showSchemaDetails ? 'Ẩn Sơ Đồ' : 'Tinh Chỉnh Ràng Buộc'}
+            </button>
+          )}
+
+          {/* Nút Xóa Trắng */}
+          {rawText.trim().length > 0 && (
+            <button
+              onClick={() => {
+                setRawText('');
+                setSelectedPresetId('');
+                handleClearSpecData();
+                setMethodSeeds({
+                  random: [],
+                  bva: [],
+                  ep: [],
+                  decision: []
+                });
+                setIsConnected(false);
+                setProcessingStep(0);
+              }}
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: '13px', padding: '9px 14px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--color-rose)', borderColor: 'rgba(244,63,94,0.15)' }}
+            >
+              Clean 🧹
+            </button>
+          )}
+
+          {/* Spacer */}
+          <div style={{ flex: 1 }} />
+
           {/* Checkbox Bypass Cache */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title="Buộc AI phân tích lại đặc tả (Bypass Cache hệ thống)">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Buộc AI phân tích lại đặc tả (Bypass Cache hệ thống)">
             <input
               type="checkbox"
               checked={forceReanalyze}
@@ -759,6 +799,39 @@ export const SpecInput: React.FC = () => {
             />
             <span>Bypass Cache</span>
           </label>
+
+          {/* Nút Tái Sinh F0 (chỉ hiện khi đã có Schema được bóc tách) */}
+          {parsedSchema.length > 0 && (
+            <button
+              onClick={handleRegenerateSeedsOnly}
+              disabled={isRegenerating || isParsing}
+              type="button"
+              className="btn btn-secondary"
+              style={{
+                padding: '9px 16px',
+                whiteSpace: 'nowrap',
+                color: 'var(--color-teal)',
+                borderColor: 'rgba(45,212,191,0.25)',
+                background: 'rgba(45,212,191,0.03)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '13px'
+              }}
+            >
+              {isRegenerating ? (
+                <>
+                  <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: 'var(--color-teal)', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+                  Đang Tái Sinh...
+                </>
+              ) : (
+                <>
+                  <Zap size={14} style={{ color: 'var(--color-teal)' }} />
+                  Tái Sinh F0
+                </>
+              )}
+            </button>
+          )}
 
           {/* Nút Phân Tích & Sinh F0 */}
           <button
@@ -769,13 +842,13 @@ export const SpecInput: React.FC = () => {
           >
             {isParsing ? (
               <>
-                <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+                <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.9s linear infinite', marginRight: '6px' }} />
                 Đang Phân Tích...
               </>
             ) : (
               <>
                 <Sparkles size={15} />
-                Phân Tích &amp; Sinh F0
+                {parsedSchema.length > 0 ? 'Phân Tích Lại' : 'Phân Tích & Sinh F0'}
               </>
             )}
           </button>
@@ -1192,21 +1265,7 @@ export const SpecInput: React.FC = () => {
                   Đang cập nhật...
                 </span>
               )}
-              {parsedSchema.length > 0 && (
-                <button
-                  onClick={() => setShowSchemaDetails(!showSchemaDetails)}
-                  className="btn btn-secondary flex align-center gap-xs"
-                  style={{ 
-                    fontSize: '12px', 
-                    padding: '6px 12px', 
-                    background: showSchemaDetails ? 'rgba(167,139,250,0.1)' : 'rgba(255,255,255,0.03)',
-                    borderColor: showSchemaDetails ? 'var(--color-violet)' : 'rgba(255,255,255,0.08)',
-                    color: showSchemaDetails ? 'var(--color-violet)' : 'var(--text-secondary)'
-                  }}
-                >
-                  🔧 {showSchemaDetails ? 'Ẩn Sơ Đồ Ràng Buộc' : 'Tinh Chỉnh Ràng Buộc (Schema)'}
-                </button>
-              )}
+
             </div>
           </div>
 
@@ -1299,7 +1358,9 @@ export const SpecInput: React.FC = () => {
                               <th style={{ padding: '10px 16px', color: 'var(--text-muted)', width: '80px' }}>STT</th>
                               {parsedSchema.map((field) => (
                                 <th key={field.name} style={{ padding: '10px 16px', color: 'var(--color-teal)', fontWeight: '600' }}>
-                                  {field.name}
+                                  <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                                    {field.name}
+                                  </div>
                                 </th>
                               ))}
                             </tr>
@@ -1315,7 +1376,9 @@ export const SpecInput: React.FC = () => {
                                 }}
                                 className="table-row-hover"
                               >
-                                <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>F0 #{idx + 1}</td>
+                                <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>
+                                  <div style={{ minWidth: '80px' }}>F0 #{idx + 1}</div>
+                                </td>
                                 {parsedSchema.map((field) => {
                                   const value = seed[field.name];
                                   const valStr = value !== undefined ? String(value) : '-';
@@ -1328,12 +1391,25 @@ export const SpecInput: React.FC = () => {
                                       key={field.name}
                                       style={{
                                         padding: '12px 16px',
-                                        color: isAttack ? 'var(--color-rose)' : 'var(--text-primary)',
-                                        fontWeight: isAttack ? '600' : 'normal',
-                                        fontFamily: field.type === 'number' || isAttack ? 'var(--font-mono)' : 'inherit'
+                                        verticalAlign: 'top'
                                       }}
                                     >
-                                      {valStr}
+                                      <div
+                                        style={{
+                                          color: isAttack ? 'var(--color-rose)' : 'var(--text-primary)',
+                                          fontWeight: isAttack ? '600' : 'normal',
+                                          fontFamily: field.type === 'number' || isAttack ? 'var(--font-mono)' : 'inherit',
+                                          minWidth: '120px',
+                                          maxWidth: '280px',
+                                          maxHeight: '80px',
+                                          overflowY: 'auto',
+                                          wordBreak: 'break-word',
+                                          whiteSpace: 'normal',
+                                          paddingRight: '4px'
+                                        }}
+                                      >
+                                        {valStr}
+                                      </div>
                                     </td>
                                   );
                                 })}
@@ -1380,7 +1456,9 @@ export const SpecInput: React.FC = () => {
                                     <th style={{ padding: '8px 12px', color: 'var(--text-muted)', width: '70px' }}>STT</th>
                                     {parsedSchema.map((field) => (
                                       <th key={field.name} style={{ padding: '8px 12px', color: 'var(--color-teal)', fontWeight: '600' }}>
-                                        {field.name}
+                                        <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                                          {field.name}
+                                        </div>
                                       </th>
                                     ))}
                                   </tr>
@@ -1396,7 +1474,9 @@ export const SpecInput: React.FC = () => {
                                       }}
                                       className="table-row-hover"
                                     >
-                                      <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>F0 #{idx + 1}</td>
+                                      <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
+                                        <div style={{ minWidth: '70px' }}>F0 #{idx + 1}</div>
+                                      </td>
                                       {parsedSchema.map((field) => {
                                         const value = seed[field.name];
                                         const valStr = value !== undefined ? String(value) : '-';
@@ -1409,12 +1489,25 @@ export const SpecInput: React.FC = () => {
                                             key={field.name}
                                             style={{
                                               padding: '10px 12px',
-                                              color: isAttack ? 'var(--color-rose)' : 'var(--text-primary)',
-                                              fontWeight: isAttack ? '600' : 'normal',
-                                              fontFamily: field.type === 'number' || isAttack ? 'var(--font-mono)' : 'inherit'
+                                              verticalAlign: 'top'
                                             }}
                                           >
-                                            {valStr}
+                                            <div
+                                              style={{
+                                                color: isAttack ? 'var(--color-rose)' : 'var(--text-primary)',
+                                                fontWeight: isAttack ? '600' : 'normal',
+                                                fontFamily: field.type === 'number' || isAttack ? 'var(--font-mono)' : 'inherit',
+                                                minWidth: '120px',
+                                                maxWidth: '280px',
+                                                maxHeight: '80px',
+                                                overflowY: 'auto',
+                                                wordBreak: 'break-word',
+                                                whiteSpace: 'normal',
+                                                paddingRight: '4px'
+                                              }}
+                                            >
+                                              {valStr}
+                                            </div>
                                           </td>
                                         );
                                       })}
@@ -1574,20 +1667,28 @@ export const SpecInput: React.FC = () => {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                         <thead>
                           <tr style={{ background: 'rgba(255,255,255,0.05)' }}>
-                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Trường (Field)</th>
-                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Kiểu (Type)</th>
-                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Bắt buộc</th>
-                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Ràng buộc (Constraints)</th>
+                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Trường (Field)</div></th>
+                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ minWidth: '100px', maxWidth: '200px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Kiểu (Type)</div></th>
+                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ minWidth: '80px', maxWidth: '120px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Bắt buộc</div></th>
+                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ minWidth: '150px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Ràng buộc (Constraints)</div></th>
                           </tr>
                         </thead>
                         <tbody>
                           {selectedHistoryItem.fields?.map((field: any, idx: number) => (
                             <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                              <td style={{ padding: '10px 12px', color: 'var(--color-yellow)' }}>{field.name}</td>
-                              <td style={{ padding: '10px 12px', color: 'var(--color-teal)' }}>{field.type}</td>
-                              <td style={{ padding: '10px 12px' }}>{field.required ? '✅ Có' : '❌ Không'}</td>
-                              <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>
-                                {Array.isArray(field.constraints) ? field.constraints.join(', ') : ''}
+                              <td style={{ padding: '10px 12px', color: 'var(--color-yellow)', verticalAlign: 'top' }}>
+                                <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{field.name}</div>
+                              </td>
+                              <td style={{ padding: '10px 12px', color: 'var(--color-teal)', verticalAlign: 'top' }}>
+                                <div style={{ minWidth: '100px', maxWidth: '200px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{field.type}</div>
+                              </td>
+                              <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
+                                <div style={{ minWidth: '80px', maxWidth: '120px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{field.required ? '✅ Có' : '❌ Không'}</div>
+                              </td>
+                              <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', verticalAlign: 'top' }}>
+                                <div style={{ minWidth: '150px', maxWidth: '300px', maxHeight: '80px', overflowY: 'auto', wordBreak: 'break-word', whiteSpace: 'normal', paddingRight: '4px' }}>
+                                  {Array.isArray(field.constraints) ? field.constraints.join(', ') : ''}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1605,7 +1706,9 @@ export const SpecInput: React.FC = () => {
                             <tr>
                               <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--color-violet)' }}>#</th>
                               {selectedHistoryItem.fields?.map((f: any) => (
-                                <th key={f.name} style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--color-violet)' }}>{f.name}</th>
+                                <th key={f.name} style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--color-violet)' }}>
+                                  <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{f.name}</div>
+                                </th>
                               ))}
                             </tr>
                           </thead>
@@ -1614,8 +1717,10 @@ export const SpecInput: React.FC = () => {
                               <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                                 <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{idx + 1}</td>
                                 {selectedHistoryItem.fields?.map((f: any) => (
-                                  <td key={f.name} style={{ padding: '10px 12px', color: 'var(--text-primary)' }}>
-                                    {typeof seed[f.name] === 'object' ? JSON.stringify(seed[f.name]) : String(seed[f.name] ?? '')}
+                                  <td key={f.name} style={{ padding: '10px 12px', color: 'var(--text-primary)', verticalAlign: 'top' }}>
+                                    <div style={{ minWidth: '120px', maxWidth: '280px', maxHeight: '80px', overflowY: 'auto', wordBreak: 'break-word', whiteSpace: 'normal', paddingRight: '4px' }}>
+                                      {typeof seed[f.name] === 'object' ? JSON.stringify(seed[f.name]) : String(seed[f.name] ?? '')}
+                                    </div>
                                   </td>
                                 ))}
                               </tr>

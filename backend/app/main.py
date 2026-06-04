@@ -129,7 +129,7 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
 
     try:
         # 1. Gọi OpenAI API (hoặc bộ dự phòng Fallback) xử lý phân tích ngữ nghĩa
-        ai_result = parse_spec_with_openai(req.raw_text, req.api_key_override)
+        ai_result = parse_spec_with_openai(req.raw_text, req.api_key_override, db=db)
     except ValueError as ve:
         if str(ve).startswith("API_KEY_ERROR"):
             print(f">>> ERROR: {str(ve)}")
@@ -182,7 +182,7 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/api/generate-seeds")
-def api_generate_seeds(req: SeedGenerationRequest):
+def api_generate_seeds(req: SeedGenerationRequest, db: Session = Depends(get_db)):
     """
     ENDPOINT 1.5: Tái sinh tập hạt giống F0 dựa trên phương pháp kiểm thử đã chọn.
     """
@@ -195,7 +195,8 @@ def api_generate_seeds(req: SeedGenerationRequest):
             boundary_count=req.boundary_count,
             partition_count=req.partition_count,
             api_key=req.api_key_override,
-            raw_text=req.raw_text or ""
+            raw_text=req.raw_text or "",
+            db=db
         )
         return {
             "initialPopulation": seeds,
@@ -211,7 +212,7 @@ def api_generate_seeds(req: SeedGenerationRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/evaluate-seeds")
-def api_evaluate_seeds(req: EvaluateRequest):
+def api_evaluate_seeds(req: EvaluateRequest, db: Session = Depends(get_db)):
     """
     ENDPOINT: Đánh giá chất lượng tập dữ liệu F0 Initial Seeds.
     Nhận tập seeds, schemas và gửi cho AI (Gemini/OpenAI) để chấm điểm và đánh giá ưu/nhược điểm.
@@ -222,7 +223,8 @@ def api_evaluate_seeds(req: EvaluateRequest):
             seeds=req.seeds,
             test_method=req.test_method,
             raw_text=req.raw_text,
-            api_key_override=req.api_key_override
+            api_key_override=req.api_key_override,
+            db=db
         )
         return {"success": True, "data": evaluation}
     except ValueError as ve:
@@ -233,6 +235,39 @@ def api_evaluate_seeds(req: EvaluateRequest):
     except Exception as e:
         print(f"Error evaluating seeds: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ai-logs")
+def api_get_ai_logs(db: Session = Depends(get_db), limit: int = 50):
+    """
+    ENDPOINT: Lấy danh sách nhật ký cuộc gọi AI gần nhất.
+    """
+    logs = db.query(models.AICallLog).order_by(models.AICallLog.timestamp.desc()).limit(limit).all()
+    return [
+        {
+            "id": log.id,
+            "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+            "endpoint": log.endpoint,
+            "provider": log.provider,
+            "model": log.model,
+            "input_summary": log.input_summary,
+            "output_summary": log.output_summary,
+            "token_count_estimate": log.token_count_estimate,
+            "status": log.status,
+            "error_message": log.error_message
+        }
+        for log in logs
+    ]
+
+@app.delete("/api/ai-logs")
+def api_clear_ai_logs(db: Session = Depends(get_db)):
+    """
+    ENDPOINT: Xóa toàn bộ lịch sử nhật ký cuộc gọi AI.
+    """
+    db.query(models.AICallLog).delete()
+    db.commit()
+    return {"status": "success", "message": "Đã xóa toàn bộ nhật ký cuộc gọi AI thành công!"}
+
 
 @app.get("/api/specifications")
 def api_get_specifications(db: Session = Depends(get_db)):
@@ -420,10 +455,10 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
         data = await websocket.receive_text()
         req_data = json.loads(data)
         
-        generations = req_data.get("generations", 60)
-        pop_size = req_data.get("popSize", 100)
-        crossover_rate = req_data.get("crossoverRate", 0.8)
-        mutation_rate = req_data.get("mutationRate", 0.15)
+        generations = int(req_data.get("generations", 60))
+        pop_size = int(req_data.get("popSize", 100))
+        crossover_rate = float(req_data.get("crossoverRate", 0.8))
+        mutation_rate = float(req_data.get("mutationRate", 0.15))
         weights_data = req_data.get("weights", {"validation": 0.5, "boundary": 0.2, "security": 0.2, "diversity": 0.1})
         initial_seeds = req_data.get("initial_seeds", [])
         

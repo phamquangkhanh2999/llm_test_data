@@ -489,12 +489,24 @@ export const ComparisonArena: React.FC = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
-                      <th style={{ padding: '10px' }}>Thuật toán</th>
-                      <th style={{ padding: '10px' }}>Độ phủ (Coverage)</th>
-                      <th style={{ padding: '10px' }}>Trùng lặp</th>
-                      <th style={{ padding: '10px' }}>Lỗi biên/Độc hại</th>
-                      <th style={{ padding: '10px' }}>Thời gian chạy</th>
-                      <th style={{ padding: '10px' }}>Đánh giá danh hiệu</th>
+                      <th style={{ padding: '10px' }}>
+                        <div style={{ minWidth: '150px', maxWidth: '250px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Thuật toán</div>
+                      </th>
+                      <th style={{ padding: '10px' }}>
+                        <div style={{ minWidth: '100px', maxWidth: '150px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Độ phủ (Coverage)</div>
+                      </th>
+                      <th style={{ padding: '10px' }}>
+                        <div style={{ minWidth: '100px', maxWidth: '150px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Trùng lặp</div>
+                      </th>
+                      <th style={{ padding: '10px' }}>
+                        <div style={{ minWidth: '120px', maxWidth: '180px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Lỗi biên/Độc hại</div>
+                      </th>
+                      <th style={{ padding: '10px' }}>
+                        <div style={{ minWidth: '100px', maxWidth: '150px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Thời gian chạy</div>
+                      </th>
+                      <th style={{ padding: '10px' }}>
+                        <div style={{ minWidth: '150px', maxWidth: '250px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Đánh giá danh hiệu</div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -507,28 +519,40 @@ export const ComparisonArena: React.FC = () => {
                           fontWeight: res.key === 'hybrid' ? 'bold' : 'normal'
                         }}
                       >
-                        <td style={{ padding: '12px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: res.color }}></span>
-                          {res.name}
+                        <td style={{ padding: '12px 10px', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '150px', maxWidth: '250px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: res.color, flexShrink: 0 }}></span>
+                            {res.name}
+                          </div>
                         </td>
-                        <td style={{ padding: '12px 10px', fontFamily: 'var(--font-mono)' }}>{res.coverage}%</td>
-                        <td style={{ padding: '12px 10px', fontFamily: 'var(--font-mono)' }}>{res.duplicateRate}%</td>
-                        <td style={{ padding: '12px 10px', fontFamily: 'var(--font-mono)', color: res.edgeCases > 8 ? 'var(--color-rose)' : 'inherit' }}>
-                          {res.edgeCases} ca
+                        <td style={{ padding: '12px 10px', verticalAlign: 'middle' }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', minWidth: '100px', maxWidth: '150px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{res.coverage}%</div>
                         </td>
-                        <td style={{ padding: '12px 10px', fontFamily: 'var(--font-mono)' }}>{res.execTime} ms</td>
-                        <td style={{ padding: '12px 10px' }}>
-                          <span 
-                            style={{ 
-                              fontSize: '11px', 
-                              padding: '2px 8px', 
-                              borderRadius: '10px',
-                              background: res.key === 'hybrid' ? 'rgba(244,63,94,0.15)' : 'rgba(255,255,255,0.04)',
-                              color: res.key === 'hybrid' ? 'var(--color-rose)' : 'var(--text-secondary)'
-                            }}
-                          >
-                            {res.badge}
-                          </span>
+                        <td style={{ padding: '12px 10px', verticalAlign: 'middle' }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', minWidth: '100px', maxWidth: '150px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{res.duplicateRate}%</div>
+                        </td>
+                        <td style={{ padding: '12px 10px', verticalAlign: 'middle' }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', color: res.edgeCases > 8 ? 'var(--color-rose)' : 'inherit', minWidth: '120px', maxWidth: '180px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                            {res.edgeCases} ca
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px 10px', verticalAlign: 'middle' }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', minWidth: '100px', maxWidth: '150px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{res.execTime} ms</div>
+                        </td>
+                        <td style={{ padding: '12px 10px', verticalAlign: 'middle' }}>
+                          <div style={{ minWidth: '150px', maxWidth: '250px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                            <span 
+                              style={{ 
+                                fontSize: '11px', 
+                                padding: '2px 8px', 
+                                borderRadius: '10px',
+                                background: res.key === 'hybrid' ? 'rgba(244,63,94,0.15)' : 'rgba(255,255,255,0.04)',
+                                color: res.key === 'hybrid' ? 'var(--color-rose)' : 'var(--text-secondary)'
+                              }}
+                            >
+                              {res.badge}
+                            </span>
+                          </div>
                         </td>
                       </tr>
                     ))}

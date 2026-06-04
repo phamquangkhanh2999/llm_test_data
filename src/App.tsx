@@ -8,11 +8,12 @@ import { PageLayout } from './components/PageLayout';
 import {
   Sparkles, Activity, Layers, Key,
   CheckCircle, Database, Download,
-  CheckCircle2, Zap, FlaskConical, Menu, X,
+  CheckCircle2, Zap, FlaskConical, Menu, X, Terminal,
 } from 'lucide-react';
 import { useAppStore } from './store/useAppStore';
 import { ToastContainer } from './components/ToastContainer';
 import { Tabs } from './components/Tabs';
+import { AILogsViewer } from './components/AILogsViewer';
 
 // ─── Sidebar nav item ─────────────────────────────────────────────────────────
 interface NavItemProps {
@@ -73,6 +74,7 @@ function App() {
   // Tab state within steps
   const [prepareTab, setPrepareTab] = React.useState<string>('ai');
   const [optimizeTab, setOptimizeTab] = React.useState<string>('run');
+  const [isAILogsOpen, setIsAILogsOpen] = React.useState(false);
 
   const {
     schemaName,
@@ -207,26 +209,51 @@ function App() {
             )}
           </div>
 
-          {/* API Key */}
-          <div style={{
-            background: apiKey.trim().length > 10 ? 'rgba(45, 212, 191, 0.06)' : 'rgba(0,0,0,0.22)',
-            padding: '7px 12px',
-            borderRadius: '8px',
-            border: '1px solid',
-            borderColor: apiKey.trim().length > 10 ? 'rgba(45, 212, 191, 0.3)' : 'rgba(255,255,255,0.07)',
-            display: 'flex', alignItems: 'center', gap: '10px',
-            minWidth: mobile ? 'auto' : '260px',
-            maxWidth: mobile ? '160px' : undefined,
-          }}>
-            <Key size={13} style={{ color: apiKey.trim().length > 10 ? 'var(--color-teal)' : 'var(--text-muted)', flexShrink: 0 }} />
-            <input
-              type="password"
-              placeholder={mobile ? "API Key..." : "Dán Gemini API Key vào đây..."}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              style={{ flex: 1, padding: '2px 6px', fontSize: '12px', background: 'transparent', border: 'none', outline: 'none', color: apiKey.trim().length > 10 ? 'var(--color-teal)' : 'var(--text-primary)', minWidth: 0 }}
-            />
-            {apiKey.trim().length > 10 && <CheckCircle size={13} style={{ color: 'var(--color-teal)', flexShrink: 0 }} />}
+          {/* AI Logs & API Key */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={() => setIsAILogsOpen(true)}
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '8px',
+                padding: '7px 12px',
+                cursor: 'pointer',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px',
+                transition: 'all 0.16s'
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+            >
+              <Terminal size={14} style={{ color: 'var(--color-teal)' }} />
+              <span>Nhật Ký AI</span>
+            </button>
+
+            {/* API Key */}
+            <div style={{
+              background: apiKey.trim().length > 10 ? 'rgba(45, 212, 191, 0.06)' : 'rgba(0,0,0,0.22)',
+              padding: '7px 12px',
+              borderRadius: '8px',
+              border: '1px solid',
+              borderColor: apiKey.trim().length > 10 ? 'rgba(45, 212, 191, 0.3)' : 'rgba(255,255,255,0.07)',
+              display: 'flex', alignItems: 'center', gap: '10px',
+              minWidth: mobile ? 'auto' : '260px',
+              maxWidth: mobile ? '160px' : undefined,
+            }}>
+              <Key size={13} style={{ color: apiKey.trim().length > 10 ? 'var(--color-teal)' : 'var(--text-muted)', flexShrink: 0 }} />
+              <input
+                type="password"
+                placeholder={mobile ? "API Key..." : "Dán Gemini API Key vào đây..."}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                style={{ flex: 1, padding: '2px 6px', fontSize: '12px', background: 'transparent', border: 'none', outline: 'none', color: apiKey.trim().length > 10 ? 'var(--color-teal)' : 'var(--text-primary)', minWidth: 0 }}
+              />
+              {apiKey.trim().length > 10 && <CheckCircle size={13} style={{ color: 'var(--color-teal)', flexShrink: 0 }} />}
+            </div>
           </div>
         </header>
 
@@ -320,6 +347,7 @@ function App() {
         </footer>
       </main>
 
+      <AILogsViewer isOpen={isAILogsOpen} onClose={() => setIsAILogsOpen(false)} />
       <ToastContainer />
       <style>{`
         @keyframes pulse-dot {

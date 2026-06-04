@@ -13,7 +13,8 @@ export const Visualizer: React.FC = () => {
     initialSeeds,
     handleEvolutionComplete: onEvolutionComplete,
     specificationId,
-    setActiveScreen
+    methodSeeds,
+    schemaName
   } = useAppStore();
 
   // --- CẤU HÌNH BỘ TỐI ƯU HÓA DỮ LIỆU TEST (GA CONFIG) ---
@@ -671,6 +672,81 @@ export const Visualizer: React.FC = () => {
 
         </div>
       </div>
+
+      {/* THÔNG TIN DỮ LIỆU ĐẦU VÀO TỪ BƯỚC 1 (INPUT DATA SOURCE) */}
+      <div className="glass-card blue-border" style={{ 
+        padding: '16px 20px', 
+        background: 'rgba(59,130,246,0.04)', 
+        border: '1px solid rgba(59,130,246,0.18)',
+        marginBottom: '8px'
+      }}>
+        <h3 style={{ fontSize: '13.5px', color: '#fff', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '16px' }}>📋</span>
+          DỮ LIỆU ĐẦU VÀO TỪ BƯỚC 1 (INPUT DATA SOURCE)
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+          <div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Kịch bản nghiệp vụ:</div>
+            <div style={{ fontSize: '13.5px', fontWeight: 'bold', color: '#fff', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {schemaName || 'Mặc định'}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Quy tắc ràng buộc:</div>
+            <div style={{ fontSize: '13.5px', fontWeight: 'bold', color: 'var(--color-teal)', marginTop: '2px' }}>
+              {schema.length} trường dữ liệu
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Tổng hạt giống F0 đã nạp:</div>
+            <div style={{ fontSize: '13.5px', fontWeight: 'bold', color: 'var(--color-violet)', marginTop: '2px' }}>
+              {initialSeeds.length} hạt giống
+            </div>
+          </div>
+          {(() => {
+            const hasMethodBreakdown = Object.values(methodSeeds).some(arr => arr && arr.length > 0);
+            if (hasMethodBreakdown) {
+              return (
+                <div style={{ gridColumn: 'span 2' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Cơ cấu hạt giống F0 theo phương pháp:</div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {methodSeeds.random && methodSeeds.random.length > 0 && (
+                      <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-primary)' }}>
+                        Ngẫu nhiên: <b>{methodSeeds.random.length}</b>
+                      </span>
+                    )}
+                    {methodSeeds.bva && methodSeeds.bva.length > 0 && (
+                      <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '4px', background: 'rgba(45,212,191,0.08)', border: '1px solid rgba(45,212,191,0.2)', color: 'var(--color-teal)' }}>
+                        Phân tích biên (BVA): <b>{methodSeeds.bva.length}</b>
+                      </span>
+                    )}
+                    {methodSeeds.ep && methodSeeds.ep.length > 0 && (
+                      <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '4px', background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.2)', color: 'var(--color-violet)' }}>
+                        Phân vùng (EP): <b>{methodSeeds.ep.length}</b>
+                      </span>
+                    )}
+                    {methodSeeds.decision && methodSeeds.decision.length > 0 && (
+                      <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '4px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', color: '#f59e0b' }}>
+                        Bảng quyết định: <b>{methodSeeds.decision.length}</b>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            } else {
+              return (
+                <div style={{ gridColumn: 'span 2' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Cơ cấu nguồn sinh F0:</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px', fontStyle: 'italic' }}>
+                    Dữ liệu đã gộp chung (đã nạp sẵn hoặc tải lên từ file)
+                  </div>
+                </div>
+              );
+            }
+          })()}
+        </div>
+      </div>
+
       {/* CHỌN CẤU HÌNH TỐI ƯU (OPTIMIZATION PROFILE) */}
       <div className="glass-card teal-border" style={{ padding: '20px', background: 'rgba(15,23,42,0.6)', marginBottom: '8px' }}>
         <h3 style={{ fontSize: '14px', color: '#fff', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.05em' }}>
@@ -970,6 +1046,47 @@ export const Visualizer: React.FC = () => {
                           💀 <b>Security</b>: SQLi/XSS Attack
                         </span>
                       </div>
+
+                      {/* Origins stats of Top 10 */}
+                      {(() => {
+                        const origins = { seed: 0, crossover: 0, mutation: 0, hc: 0 };
+                        currentChromosomes.forEach(c => {
+                          const orig = (c.origin || '').toLowerCase();
+                          if (orig.includes('seed') || orig.includes('init_') || orig === 'random' || orig === 'bva' || orig === 'ep' || orig === 'decision') {
+                            origins.seed++;
+                          } else if (orig.includes('cross') || orig.includes('mix')) {
+                            origins.crossover++;
+                          } else if (orig.includes('mut')) {
+                            origins.mutation++;
+                          } else if (orig.includes('hc') || orig.includes('tweak') || orig.includes('fine_tuned') || orig.includes('fine-tuned')) {
+                            origins.hc++;
+                          } else {
+                            origins.seed++;
+                          }
+                        });
+
+                        return (
+                          <div style={{ marginTop: '12px', borderTop: '1px dashed rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                            <div style={{ fontWeight: 'bold', color: 'var(--text-secondary)', letterSpacing: '0.03em', marginBottom: '6px' }}>
+                              🧬 Nguồn gốc Top {currentChromosomes.length} ca test ưu tú nhất (Evolving Origins):
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ background: 'rgba(59,130,246,0.08)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(59,130,246,0.2)', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                🌱 F0 Seeds: <b>{origins.seed}</b>
+                              </span>
+                              <span style={{ background: 'rgba(45,212,191,0.08)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(45,212,191,0.2)', color: 'var(--color-teal)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                🧬 Crossover: <b>{origins.crossover}</b>
+                              </span>
+                              <span style={{ background: 'rgba(244,63,94,0.08)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(244,63,94,0.2)', color: 'var(--color-rose)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                💥 Mutation: <b>{origins.mutation}</b>
+                              </span>
+                              <span style={{ background: 'rgba(167,139,250,0.08)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(167,139,250,0.2)', color: 'var(--color-violet)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                🧗‍♂️ Hill Climbing: <b>{origins.hc}</b>
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })()}
@@ -1068,25 +1185,10 @@ export const Visualizer: React.FC = () => {
 
             <div className="flex align-center gap-sm" style={{ marginLeft: 'auto' }}>
               {selectedTestCase.fitness > 0.85 && (
-                <span className="flex align-center gap-sm" style={{ color: 'var(--color-teal)', fontSize: '12px', marginRight: '8px' }}>
+                <span className="flex align-center gap-sm" style={{ color: 'var(--color-teal)', fontSize: '12px' }}>
                   <CheckCircle size={14} /> Ca kiểm thử biên xuất sắc
                 </span>
               )}
-              <button 
-                onClick={() => setActiveScreen('export')}
-                className="btn btn-primary"
-                style={{ 
-                  fontSize: '12px', 
-                  padding: '8px 14px', 
-                  background: 'linear-gradient(135deg, var(--color-rose) 0%, #be123c 100%)', 
-                  border: 'none',
-                  color: '#fff',
-                  fontWeight: '700',
-                  cursor: 'pointer'
-                }}
-              >
-                👉 Sang Bước 3: Xuất Kết Quả
-              </button>
             </div>
           </div>
 
@@ -1099,27 +1201,35 @@ export const Visualizer: React.FC = () => {
                 borderRadius: 'var(--radius-sm)', 
                 border: '1px solid rgba(255,255,255,0.05)',
                 maxHeight: '160px',
-                overflowY: 'auto'
+                overflow: 'auto'
               }}
             >
               <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', color: 'var(--text-primary)' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
-                    <th style={{ textAlign: 'left', paddingBottom: '6px', fontSize: '10px', textTransform: 'uppercase' }}>Trường dữ liệu</th>
-                    <th style={{ textAlign: 'left', paddingBottom: '6px', fontSize: '10px', textTransform: 'uppercase' }}>Giá trị sinh ra</th>
+                    <th style={{ textAlign: 'left', paddingBottom: '6px', fontSize: '10px', textTransform: 'uppercase' }}>
+                      <div style={{ minWidth: '100px', maxWidth: '150px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Trường dữ liệu</div>
+                    </th>
+                    <th style={{ textAlign: 'left', paddingBottom: '6px', fontSize: '10px', textTransform: 'uppercase' }}>
+                      <div style={{ minWidth: '150px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Giá trị sinh ra</div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {Object.entries(selectedTestCase.values).map(([key, val]) => (
                     <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                      <td style={{ padding: '6px 0', fontFamily: 'var(--font-mono)', color: 'var(--color-teal)', fontWeight: 'bold' }}>{key}</td>
-                      <td style={{ padding: '6px 0', fontFamily: 'var(--font-mono)' }}>
-                        <span style={{ 
-                          color: String(val).includes("'") || String(val).includes("<script") || String(val).includes("--") ? 'var(--color-rose)' : 'inherit',
-                          fontWeight: String(val).includes("'") || String(val).includes("<script") || String(val).includes("--") ? 'bold' : 'normal'
-                        }}>
-                          {String(val) === '' ? <i style={{ color: 'var(--text-muted)' }}>(Chuỗi rỗng / Empty)</i> : String(val)}
-                        </span>
+                      <td style={{ padding: '6px 0', verticalAlign: 'top' }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-teal)', fontWeight: 'bold', minWidth: '100px', maxWidth: '150px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{key}</div>
+                      </td>
+                      <td style={{ padding: '6px 0', verticalAlign: 'top' }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', minWidth: '150px', maxWidth: '300px', maxHeight: '80px', overflowY: 'auto', wordBreak: 'break-word', whiteSpace: 'normal', paddingRight: '4px' }}>
+                          <span style={{ 
+                            color: String(val).includes("'") || String(val).includes("<script") || String(val).includes("--") ? 'var(--color-rose)' : 'inherit',
+                            fontWeight: String(val).includes("'") || String(val).includes("<script") || String(val).includes("--") ? 'bold' : 'normal'
+                          }}>
+                            {String(val) === '' ? <i style={{ color: 'var(--text-muted)' }}>(Chuỗi rỗng / Empty)</i> : String(val)}
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1194,30 +1304,8 @@ export const Visualizer: React.FC = () => {
           </div>
           
           <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', margin: 0, lineHeight: '1.6' }}>
-            Thuật toán di truyền di trú GA đã phối hợp leo đồi HC gọt giũa thành công <b>{history[history.length - 1]?.chromosomes.length} ca test</b> lý tưởng. Dữ liệu đã phủ kín biên điều kiện đầu vào, chèn payload bảo mật và triệt tiêu trùng lặp. Bạn muốn thực hiện thao tác nào tiếp theo?
+            Thuật toán di truyền di trú GA đã phối hợp leo đồi HC gọt giũa thành công <b>{history[history.length - 1]?.chromosomes.length} ca test</b> lý tưởng. Dữ liệu đã phủ kín biên điều kiện đầu vào, chèn payload bảo mật và triệt tiêu trùng lặp. Bạn hãy nhấn nút <b>"Tiếp theo: Xuất Kết Quả"</b> ở góc dưới cùng bên phải để chuyển sang Bước 3.
           </p>
-
-          <div className="flex gap-md" style={{ flexWrap: 'wrap', marginTop: '6px' }}>
-            <button 
-              onClick={() => setActiveScreen('export')}
-              className="btn btn-primary glow-teal"
-              style={{ 
-                fontSize: '12.5px', 
-                padding: '10px 18px', 
-                background: 'linear-gradient(135deg, var(--color-teal) 0%, #0d9488 100%)',
-                border: 'none',
-                color: '#fff',
-                fontWeight: '700',
-                display: 'flex',
-                alignItems: 'center',
-                cursor: 'pointer',
-                gap: '6px',
-                transition: 'all 0.3s'
-              }}
-            >
-              📥 Sang Bước 3: Xuất Kết Quả &amp; Test API &rarr;
-            </button>
-          </div>
         </div>
       )}
 

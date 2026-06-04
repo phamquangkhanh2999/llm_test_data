@@ -110,3 +110,22 @@ class EvolutionStats(Base):
 
     # Mối quan hệ ngược về Job
     job = relationship("Job", back_populates="evolution_history")
+
+
+class AICallLog(Base):
+    """
+    Bảng AI_CALL_LOGS: Lưu nhật ký các cuộc gọi đến AI LLM (Gemini/OpenAI/Mock).
+    """
+    __tablename__ = "ai_call_logs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    endpoint = Column(String(100), nullable=False) # Endpoint gọi (e.g. "/api/specifications")
+    provider = Column(String(50), nullable=False) # e.g. "Gemini", "OpenAI", "Mock"
+    model = Column(String(50), nullable=False) # e.g. "gemini-3.5-flash", "gpt-3.5-turbo", "mock"
+    input_summary = Column(Text, nullable=True) # Tóm tắt dữ liệu/prompt gửi đi
+    output_summary = Column(Text, nullable=True) # Tóm tắt dữ liệu/JSON trả về
+    token_count_estimate = Column(Integer, nullable=True) # Ước lượng tokens (chars / 4)
+    status = Column(String(20), nullable=False) # "SUCCESS" hoặc "FAILED"
+    error_message = Column(Text, nullable=True) # Chi tiết lỗi nếu status là FAILED
+
