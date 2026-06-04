@@ -49,7 +49,69 @@ def get_mock_fallback_data(raw_text: str):
             ]
         }
         
-    # 3. Fallback mặc định nếu không khớp preset nào
+    # 3. Preset Đăng nhập (Login Form)
+    if any(kw in text_lower for kw in ["đăng nhập", "login", "sign in", "signin", "log in"]) and ("password" in text_lower or "mật khẩu" in text_lower):
+        return {
+            "fields": [
+                {"name": "username", "type": "string", "required": True, "minLength": 3, "maxLength": 32, "description": "Tên đăng nhập hoặc email"},
+                {"name": "password", "type": "string", "required": True, "minLength": 6, "maxLength": 30, "description": "Mật khẩu đăng nhập"},
+                {"name": "rememberMe", "type": "string", "required": False, "allowedValues": ["true", "false"], "description": "Ghi nhớ đăng nhập"}
+            ],
+            "initialPopulation": [
+                {"username": "admin", "password": "Admin@123!", "rememberMe": "true"},
+                {"username": "john.doe@gmail.com", "password": "JohnDoe2026!", "rememberMe": "false"},
+                {"username": "", "password": "short", "rememberMe": "true"}, # lỗi empty + short
+                {"username": "a" * 33, "password": "ValidPass1!", "rememberMe": "maybe"}, # lỗi max length + invalid enum
+                {"username": "admin' OR '1'='1", "password": "' OR 1=1 --", "rememberMe": "true"}, # SQLi
+                {"username": "test_user", "password": "PassW0rd!", "rememberMe": "false"},
+            ]
+        }
+
+    # 4. Preset API Search Endpoint
+    if any(kw in text_lower for kw in ["search", "tìm kiếm", "query", "api"]) and ("limit" in text_lower or "page" in text_lower or "sort" in text_lower or "filter" in text_lower):
+        return {
+            "fields": [
+                {"name": "query", "type": "string", "required": True, "minLength": 1, "maxLength": 200, "description": "Từ khóa tìm kiếm"},
+                {"name": "limit", "type": "number", "required": False, "minValue": 1, "maxValue": 100, "description": "Số kết quả tối đa mỗi trang"},
+                {"name": "page", "type": "number", "required": False, "minValue": 1, "maxValue": 1000, "description": "Số trang"},
+                {"name": "sortBy", "type": "string", "required": False, "allowedValues": ["relevance", "date", "price", "name"], "description": "Tiêu chí sắp xếp"},
+                {"name": "order", "type": "string", "required": False, "allowedValues": ["asc", "desc"], "description": "Thứ tự sắp xếp"}
+            ],
+            "initialPopulation": [
+                {"query": "laptop gaming", "limit": 20, "page": 1, "sortBy": "relevance", "order": "desc"},
+                {"query": "", "limit": 0, "page": 0, "sortBy": "invalid", "order": "asc"}, # lỗi validation
+                {"query": "phone", "limit": 100, "page": 1, "sortBy": "price", "order": "asc"}, # biên limit max
+                {"query": "x" * 201, "limit": 101, "page": 1001, "sortBy": "name", "order": "desc"}, # lỗi biên
+                {"query": "laptop' UNION SELECT * FROM users --", "limit": 50, "page": 1, "sortBy": "date", "order": "desc"}, # SQLi
+                {"query": "<script>alert(document.cookie)</script>", "limit": 10, "page": 1, "sortBy": "relevance", "order": "asc"}, # XSS
+            ]
+        }
+
+    # 5. Preset E-Commerce Checkout
+    if any(kw in text_lower for kw in ["checkout", "thanh toán", "đặt hàng", "order", "mua hàng", "cart", "giỏ hàng", "shipping", "giao hàng"]):
+        return {
+            "fields": [
+                {"name": "fullName", "type": "string", "required": True, "minLength": 2, "maxLength": 50, "description": "Họ tên người nhận"},
+                {"name": "email", "type": "email", "required": True, "description": "Email xác nhận đơn hàng"},
+                {"name": "phone", "type": "phone", "required": True, "description": "SĐT giao hàng"},
+                {"name": "address", "type": "string", "required": True, "minLength": 10, "maxLength": 200, "description": "Địa chỉ giao hàng chi tiết"},
+                {"name": "quantity", "type": "number", "required": True, "minValue": 1, "maxValue": 20, "description": "Số lượng sản phẩm"},
+                {"name": "paymentMethod", "type": "string", "required": True, "allowedValues": ["COD", "CreditCard", "BankTransfer", "EWallet"], "description": "Phương thức thanh toán"},
+                {"name": "promoCode", "type": "string", "required": False, "maxLength": 15, "description": "Mã giảm giá (tùy chọn)"}
+            ],
+            "initialPopulation": [
+                {"fullName": "Nguyễn Văn An", "email": "an.nguyen@gmail.com", "phone": "0912345678", "address": "123 Nguyễn Huệ, Quận 1, TP.HCM", "quantity": 2, "paymentMethod": "COD", "promoCode": "SALE2026"},
+                {"fullName": "Trần Thị Mai", "email": "mai.tran@yahoo.com", "phone": "0388888888", "address": "456 Lê Lợi, Đà Nẵng", "quantity": 1, "paymentMethod": "EWallet", "promoCode": ""},
+                {"fullName": "A", "email": "not_an_email", "phone": "12345", "address": "Short", "quantity": 0, "paymentMethod": "Cash", "promoCode": "TOOLONGCODE12345"}, # lỗi validation
+                {"fullName": "Lê Hoàng Nam" * 5, "email": "nam.le@domain.com", "phone": "0555555555", "address": "789 Trần Hưng Đạo, Hà Nội", "quantity": 20, "paymentMethod": "CreditCard", "promoCode": "BLACKFRIDAY"}, # biên
+                {"fullName": "Phạm Thị Hương", "email": "huong.pham@company.vn", "phone": "0777777777", "address": "12/34 Nguyễn Trãi, Q.5, TP.HCM", "quantity": 5, "paymentMethod": "BankTransfer", "promoCode": "<script>alert(1)</script>"}, # XSS
+                {"fullName": "' OR 1=1 --", "email": "hacker@evil.com", "phone": "0999999999", "address": "DROP TABLE orders; --", "quantity": 1, "paymentMethod": "COD", "promoCode": "XSS"}, # SQLi
+                {"fullName": "Hoàng Văn Bình", "email": "binh.hoang@outlook.com", "phone": "0333333333", "address": "56 Hai Bà Trưng, Huế", "quantity": 3, "paymentMethod": "COD", "promoCode": "WELCOME10"},
+                {"fullName": "Đỗ Minh Tuấn", "email": "tuan.do@test.com", "phone": "0866666666", "address": "Xã A, Huyện B, Tỉnh C — địa chỉ vùng sâu vùng xa có Unicode ©®™", "quantity": 10, "paymentMethod": "CreditCard", "promoCode": "VIP50"},
+            ]
+        }
+
+    # 6. Fallback mặc định nếu không khớp preset nào
     return {
         "fields": [
             {"name": "inputText", "type": "string", "required": True, "minLength": 3, "maxLength": 30, "description": "Dữ liệu nhập thô 3-30 ký tự"}
@@ -130,7 +192,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
             print(">>> INFO: Phat hien Gemini API Key. Dang goi truc tiep Google Gemini REST API...")
             
             # Gọi trực tiếp qua API Endpoint chính thức của Google Gemini v1beta sử dụng JSON mode
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={active_key.strip()}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={active_key.strip()}"
             
             payload = {
                 "contents": [
@@ -142,7 +204,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
                 ],
                 "generationConfig": {
                     "responseMimeType": "application/json",
-                    "temperature": 0.2
+                    "temperature": 0.7
                 }
             }
             
@@ -203,7 +265,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None) -> dict:
                     {"role": "system", "content": system_instructions},
                     {"role": "user", "content": f"Here is the natural language input specification:\n{raw_text}"}
                 ],
-                temperature=0.2, # Đặt temperature thấp để cấu trúc trả về mang tính logic, chuẩn xác nhất
+                temperature=0.7, # Đặt temperature thấp để cấu trúc trả về mang tính logic, chuẩn xác nhất
                 max_tokens=1500
             )
             
@@ -582,7 +644,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
     try:
         if is_gemini:
             print(f">>> INFO: Calling Gemini API for seed regeneration (Method: {test_method})...")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={active_key.strip()}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={active_key.strip()}"
             
             payload = {
                 "contents": [
@@ -594,7 +656,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
                 ],
                 "generationConfig": {
                     "responseMimeType": "application/json",
-                    "temperature": 0.2
+                    "temperature": 0.7
                 }
             }
             
@@ -643,7 +705,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
                     {"role": "system", "content": system_instructions},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.2,
+                temperature=0.7,
                 max_tokens=1000
             )
             
@@ -733,7 +795,7 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
                     {"role": "user", "parts": [{"text": system_instructions + "\n\n" + user_prompt}]}
                 ],
                 "generationConfig": {
-                    "temperature": 0.2,
+                    "temperature": 0.7,
                     "responseMimeType": "application/json"
                 }
             }

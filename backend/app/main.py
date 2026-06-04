@@ -444,7 +444,17 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
             "weights": weights_data
         }
 
-        # 3. Khởi tạo bộ tối ưu hóa TestSuiteOptimizer chạy bằng Python trên Server
+        # 3. Tạo bản ghi Job để lưu vết
+        db_job = models.Job(
+            specification_id=specification_id,
+            status="RUNNING",
+            algorithm_config=json.dumps(config_dict),
+        )
+        db.add(db_job)
+        db.commit()
+        db.refresh(db_job)
+
+        # 4. Khởi tạo bộ tối ưu hóa TestSuiteOptimizer
         optimizer = TestSuiteOptimizer(schema_rules, config_dict)
         optimizer.initialize_suite(initial_seeds)
 
@@ -477,12 +487,27 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
         for g in range(generations):
             gen_stats = optimizer.evolve_one_generation()
             progress_history.append(gen_stats)
-            
+
             # Gửi gói tin tiến độ thế hệ di truyền qua kết nối WebSocket thời gian thực
             await websocket.send_json({
                 "event": "GA_PROGRESS",
                 "data": gen_stats
             })
+
+            # Lưu vết evolution stats cho thế hệ này
+            try:
+                evo_stat = models.EvolutionStats(
+                    job_id=db_job.id,
+                    generation=gen_stats["generation"],
+                    max_fitness=gen_stats["bestFitness"],
+                    avg_fitness=gen_stats["avgFitness"],
+                    coverage_score=gen_stats["coverage"],
+                    duplicate_rate=gen_stats["duplicateRate"],
+                    mutation_rate=optimizer.get_adaptive_mutation_rate(),
+                )
+                db.add(evo_stat)
+            except Exception:
+                pass
             # Tạm dừng rất ngắn để client render hoạt ảnh mượt mà và tránh nghẽn luồng
             await asyncio.sleep(0.02)
 
@@ -516,16 +541,11 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
         optimizer.test_suite[0]["fitness"] = hc_tweak_stats.optimized_fitness
         optimizer.test_suite[0]["origin"] = "HC_FINE_TUNED"
 
-        # 6. Lưu phiên chạy Job này vào Cơ sở dữ liệu SQLite
+        # 6. Cập nhật Job với kết quả cuối cùng
         final_stats = progress_history[-1]
-        db_job = models.Job(
-            specification_id=specification_id,
-            status="COMPLETE",
-            algorithm_config=json.dumps(config_dict),
-            final_coverage=final_stats["coverage"],
-            final_duplicate_rate=final_stats["duplicateRate"]
-        )
-        db.add(db_job)
+        db_job.status = "COMPLETE"
+        db_job.final_coverage = final_stats["coverage"]
+        db_job.final_duplicate_rate = final_stats["duplicateRate"]
         db.commit()
         db.refresh(db_job)
 

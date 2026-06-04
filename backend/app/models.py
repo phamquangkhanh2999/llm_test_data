@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Integer, Float, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, String, Integer, Float, Boolean, ForeignKey, DateTime, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .core.database import Base
@@ -34,8 +34,8 @@ class Specification(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     project_id = Column(String(36), ForeignKey("projects.id"), nullable=False)
     raw_text = Column(String(2000), nullable=False) # Văn bản mô tả nghiệp vụ bằng chữ thường
-    parsed_schema = Column(String(2000), nullable=False) # Cấu trúc JSON Schema (chuỗi JSON văn bản) dạng text
-    initial_seeds = Column(String(5000), nullable=True) # Dữ liệu hạt giống F0 ban đầu
+    parsed_schema = Column(Text, nullable=False) # Cấu trúc JSON Schema dạng text (dùng Text thay vì String để tránh truncate)
+    initial_seeds = Column(Text, nullable=True) # Dữ liệu hạt giống F0 ban đầu
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Mối quan hệ ngược về Project
@@ -63,6 +63,8 @@ class Job(Base):
     specification = relationship("Specification", back_populates="jobs")
     # Mối quan hệ 1 - Nhiều (1 Job sinh ra nhiều dòng dữ liệu Test Cases)
     test_cases = relationship("GeneratedData", back_populates="job", cascade="all, delete-orphan")
+    # Mối quan hệ 1 - Nhiều (1 Job lưu vết nhiều thế hệ tiến hóa)
+    evolution_history = relationship("EvolutionStats", back_populates="job", cascade="all, delete-orphan")
 
 
 class GeneratedData(Base):
@@ -77,7 +79,7 @@ class GeneratedData(Base):
     
     # payload giá trị test (Ví dụ: '{"username": "admin", "password": "Pass123!"}')
     # Lưu dưới dạng String, Client sẽ tự parse thành JSON object khi hiển thị
-    test_case_values = Column(String(1000), nullable=False) 
+    test_case_values = Column(Text, nullable=False) 
     
     fitness_score = Column(Float, nullable=False) # Điểm số chất lượng Test Case của hàm đánh giá
     source_algorithm = Column(String(30), nullable=False) # Nguồn gốc: "RANDOM" | "LLM" | "GA" | "HC"
@@ -85,3 +87,26 @@ class GeneratedData(Base):
 
     # Mối quan hệ ngược về Job
     job = relationship("Job", back_populates="test_cases")
+
+
+class EvolutionStats(Base):
+    """
+    Bảng EVOLUTION_STATS: Lưu vết tiến hóa qua từng thế hệ.
+    Mỗi dòng ghi lại số liệu của một thế hệ trong một phiên chạy GA.
+    Dùng để vẽ biểu đồ tiến trình và phân tích hiệu quả thuật toán.
+    """
+    __tablename__ = "evolution_stats"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    job_id = Column(String(36), ForeignKey("jobs.id"), nullable=False)
+    generation = Column(Integer, nullable=False)
+    max_fitness = Column(Float, default=0.0)
+    avg_fitness = Column(Float, default=0.0)
+    coverage_score = Column(Float, default=0.0)
+    duplicate_rate = Column(Float, default=0.0)
+    mutation_rate = Column(Float, nullable=True)  # adaptive mutation rate at this generation
+    population_diversity = Column(Float, nullable=True)  # diversity metric
+    recorded_at = Column(DateTime, default=datetime.utcnow)
+
+    # Mối quan hệ ngược về Job
+    job = relationship("Job", back_populates="evolution_history")
