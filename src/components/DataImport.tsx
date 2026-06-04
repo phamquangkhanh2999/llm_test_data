@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
-import { Upload, Database, CheckCircle2, FileJson, ChevronDown, Activity, Zap } from 'lucide-react';
+import { Upload, Database, CheckCircle2, FileJson, Activity } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { Visualizer } from './Visualizer';
 import type { FieldConstraint } from '../algorithms/presets';
+import { toast } from '../store/useToastStore';
 
 export const DataImport: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -19,25 +19,93 @@ export const DataImport: React.FC = () => {
     markScreenCompleted,
   } = useAppStore();
 
+  // Parse CSV line (handles quoted values)
+  const parseCSV = (text: string): Record<string, any>[] => {
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) throw new Error('File CSV cần ít nhất 1 dòng header + 1 dòng dữ liệu');
+
+    const parseLine = (line: string): string[] => {
+      const result: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (ch === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += ch;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    const headers = parseLine(lines[0]);
+    const rows: Record<string, any>[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseLine(lines[i]);
+      if (values.length === 0 || (values.length === 1 && values[0] === '')) continue;
+      const row: Record<string, any> = {};
+      headers.forEach((h, idx) => {
+        const val = values[idx] ?? '';
+        // Auto-detect numbers
+        if (/^-?\d+(\.\d+)?$/.test(val) && val !== '') {
+          row[h] = val.includes('.') ? parseFloat(val) : parseInt(val, 10);
+        } else {
+          row[h] = val;
+        }
+      });
+      rows.push(row);
+    }
+
+    return rows;
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const isCSV = file.name.toLowerCase().endsWith('.csv');
+    const isJSON = file.name.toLowerCase().endsWith('.json');
+
+    if (!isCSV && !isJSON) {
+      toast.error('Chỉ hỗ trợ file .json hoặc .csv. Vui lòng chọn file đúng định dạng.');
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const text = event.target?.result as string;
-        const data = JSON.parse(text);
+        let data: Record<string, any>[];
+        let fileType: string;
+
+        if (isCSV) {
+          data = parseCSV(text);
+          fileType = 'CSV';
+        } else {
+          data = JSON.parse(text);
+          fileType = 'JSON';
+        }
 
         if (!Array.isArray(data) || data.length === 0) {
-          alert('File JSON không hợp lệ. Vui lòng cung cấp một mảng chứa các đối tượng dữ liệu (Array of Objects).');
+          toast.error(`File ${fileType} không hợp lệ hoặc rỗng.`);
           return;
         }
 
         const sampleRow = data[0];
         const inferredSchema: FieldConstraint[] = Object.keys(sampleRow).map(key => {
           const value = sampleRow[key];
-          let type: 'string' | 'number' | 'email' | 'card' | 'phone' = 'string';
+          let type: FieldConstraint['type'] = 'string';
           if (typeof value === 'number') type = 'number';
           else if (typeof value === 'string') {
             if (value.includes('@') && value.includes('.')) type = 'email';
@@ -46,22 +114,23 @@ export const DataImport: React.FC = () => {
             name: key,
             type,
             required: true,
-            description: `Tự nhận diện từ file (cột: ${key})`,
+            description: `Tự nhận diện từ file ${fileType} (cột: ${key})`,
           };
         });
 
-        setRawText(`[DỮ LIỆU NHẬP TỪ FILE]\nTên file: ${file.name}\nSố lượng bản ghi: ${data.length}`);
+        setRawText(`[DỮ LIỆU NHẬP TỪ FILE ${fileType}]\nTên file: ${file.name}\nSố lượng bản ghi: ${data.length}`);
         setParsedSchema(inferredSchema);
         setInitialSeeds(data);
         setFileName(file.name);
         setRecordCount(data.length);
         setIsImported(true);
-        markScreenCompleted('data-import');
+        markScreenCompleted('prepare');
 
         if (fileInputRef.current) fileInputRef.current.value = '';
+        toast.success(`Đã import thành công ${data.length} bản ghi từ file ${fileType}!`);
       } catch (err) {
-        console.error('Lỗi khi đọc file JSON:', err);
-        alert('Lỗi khi đọc file JSON. Vui lòng kiểm tra lại định dạng — file phải là mảng các đối tượng: [{ ... }, { ... }]');
+        console.error('Lỗi khi đọc file:', err);
+        toast.error(`Lỗi khi đọc file. Vui lòng kiểm tra lại định dạng.`);
       }
     };
     reader.readAsText(file);
@@ -102,7 +171,7 @@ export const DataImport: React.FC = () => {
       >
         <input
           type="file"
-          accept=".json"
+          accept=".json,.csv"
           ref={fileInputRef}
           style={{ display: 'none' }}
           onChange={handleFileUpload}
@@ -122,8 +191,9 @@ export const DataImport: React.FC = () => {
                 Kéo thả hoặc click để chọn file JSON
               </h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0, lineHeight: 1.6 }}>
-                File phải là mảng JSON: <code style={{ color: '#facc15', background: 'rgba(250,204,21,0.1)', padding: '2px 8px', borderRadius: '4px' }}>[&#123; ... &#125;, &#123; ... &#125;]</code><br />
-                Hệ thống sẽ tự nhận diện cấu trúc cột và chuẩn bị dữ liệu đầu vào cho thuật toán.
+                Hỗ trợ file JSON (mảng object) hoặc CSV (có header).<br />
+                <code style={{ color: '#facc15', background: 'rgba(250,204,21,0.1)', padding: '2px 8px', borderRadius: '4px' }}>[&#123; ... &#125;, &#123; ... &#125;]</code> hoặc <code style={{ color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '2px 8px', borderRadius: '4px' }}>name,email,age...</code><br />
+                Hệ thống sẽ tự nhận diện cấu trúc cột và chuẩn bị dữ liệu đầu vào.
               </p>
             </div>
             <button
@@ -135,7 +205,7 @@ export const DataImport: React.FC = () => {
                 boxShadow: '0 4px 20px rgba(250,204,21,0.3)',
               }}
             >
-              📁 Chọn file dữ liệu (.JSON)
+              📁 Chọn file dữ liệu (.JSON / .CSV)
             </button>
           </>
         ) : (
@@ -181,41 +251,24 @@ export const DataImport: React.FC = () => {
         )}
       </div>
 
-      {/* ── SAU KHI IMPORT: PHÂN TÍCH NGAY TẠI CHỖ ── */}
+      {/* ── SAU KHI IMPORT: XÁC NHẬN SẴN SÀNG ── */}
       {isImported && initialSeeds.length > 0 && (
-        <>
-          {/* Divider với label */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '12px',
-          }}>
-            <div style={{ flex: 1, height: '1px', background: 'rgba(167,139,250,0.2)' }} />
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '6px 16px', borderRadius: '20px',
-              background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)',
-            }}>
-              <Zap size={14} style={{ color: '#a78bfa' }} />
-              <span style={{ fontSize: '12px', fontWeight: 700, color: '#a78bfa', letterSpacing: '0.05em' }}>
-                THUẬT TOÁN TỐI ƯU — CHẠY NGAY VỚI DỮ LIỆU VỪA TẢI LÊN
-              </span>
-              <ChevronDown size={14} style={{ color: '#a78bfa' }} />
+        <div style={{
+          padding: '16px 20px', borderRadius: '12px',
+          background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.25)',
+          display: 'flex', alignItems: 'center', gap: '14px',
+        }}>
+          <CheckCircle2 size={28} style={{ color: '#2dd4bf', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff', marginBottom: '3px' }}>
+              Dữ liệu đã sẵn sàng để tối ưu
             </div>
-            <div style={{ flex: 1, height: '1px', background: 'rgba(167,139,250,0.2)' }} />
+            <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Đã nạp <b style={{ color: '#2dd4bf' }}>{recordCount}</b> bản ghi với <b style={{ color: '#a78bfa' }}>{parsedSchema.length}</b> cột.
+              Chuyển sang <b style={{ color: '#fff' }}>Bước 2: Tối Ưu &amp; So Sánh</b> để chạy thuật toán GA + Hill Climbing.
+            </div>
           </div>
-
-          {/* Banner giải thích */}
-          <div style={{
-            padding: '14px 20px', borderRadius: '10px',
-            background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)',
-            fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.6,
-          }}>
-            <b style={{ color: '#a78bfa' }}>Dữ liệu của bạn đã sẵn sàng.</b>{' '}
-            Bên dưới là bộ tối ưu hóa Genetic Algorithm + Hill Climbing — bấm <b style={{ color: '#fff' }}>▶ Bắt đầu</b> để sinh ra bộ test cases tối ưu từ {recordCount} bản ghi vừa tải lên.
-          </div>
-
-          {/* Inline Visualizer — không cần chuyển tab */}
-          <Visualizer />
-        </>
+        </div>
       )}
     </div>
   );

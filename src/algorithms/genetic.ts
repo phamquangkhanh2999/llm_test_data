@@ -77,7 +77,12 @@ export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'inv
     "\" onerror=\"alert(1)",
     "../etc/passwd",
     "1; DROP TABLE users; --",
-    "../../../../windows/system32"
+    "../../../../windows/system32",
+    "') OR ('1'='1",
+    "' OR 'a'='a",
+    "<img src=x onerror=alert(1)>",
+    "${7*7}",
+    "|| 1=1 --",
   ];
 
   if (mode === 'security') {
@@ -96,22 +101,19 @@ export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'inv
         return badEmails[Math.floor(Math.random() * badEmails.length)];
       }
       if (mode === 'boundary') {
-        // extremely long or short emails
         return `a@${'b'.repeat(100)}.com`;
       }
-      // valid email
       const names = ['emma', 'liam', 'olivia', 'noah', 'ava', 'will', 'sophia', 'james'];
       const domains = ['gmail.com', 'yahoo.com', 'outlook.com', 'test.io', 'company.vn'];
       return `${names[Math.floor(Math.random() * names.length)]}${Math.floor(Math.random() * 100)}@${domains[Math.floor(Math.random() * domains.length)]}`;
 
     case 'card':
       if (mode === 'invalid') {
-        return '1234-5678-9012'; // formatted but not 16 digits
+        return '1234-5678-9012';
       }
       if (mode === 'boundary') {
-        return '0000000000000000'; // minimum boundary numerical representation
+        return '0000000000000000';
       }
-      // valid 16 digits
       let card = '';
       for (let i = 0; i < 16; i++) card += Math.floor(Math.random() * 10);
       return card;
@@ -119,7 +121,7 @@ export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'inv
     case 'phone':
       const prefixes = ['03', '05', '07', '08', '09'];
       if (mode === 'invalid') {
-        return '0281234567'; // landline prefix
+        return '0281234567';
       }
       if (mode === 'boundary') {
         return '0900000000';
@@ -131,14 +133,13 @@ export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'inv
     case 'number':
       const min = field.minValue !== undefined ? field.minValue : 0;
       const max = field.maxValue !== undefined ? field.maxValue : 1000;
-      
+
       if (mode === 'invalid') {
         return Math.random() > 0.5 ? min - 5 : max + 5;
       }
       if (mode === 'boundary') {
         return Math.random() > 0.5 ? min : max;
       }
-      // valid number
       return Math.floor(Math.random() * (max - min + 1)) + min;
 
     case 'string':
@@ -159,7 +160,7 @@ export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'inv
       }
 
       if (len === 0) return '';
-      
+
       let str = '';
       const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
       for (let i = 0; i < len; i++) {
@@ -167,11 +168,18 @@ export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'inv
       }
 
       if (mode === 'boundary' && Math.random() > 0.7) {
-        // inject some boundaries in characters
         return str.substring(0, str.length - 1) + specialChars[Math.floor(Math.random() * specialChars.length)];
       }
       return str;
   }
+}
+
+// Helper: Gaussian random number (Box-Muller)
+function gaussRandom(mean: number = 0, stdev: number = 1): number {
+  let u = 1 - Math.random();
+  let v = Math.random();
+  let z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  return z * stdev + mean;
 }
 
 export class GeneticEngine {
@@ -180,15 +188,53 @@ export class GeneticEngine {
   population: { values: Chromosome; fitness: number; origin: string }[] = [];
   generation = 0;
 
+  // TIER 1 UPGRADES: adaptive rates, crowding, HoF, stagnation detection
+  private maxGenerations: number;
+  private initialMutationRate: number;
+  private minMutationRate: number = 0.02;
+  private initialCrossoverRate: number;
+  private minCrossoverRate: number = 0.45;
+  private bestFitnessHistory: number[] = [];
+  private stagnationThreshold: number = 8;
+  hallOfFame: { values: Chromosome; fitness: number; origin: string }[] = [];
+  private maxHofSize: number = 20;
+
   constructor(schema: FieldConstraint[], config: GeneticConfig) {
     this.schema = schema;
     this.config = config;
+    this.maxGenerations = config.generations;
+    this.initialMutationRate = config.mutationRate;
+    this.initialCrossoverRate = config.crossoverRate;
   }
 
-  // Initialize F0 and fill popSize
+  // ═══════════════════════════════════════════════
+  // ADAPTIVE RATE HELPERS
+  // ═══════════════════════════════════════════════
+
+  private progressRatio(): number {
+    if (this.maxGenerations <= 1) return 0;
+    return Math.min(this.generation / (this.maxGenerations - 1), 1);
+  }
+
+  getAdaptiveMutationRate(): number {
+    const p = this.progressRatio();
+    return this.initialMutationRate - (this.initialMutationRate - this.minMutationRate) * (p * p);
+  }
+
+  getAdaptiveCrossoverRate(): number {
+    const p = this.progressRatio();
+    return this.initialCrossoverRate - (this.initialCrossoverRate - this.minCrossoverRate) * Math.pow(p, 1.5);
+  }
+
+  // ═══════════════════════════════════════════════
+  // INITIALIZATION
+  // ═══════════════════════════════════════════════
+
   initialize(seeds: Chromosome[]) {
     this.population = [];
     this.generation = 0;
+    this.hallOfFame = [];
+    this.bestFitnessHistory = [];
 
     // 1. Process Seeds
     seeds.forEach(s => {
@@ -221,7 +267,61 @@ export class GeneticEngine {
     this.evaluatePopulation();
   }
 
-  // Multi-objective Fitness Scoring
+  // ═══════════════════════════════════════════════
+  // WARM START
+  // ═══════════════════════════════════════════════
+
+  warmStart(savedPopulation: { values: Chromosome; fitness: number; origin: string }[], generation: number = 0) {
+    this.population = [];
+    this.generation = generation;
+
+    // Load saved individuals
+    savedPopulation.forEach(ind => {
+      const cleanedTc: Chromosome = {};
+      this.schema.forEach(field => {
+        cleanedTc[field.name] = ind.values?.[field.name] ?? generateRandomValue(field, 'valid');
+      });
+      this.population.push({
+        values: cleanedTc,
+        fitness: ind.fitness ?? 0,
+        origin: ind.origin ?? 'WarmStart'
+      });
+    });
+
+    // Expand if below popSize
+    const modes: ('valid' | 'invalid' | 'boundary' | 'security')[] = ['valid', 'boundary', 'security', 'valid'];
+    while (this.population.length < this.config.popSize) {
+      const record: Chromosome = {};
+      const mode = modes[this.population.length % modes.length];
+      this.schema.forEach(field => {
+        record[field.name] = generateRandomValue(field, mode);
+      });
+      this.population.push({ values: record, fitness: 0, origin: 'WarmStart_Expanded' });
+    }
+
+    this.evaluatePopulation();
+  }
+
+  exportState() {
+    return {
+      generation: this.generation,
+      population: this.population.map(ind => ({
+        values: { ...ind.values },
+        fitness: ind.fitness,
+        origin: ind.origin,
+      })),
+      hallOfFame: this.hallOfFame.map(hof => ({
+        values: { ...hof.values },
+        fitness: hof.fitness,
+        origin: hof.origin,
+      })),
+    };
+  }
+
+  // ═══════════════════════════════════════════════
+  // FITNESS FUNCTION (with near-boundary credit)
+  // ═══════════════════════════════════════════════
+
   computeFitness(c: Chromosome, currentPop: Chromosome[]): { fitness: number; scoreBreakdown: Record<string, number> } {
     let validationScore = 0;
     let boundaryScore = 0;
@@ -234,15 +334,14 @@ export class GeneticEngine {
       const strVal = String(val);
       let isValid = true;
       let isBoundary = false;
+      let isNearBoundary = false;
       let isSecurity = false;
 
       // --- 1. Validation Check ---
-      // Required Check
       if (field.required && (val === null || val === undefined || strVal === '')) {
         isValid = false;
       }
 
-      // Type Check
       if (isValid) {
         if (field.type === 'email') {
           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -273,7 +372,7 @@ export class GeneticEngine {
 
       // Allowed Values check
       if (isValid && field.allowedValues && field.allowedValues.length > 0) {
-        if (!field.allowedValues.includes(strVal)) isValid = false;
+        if (!field.allowedValues.map(String).includes(strVal)) isValid = false;
       }
 
       // Regex Match
@@ -288,21 +387,25 @@ export class GeneticEngine {
 
       if (isValid) validationScore += 1;
 
-      // --- 2. Boundary Check ---
+      // --- 2. Boundary Check (with near-boundary credit) ---
       if (isValid) {
         if (field.type === 'number') {
           const num = Number(val);
           if (field.minValue !== undefined && num === field.minValue) isBoundary = true;
           if (field.maxValue !== undefined && num === field.maxValue) isBoundary = true;
+          if (field.minValue !== undefined && num === field.minValue + 1) isNearBoundary = true;
+          if (field.maxValue !== undefined && num === field.maxValue - 1) isNearBoundary = true;
         } else {
           if (field.minLength !== undefined && strVal.length === field.minLength) isBoundary = true;
           if (field.maxLength !== undefined && strVal.length === field.maxLength) isBoundary = true;
+          if (field.minLength !== undefined && strVal.length === field.minLength + 1) isNearBoundary = true;
+          if (field.maxLength !== undefined && strVal.length === field.maxLength - 1) isNearBoundary = true;
         }
         if (isBoundary) boundaryScore += 1;
+        else if (isNearBoundary) boundaryScore += 0.5;
       }
 
       // --- 3. Security Payload Check ---
-      // We look for classic attack vector structures inside the string
       const securityKeywords = ["' or", '" or', "'or", '"or', '--', 'union', 'select', 'drop table', '<script', 'onload=', 'onerror=', 'javascript:'];
       const strLower = strVal.toLowerCase();
       if (securityKeywords.some(kw => strLower.includes(kw))) {
@@ -317,11 +420,10 @@ export class GeneticEngine {
     const bScore = Math.min(boundaryScore / numFields, 1);
     const sScore = Math.min(securityScore / numFields, 1);
 
-    // --- 4. Diversity Score ---
-    // Sample 5 random items from the current population
-    const sampleSize = Math.min(5, currentPop.length);
+    // --- 4. Diversity Score (larger sample) ---
+    const sampleSize = Math.min(20, Math.max(5, Math.floor(currentPop.length / 2)));
     const sampleSubset: Chromosome[] = [];
-    for (let i = 0; i < sampleSize; i++) {
+    for (let i = 0; i < sampleSize && i < currentPop.length; i++) {
       const randIdx = Math.floor(Math.random() * currentPop.length);
       sampleSubset.push(currentPop[randIdx]);
     }
@@ -345,8 +447,6 @@ export class GeneticEngine {
     // Weighted Fitness Calculation
     const w = this.config.weights;
     let fitness = (w.validation * vScore) + (w.boundary * bScore) + (w.security * sScore) + (w.diversity * dScore) - penalty;
-    
-    // Clamp between 0.01 and 1.0
     fitness = Math.max(0.01, Math.min(fitness, 1.0));
 
     return {
@@ -355,7 +455,10 @@ export class GeneticEngine {
     };
   }
 
-  // Score all chromosomes in population
+  // ═══════════════════════════════════════════════
+  // POPULATION EVALUATION + HALL OF FAME
+  // ═══════════════════════════════════════════════
+
   evaluatePopulation() {
     const rawPop = this.population.map(p => p.values);
     this.population.forEach(p => {
@@ -363,38 +466,99 @@ export class GeneticEngine {
       p.fitness = res.fitness;
     });
 
-    // Sort descending by fitness
     this.population.sort((a, b) => b.fitness - a.fitness);
+    this.updateHallOfFame();
   }
 
-  // Tournament Selection (pick 3, return the best)
-  selectParent(): Chromosome {
-    const tourSize = 3;
-    let best: { values: Chromosome; fitness: number } | null = null;
-
-    for (let i = 0; i < tourSize; i++) {
-      const idx = Math.floor(Math.random() * this.population.length);
-      const ind = this.population[idx];
-      if (best === null || ind.fitness > best.fitness) {
-        best = ind;
+  private updateHallOfFame() {
+    for (let i = 0; i < Math.min(5, this.population.length); i++) {
+      const ind = this.population[i];
+      const tcStr = JSON.stringify(Object.entries(ind.values).sort());
+      if (!this.hallOfFame.some(hof => JSON.stringify(Object.entries(hof.values).sort()) === tcStr)) {
+        this.hallOfFame.push({
+          values: { ...ind.values },
+          fitness: ind.fitness,
+          origin: `HoF_Gen${this.generation}`
+        });
       }
     }
-    return best!.values;
+    this.hallOfFame.sort((a, b) => b.fitness - a.fitness);
+    if (this.hallOfFame.length > this.maxHofSize) {
+      this.hallOfFame = this.hallOfFame.slice(0, this.maxHofSize);
+    }
   }
 
-  // Uniform Crossover
+  // ═══════════════════════════════════════════════
+  // CROWDING DISTANCE
+  // ═══════════════════════════════════════════════
+
+  private crowdingDistance(individual: { values: Chromosome; fitness: number }): number {
+    const sample = [];
+    const popLen = this.population.length;
+    // Sample up to 10 random individuals
+    for (let i = 0; i < Math.min(10, popLen); i++) {
+      sample.push(this.population[Math.floor(Math.random() * popLen)]);
+    }
+    if (sample.length < 2) return 0;
+
+    const distances: number[] = [];
+    const indValues = individual.values;
+
+    for (const other of sample) {
+      if (other === individual) continue;
+      let dist = 0;
+      const keys = Object.keys(indValues);
+      for (const k of keys) {
+        const v1 = String(indValues[k] ?? '');
+        const v2 = String(other.values[k] ?? '');
+        if (v1 !== v2) {
+          const maxLen = Math.max(v1.length, v2.length, 1);
+          dist += stringDistance(v1, v2) / maxLen;
+        }
+      }
+      distances.push(keys.length > 0 ? dist / keys.length : 0);
+    }
+
+    if (distances.length === 0) return 0;
+    distances.sort((a, b) => b - a);
+    const topK = distances.slice(0, 3);
+    return topK.reduce((s, d) => s + d, 0) / topK.length;
+  }
+
+  // ═══════════════════════════════════════════════
+  // SELECTION (with crowding tiebreaker)
+  // ═══════════════════════════════════════════════
+
+  selectParent(): Chromosome {
+    const tourSize = 3;
+    const candidates = [];
+    for (let i = 0; i < tourSize; i++) {
+      const idx = Math.floor(Math.random() * this.population.length);
+      candidates.push(this.population[idx]);
+    }
+    // Sort by fitness descending, then crowding distance descending
+    candidates.sort((a, b) => {
+      if (b.fitness !== a.fitness) return b.fitness - a.fitness;
+      return this.crowdingDistance(b) - this.crowdingDistance(a);
+    });
+    return candidates[0].values;
+  }
+
+  // ═══════════════════════════════════════════════
+  // CROSSOVER (adaptive rate)
+  // ═══════════════════════════════════════════════
+
   crossover(p1: Chromosome, p2: Chromosome): [Chromosome, Chromosome] {
     const child1: Chromosome = {};
     const child2: Chromosome = {};
+    const rate = this.getAdaptiveCrossoverRate();
 
     this.schema.forEach(field => {
       const name = field.name;
-      if (Math.random() < this.config.crossoverRate) {
-        // swap
+      if (Math.random() < rate) {
         child1[name] = p2[name];
         child2[name] = p1[name];
       } else {
-        // keep
         child1[name] = p1[name];
         child2[name] = p2[name];
       }
@@ -403,39 +567,45 @@ export class GeneticEngine {
     return [child1, child2];
   }
 
-  // Mutate individual properties
+  // ═══════════════════════════════════════════════
+  // MUTATION (adaptive + Gaussian + enum-aware)
+  // ═══════════════════════════════════════════════
+
   mutate(c: Chromosome): { values: Chromosome; mutated: boolean } {
     const mutatedRecord = { ...c };
     let mutated = false;
+    const rate = this.getAdaptiveMutationRate();
 
     this.schema.forEach(field => {
-      if (Math.random() < this.config.mutationRate) {
+      if (Math.random() < rate) {
         mutated = true;
         const currentVal = mutatedRecord[field.name];
         const valStr = String(currentVal);
-
-        // Randomly pick a mutation mode
         const rand = Math.random();
-        
+
         if (field.type === 'number') {
           const num = Number(currentVal);
           if (isNaN(num)) {
             mutatedRecord[field.name] = generateRandomValue(field, 'valid');
           } else {
-            if (rand < 0.3) {
-              mutatedRecord[field.name] = num + (Math.random() > 0.5 ? 1 : -1); // micro tweak
-            } else if (rand < 0.6) {
+            if (rand < 0.35) {
+              // Gaussian perturbation
+              const sigma = Math.max(0.5, (this.maxGenerations - this.generation) / this.maxGenerations * 5);
+              let newVal = num + gaussRandom(0, sigma);
+              if (field.minValue !== undefined) newVal = Math.max(field.minValue - 2, newVal);
+              if (field.maxValue !== undefined) newVal = Math.min(field.maxValue + 2, newVal);
+              mutatedRecord[field.name] = newVal;
+            } else if (rand < 0.65) {
               mutatedRecord[field.name] = generateRandomValue(field, 'boundary');
             } else {
-              mutatedRecord[field.name] = generateRandomValue(field, 'security'); // huge overflow
+              mutatedRecord[field.name] = generateRandomValue(field, 'security');
             }
           }
         } else if (field.type === 'email' || field.type === 'card' || field.type === 'phone') {
           if (rand < 0.4) {
-            // Tweak existing string slightly
             if (valStr.length > 3) {
               const idx = Math.floor(Math.random() * valStr.length);
-              mutatedRecord[field.name] = valStr.substring(0, idx) + valStr.substring(idx + 1); // remove char
+              mutatedRecord[field.name] = valStr.substring(0, idx) + valStr.substring(idx + 1);
             } else {
               mutatedRecord[field.name] = generateRandomValue(field, 'valid');
             }
@@ -445,21 +615,25 @@ export class GeneticEngine {
             mutatedRecord[field.name] = generateRandomValue(field, 'security');
           }
         } else {
-          // Standard string mutation
-          if (rand < 0.3) {
-            // character insertion
+          // ENUM-AWARE: mutate within allowedValues if present
+          if (field.allowedValues && field.allowedValues.length > 1) {
+            const allowed = field.allowedValues.map(String);
+            if (allowed.includes(valStr)) {
+              const others = allowed.filter(v => v !== valStr);
+              mutatedRecord[field.name] = others[Math.floor(Math.random() * others.length)];
+            } else {
+              mutatedRecord[field.name] = allowed[Math.floor(Math.random() * allowed.length)];
+            }
+          } else if (rand < 0.3) {
             const chars = '!@#$%\'"><';
             const char = chars.charAt(Math.floor(Math.random() * chars.length));
             const idx = Math.floor(Math.random() * valStr.length);
             mutatedRecord[field.name] = valStr.substring(0, idx) + char + valStr.substring(idx);
           } else if (rand < 0.6) {
-            // lowercase/uppercase swap
             mutatedRecord[field.name] = Math.random() > 0.5 ? valStr.toUpperCase() : valStr.toLowerCase();
           } else if (rand < 0.8) {
-            // boundary length givers
             mutatedRecord[field.name] = generateRandomValue(field, 'boundary');
           } else {
-            // security injection
             mutatedRecord[field.name] = generateRandomValue(field, 'security');
           }
         }
@@ -469,9 +643,48 @@ export class GeneticEngine {
     return { values: mutatedRecord, mutated };
   }
 
-  // Progress 1 generation
+  // ═══════════════════════════════════════════════
+  // STAGNATION DETECTION
+  // ═══════════════════════════════════════════════
+
+  private isStagnated(): boolean {
+    if (this.bestFitnessHistory.length < this.stagnationThreshold) return false;
+    const recent = this.bestFitnessHistory.slice(-this.stagnationThreshold);
+    return Math.max(...recent) - Math.min(...recent) < 0.005;
+  }
+
+  private restartPopulation() {
+    const preserveCount = Math.max(1, Math.floor(this.config.popSize * 0.2));
+    const preserved = this.population.slice(0, preserveCount);
+
+    const modes: ('valid' | 'invalid' | 'boundary' | 'security')[] = ['valid', 'boundary', 'security', 'valid'];
+    const newIndividuals: typeof this.population = [];
+    while (newIndividuals.length < (this.config.popSize - preserveCount)) {
+      const record: Chromosome = {};
+      const mode = modes[newIndividuals.length % modes.length];
+      this.schema.forEach(field => {
+        record[field.name] = generateRandomValue(field, mode);
+      });
+      newIndividuals.push({ values: record, fitness: 0, origin: 'Restart' });
+    }
+
+    this.population = [...preserved, ...newIndividuals];
+  }
+
+  // ═══════════════════════════════════════════════
+  // GENERATION LOOP
+  // ═══════════════════════════════════════════════
+
   runGeneration(): PopulationStats {
     this.generation += 1;
+
+    // Stagnation detection
+    if (this.isStagnated()) {
+      this.restartPopulation();
+      this.bestFitnessHistory = [];
+      this.evaluatePopulation();
+    }
+
     const nextPopulation: { values: Chromosome; fitness: number; origin: string }[] = [];
 
     // 1. Elitism: Keep top 5% chromosomes exactly
@@ -513,84 +726,18 @@ export class GeneticEngine {
     this.population = nextPopulation;
     this.evaluatePopulation();
 
-    // 4. Compute statistics
+    // Track best fitness for stagnation detection
     const bestFitness = this.population[0].fitness;
+    this.bestFitnessHistory.push(bestFitness);
+    if (this.bestFitnessHistory.length > 50) {
+      this.bestFitnessHistory = this.bestFitnessHistory.slice(-50);
+    }
+
     const avgFitness = this.population.reduce((sum, ind) => sum + ind.fitness, 0) / this.population.length;
 
-    // Duplicate Rate calculation
-    let dupCount = 0;
-    const rawPop = this.population.map(p => p.values);
-    for (let i = 0; i < rawPop.length; i++) {
-      let isDup = false;
-      for (let j = 0; j < i; j++) {
-        let match = true;
-        for (const k of Object.keys(rawPop[i])) {
-          if (String(rawPop[i][k]) === String(rawPop[j][k])) continue;
-          match = false;
-          break;
-        }
-        if (match) {
-          isDup = true;
-          break;
-        }
-      }
-      if (isDup) dupCount++;
-    }
-    const duplicateRate = dupCount / this.config.popSize;
-
-    // Coverage Score calculation
-    // Measured as: (Fraction of fields successfully validated across best chromosomes) + (Fraction of boundary values checked)
-    let totalValidFields = 0;
-    let boundariesChecked = new Set<string>();
-    let securityChecked = new Set<string>();
-
-    const topSubset = this.population.slice(0, Math.min(10, this.population.length));
-    
-    topSubset.forEach(ind => {
-      const c = ind.values;
-      this.schema.forEach(field => {
-        const val = c[field.name];
-        const strVal = String(val);
-        
-        // Simple validation check
-        let valid = true;
-        if (field.required && (val === null || val === undefined || strVal === '')) valid = false;
-        if (valid && field.minLength !== undefined && strVal.length < field.minLength) valid = false;
-        if (valid && field.maxLength !== undefined && strVal.length > field.maxLength) valid = false;
-
-        if (valid) {
-          totalValidFields += 1;
-
-          // Boundary check
-          if (field.type === 'number') {
-            const num = Number(val);
-            if (field.minValue !== undefined && num === field.minValue) boundariesChecked.add(`${field.name}_min`);
-            if (field.maxValue !== undefined && num === field.maxValue) boundariesChecked.add(`${field.name}_max`);
-          } else {
-            if (field.minLength !== undefined && strVal.length === field.minLength) boundariesChecked.add(`${field.name}_min`);
-            if (field.maxLength !== undefined && strVal.length === field.maxLength) boundariesChecked.add(`${field.name}_max`);
-          }
-        }
-
-        // Security check
-        const securityKeywords = ["' or", '" or', '--', 'union', 'select', '<script'];
-        if (securityKeywords.some(kw => strVal.toLowerCase().includes(kw))) {
-          securityChecked.add(`${field.name}_security`);
-        }
-      });
-    });
-
-    const maxValidationFields = topSubset.length * this.schema.length;
-    const validationFactor = maxValidationFields > 0 ? totalValidFields / maxValidationFields : 0;
-    
-    const possibleBoundaries = this.schema.length * 2;
-    const boundaryFactor = possibleBoundaries > 0 ? boundariesChecked.size / possibleBoundaries : 0;
-
-    const possibleSecurities = this.schema.length;
-    const securityFactor = possibleSecurities > 0 ? securityChecked.size / possibleSecurities : 0;
-
-    // Coverage is a composite average of validation coverage (80% weight) and edge case/security discoveries (20%)
-    const coverage = Math.min((validationFactor * 0.7) + (boundaryFactor * 0.15) + (securityFactor * 0.15), 1.0);
+    // 4. Compute statistics
+    const duplicateRate = this.computeDuplicateRate();
+    const coverage = this.computeFullCoverage();
 
     return {
       generation: this.generation,
@@ -604,5 +751,405 @@ export class GeneticEngine {
         origin: p.origin
       }))
     };
+  }
+
+  // ═══════════════════════════════════════════════
+  // COVERAGE CALCULATION (full population + pairwise)
+  // ═══════════════════════════════════════════════
+
+  private computeDuplicateRate(): number {
+    let dupCount = 0;
+    const rawPop = this.population.map(p => p.values);
+    for (let i = 0; i < rawPop.length; i++) {
+      for (let j = 0; j < i; j++) {
+        let match = true;
+        for (const k of Object.keys(rawPop[i])) {
+          if (String(rawPop[i][k]) !== String(rawPop[j][k])) {
+            match = false;
+            break;
+          }
+        }
+        if (match) {
+          dupCount++;
+          break;
+        }
+      }
+    }
+    return dupCount / this.config.popSize;
+  }
+
+  private computeFullCoverage(): number {
+    const rawValues = this.population.map(p => p.values);
+
+    // --- Individual field coverage (full population) ---
+    let totalValid = 0;
+    const boundariesChecked = new Set<string>();
+    const securityChecked = new Set<string>();
+
+    for (const tc of rawValues) {
+      for (const field of this.schema) {
+        const name = field.name;
+        const val = tc[name];
+        const valStr = String(val);
+
+        let isOk = true;
+        if (field.required && (val === null || val === undefined || valStr === '')) {
+          isOk = false;
+        }
+
+        if (isOk) {
+          totalValid += 1;
+
+          // Boundary check (exact + near)
+          if (field.type === 'number') {
+            const num = Number(val);
+            if (!isNaN(num)) {
+              if (field.minValue !== undefined && num === field.minValue) boundariesChecked.add(`${name}_min`);
+              if (field.maxValue !== undefined && num === field.maxValue) boundariesChecked.add(`${name}_max`);
+              if (field.minValue !== undefined && num === field.minValue + 1) boundariesChecked.add(`${name}_min_near`);
+              if (field.maxValue !== undefined && num === field.maxValue - 1) boundariesChecked.add(`${name}_max_near`);
+            }
+          } else {
+            if (field.minLength !== undefined && valStr.length === field.minLength) boundariesChecked.add(`${name}_min`);
+            if (field.maxLength !== undefined && valStr.length === field.maxLength) boundariesChecked.add(`${name}_max`);
+            if (field.minLength !== undefined && valStr.length === field.minLength + 1) boundariesChecked.add(`${name}_min_near`);
+            if (field.maxLength !== undefined && valStr.length === field.maxLength - 1) boundariesChecked.add(`${name}_max_near`);
+          }
+        }
+
+        // Security check
+        const securityKeywords = ["' or", '" or', '--', 'union', 'select', '<script'];
+        if (securityKeywords.some(kw => valStr.toLowerCase().includes(kw))) {
+          securityChecked.add(`${name}_security`);
+        }
+      }
+    }
+
+    const totalCases = rawValues.length;
+    const maxValid = totalCases * this.schema.length;
+    const valFactor = maxValid > 0 ? totalValid / maxValid : 0;
+
+    const possibleBounds = this.schema.length * 4; // 2 exact + 2 near per field
+    const boundFactor = possibleBounds > 0 ? boundariesChecked.size / possibleBounds : 0;
+
+    const possibleSec = this.schema.length;
+    const secFactor = possibleSec > 0 ? securityChecked.size / possibleSec : 0;
+
+    // Pairwise coverage
+    const pairwise = this.computePairwiseCoverage(rawValues);
+
+    // Composite: 55% validation + 15% boundary + 10% security + 20% pairwise
+    let coverage = Math.min(
+      (valFactor * 0.55) + (boundFactor * 0.15) + (secFactor * 0.10) + (pairwise * 0.20),
+      1.0
+    );
+
+    // Discount by duplicate rate
+    const dupRate = this.computeDuplicateRate();
+    if (dupRate > 0.3) {
+      coverage *= (1.0 - (dupRate - 0.3) * 0.5);
+    }
+
+    return Math.max(coverage, 0.01);
+  }
+
+  private computePairwiseCoverage(rawValues: Chromosome[]): number {
+    if (this.schema.length < 2) return 1.0;
+
+    const categorizeValue = (field: FieldConstraint, val: any): string => {
+      const valStr = String(val);
+      if (valStr === '') return 'empty';
+      if (valStr.toLowerCase().startsWith("' or") || valStr.toLowerCase().startsWith("'or")) return 'sqli';
+      if (valStr.toLowerCase().includes('<script') || valStr.toLowerCase().includes('onload')) return 'xss';
+      if (field.type === 'number') {
+        const num = Number(val);
+        if (isNaN(num)) return 'invalid';
+        if (field.minValue !== undefined && num === field.minValue) return 'boundary_min';
+        if (field.maxValue !== undefined && num === field.maxValue) return 'boundary_max';
+        if (field.minValue !== undefined && num < field.minValue) return 'invalid_low';
+        if (field.maxValue !== undefined && num > field.maxValue) return 'invalid_high';
+        return 'valid';
+      }
+      const sLen = valStr.length;
+      if (field.minLength !== undefined && sLen === field.minLength) return 'boundary_min';
+      if (field.maxLength !== undefined && sLen === field.maxLength) return 'boundary_max';
+      if (field.minLength !== undefined && sLen < field.minLength) return 'invalid_short';
+      if (field.maxLength !== undefined && sLen > field.maxLength) return 'invalid_long';
+      return 'valid';
+    };
+
+    const coveredPairs = new Set<string>();
+    const numFieldPairs = this.schema.length * (this.schema.length - 1) / 2;
+
+    for (let i = 0; i < this.schema.length; i++) {
+      for (let j = i + 1; j < this.schema.length; j++) {
+        const fi = this.schema[i];
+        const fj = this.schema[j];
+        for (const tc of rawValues) {
+          const catI = categorizeValue(fi, tc[fi.name]);
+          const catJ = categorizeValue(fj, tc[fj.name]);
+          coveredPairs.add(`${fi.name}:${catI}|${fj.name}:${catJ}`);
+        }
+      }
+    }
+
+    const totalPossible = numFieldPairs * 9;
+    return Math.min(coveredPairs.size / Math.max(totalPossible, 1), 1.0);
+  }
+
+  // ═══════════════════════════════════════════════
+  // TEST CASE MINIMIZATION
+  // ═══════════════════════════════════════════════
+
+  /**
+   * Minimize a set of test cases by greedily selecting those that
+   * add the most new coverage. Removes redundant cases while
+   * preserving boundary, security, and pairwise coverage.
+   *
+   * @returns Minimized array + stats about what was removed
+   */
+  minimize(testCases: Chromosome[]): { minimized: Chromosome[]; removed: number; finalCoverage: number } {
+    if (testCases.length <= 1) {
+      return { minimized: [...testCases], removed: 0, finalCoverage: 1.0 };
+    }
+
+    // Categorize each test case
+    const categorized = testCases.map((tc, idx) => ({
+      tc,
+      idx,
+      category: this.categorizeTestCase(tc),
+      coverageValue: 0, // will be computed
+    }));
+
+    // Priority order: security > boundary > negative > positive
+    const priorityOrder: Record<string, number> = {
+      'security': 0,
+      'boundary': 1,
+      'negative': 2,
+      'positive': 3,
+      'happy': 3,
+    };
+
+    // Sort by priority (keep essential cases first)
+    categorized.sort((a, b) =>
+      (priorityOrder[a.category] ?? 4) - (priorityOrder[b.category] ?? 4)
+    );
+
+    // Greedy selection: add cases that contribute new coverage
+    const selected: Chromosome[] = [];
+    const selectedIndices = new Set<number>();
+    const uniqueFingerprints = new Set<string>();
+
+    // First pass: ensure we have at least one from each category
+    for (const cat of ['security', 'boundary', 'negative', 'positive', 'happy']) {
+      const match = categorized.find(c => c.category === cat && !selectedIndices.has(c.idx));
+      if (match) {
+        const fp = JSON.stringify(Object.entries(match.tc).sort());
+        if (!uniqueFingerprints.has(fp)) {
+          uniqueFingerprints.add(fp);
+          selected.push(match.tc);
+          selectedIndices.add(match.idx);
+        }
+      }
+    }
+
+    // Second pass: greedy by unique contribution
+    for (const item of categorized) {
+      if (selectedIndices.has(item.idx)) continue;
+
+      const fp = JSON.stringify(Object.entries(item.tc).sort());
+      if (uniqueFingerprints.has(fp)) continue; // absolute duplicate
+
+      // Check if this adds new boundary/security coverage
+      let addsCoverage = false;
+      for (const field of this.schema) {
+        const val = item.tc[field.name];
+        const valStr = String(val);
+
+        // Check if this value hits a boundary not already covered
+        if (field.type === 'number') {
+          const num = Number(val);
+          if (!isNaN(num)) {
+            if (field.minValue !== undefined && num === field.minValue) {
+              if (!selected.some(s => {
+                const sv = Number(s[field.name]);
+                return !isNaN(sv) && field.minValue !== undefined && sv === field.minValue;
+              })) addsCoverage = true;
+            }
+            if (field.maxValue !== undefined && num === field.maxValue) {
+              if (!selected.some(s => {
+                const sv = Number(s[field.name]);
+                return !isNaN(sv) && field.maxValue !== undefined && sv === field.maxValue;
+              })) addsCoverage = true;
+            }
+          }
+        } else {
+          if (field.minLength !== undefined && valStr.length === field.minLength) {
+            if (!selected.some(s => {
+              const sv = String(s[field.name]);
+              return field.minLength !== undefined && sv.length === field.minLength;
+            })) addsCoverage = true;
+          }
+          if (field.maxLength !== undefined && valStr.length === field.maxLength) {
+            if (!selected.some(s => {
+              const sv = String(s[field.name]);
+              return field.maxLength !== undefined && sv.length === field.maxLength;
+            })) addsCoverage = true;
+          }
+        }
+
+        // Check security
+        const secKW = ["' or", '" or', '--', 'union', '<script'];
+        if (secKW.some(kw => valStr.toLowerCase().includes(kw))) {
+          if (!selected.some(s => {
+            const sv = String(s[field.name]);
+            return secKW.some(kw => sv.toLowerCase().includes(kw));
+          })) addsCoverage = true;
+        }
+      }
+
+      if (addsCoverage) {
+        uniqueFingerprints.add(fp);
+        selected.push(item.tc);
+        selectedIndices.add(item.idx);
+      }
+    }
+
+    // Third pass: fill with diverse cases until we hit target coverage
+    // or keep up to ~50% of original (max compactness)
+    const maxKeep = Math.max(5, Math.ceil(testCases.length * 0.5));
+    for (const item of categorized) {
+      if (selectedIndices.has(item.idx)) continue;
+      if (selected.length >= maxKeep) break;
+
+      const fp = JSON.stringify(Object.entries(item.tc).sort());
+      if (!uniqueFingerprints.has(fp)) {
+        uniqueFingerprints.add(fp);
+        selected.push(item.tc);
+        selectedIndices.add(item.idx);
+      }
+    }
+
+    const finalCoverage = selected.length > 0
+      ? this.computeFullCoverageForSet(selected)
+      : 0;
+
+    return {
+      minimized: selected,
+      removed: testCases.length - selected.length,
+      finalCoverage,
+    };
+  }
+
+  private categorizeTestCase(tc: Chromosome): string {
+    let isSecurity = false;
+    const securityKeywords = ["' or", '" or', "'or", '"or', '--', 'union', 'select', 'drop table', '<script', 'onload=', 'onerror=', 'javascript:'];
+
+    for (const val of Object.values(tc)) {
+      const str = String(val).toLowerCase();
+      if (securityKeywords.some(kw => str.includes(kw))) {
+        isSecurity = true;
+      }
+    }
+    if (isSecurity) return 'security';
+
+    let hasInvalid = false;
+    let hasBoundary = false;
+
+    for (const field of this.schema) {
+      const val = tc[field.name];
+      if (val === undefined || val === null) {
+        if (field.required) hasInvalid = true;
+        continue;
+      }
+
+      const strVal = String(val);
+      let fieldValid = true;
+
+      if (field.required && strVal === '') fieldValid = false;
+
+      if (fieldValid && field.type === 'email') {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(strVal)) fieldValid = false;
+      } else if (fieldValid && field.type === 'card') {
+        if (!/^\d{16}$/.test(strVal)) fieldValid = false;
+      } else if (fieldValid && field.type === 'phone') {
+        if (!/^(03|05|07|08|09)\d{8}$/.test(strVal)) fieldValid = false;
+      } else if (fieldValid && field.type === 'number') {
+        const num = Number(val);
+        if (isNaN(num)) fieldValid = false;
+        else {
+          if (field.minValue !== undefined && num < field.minValue) fieldValid = false;
+          if (field.maxValue !== undefined && num > field.maxValue) fieldValid = false;
+          if (fieldValid) {
+            if (field.minValue !== undefined && num === field.minValue) hasBoundary = true;
+            if (field.maxValue !== undefined && num === field.maxValue) hasBoundary = true;
+          }
+        }
+      }
+
+      if (fieldValid && field.type !== 'number') {
+        if (field.minLength !== undefined && strVal.length < field.minLength) fieldValid = false;
+        if (field.maxLength !== undefined && strVal.length > field.maxLength) fieldValid = false;
+        if (fieldValid) {
+          if (field.minLength !== undefined && strVal.length === field.minLength) hasBoundary = true;
+          if (field.maxLength !== undefined && strVal.length === field.maxLength) hasBoundary = true;
+        }
+      }
+
+      if (!fieldValid) hasInvalid = true;
+    }
+
+    if (hasInvalid) return 'negative';
+    if (hasBoundary) return 'boundary';
+    return 'positive';
+  }
+
+  private computeFullCoverageForSet(testCases: Chromosome[]): number {
+    const rawValues = testCases;
+    let totalValid = 0;
+    const boundariesChecked = new Set<string>();
+    const securityChecked = new Set<string>();
+
+    for (const tc of rawValues) {
+      for (const field of this.schema) {
+        const name = field.name;
+        const val = tc[name];
+        const valStr = String(val);
+
+        let isOk = true;
+        if (field.required && (val === null || val === undefined || valStr === '')) isOk = false;
+
+        if (isOk) {
+          totalValid += 1;
+          if (field.type === 'number') {
+            const num = Number(val);
+            if (!isNaN(num)) {
+              if (field.minValue !== undefined && num === field.minValue) boundariesChecked.add(`${name}_min`);
+              if (field.maxValue !== undefined && num === field.maxValue) boundariesChecked.add(`${name}_max`);
+            }
+          } else {
+            if (field.minLength !== undefined && valStr.length === field.minLength) boundariesChecked.add(`${name}_min`);
+            if (field.maxLength !== undefined && valStr.length === field.maxLength) boundariesChecked.add(`${name}_max`);
+          }
+        }
+
+        const securityKeywords = ["' or", '" or', '--', 'union', 'select', '<script'];
+        if (securityKeywords.some(kw => valStr.toLowerCase().includes(kw))) {
+          securityChecked.add(`${name}_security`);
+        }
+      }
+    }
+
+    const totalCases = rawValues.length;
+    const maxValid = totalCases * this.schema.length;
+    const valFactor = maxValid > 0 ? totalValid / maxValid : 0;
+
+    const possibleBounds = this.schema.length * 2;
+    const boundFactor = possibleBounds > 0 ? boundariesChecked.size / possibleBounds : 0;
+
+    const possibleSec = this.schema.length;
+    const secFactor = possibleSec > 0 ? securityChecked.size / possibleSec : 0;
+
+    return Math.min((valFactor * 0.6) + (boundFactor * 0.25) + (secFactor * 0.15), 1.0);
   }
 }

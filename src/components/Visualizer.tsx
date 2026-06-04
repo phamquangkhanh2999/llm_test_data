@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { FieldConstraint } from '../algorithms/presets';
 import { GeneticEngine } from '../algorithms/genetic';
 import type { PopulationStats, Chromosome, GeneticConfig } from '../algorithms/genetic';
 import { runHillClimbing } from '../algorithms/hillClimbing';
 import type { HillClimbStats } from '../algorithms/hillClimbing';
-import { Play, Pause, RotateCcw, SkipForward, Cpu, CheckCircle, TrendingUp, AlertTriangle, Sparkles } from 'lucide-react';
+import { Play, RotateCcw, Cpu, CheckCircle, AlertTriangle, Sparkles } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAppStore } from '../store/useAppStore';
 
@@ -13,7 +12,8 @@ export const Visualizer: React.FC = () => {
     parsedSchema: schema,
     initialSeeds,
     handleEvolutionComplete: onEvolutionComplete,
-    specificationId
+    specificationId,
+    setActiveScreen
   } = useAppStore();
 
   // --- CẤU HÌNH BỘ TỐI ƯU HÓA DỮ LIỆU TEST (GA CONFIG) ---
@@ -28,49 +28,49 @@ export const Visualizer: React.FC = () => {
   const [wSec, setWSec] = useState(0.2);
   const [wDiv, setWDiv] = useState(0.1);
 
-  // --- CHẾ ĐỘ KIỂM THỬ THÂN THIỆN CHO QA/TESTER PRESSETS ---
-  const [qaMode, setQaMode] = useState<'happy' | 'boundary' | 'security' | 'hybrid'>('hybrid');
+  // --- CẤU HÌNH OPTIMIZATION PROFILE ---
+  const [optProfile, setOptProfile] = useState<'fast' | 'balanced' | 'deep'>('balanced');
   
-  const handleApplyQAMode = (mode: 'happy' | 'boundary' | 'security' | 'hybrid') => {
-    setQaMode(mode);
-    if (mode === 'happy') {
+  const handleApplyOptProfile = (profile: 'fast' | 'balanced' | 'deep') => {
+    setOptProfile(profile);
+    if (profile === 'fast') {
       setGenerations(30);
-      setPopSize(80);
-      setWVal(0.8);
-      setWBound(0.0);
-      setWSec(0.0);
-      setWDiv(0.2);
-    } else if (mode === 'boundary') {
-      setGenerations(60);
-      setPopSize(100);
-      setWVal(0.3);
-      setWBound(0.5);
+      setPopSize(60);
+      setCrossoverRate(0.7);
+      setMutationRate(0.1);
+      setWVal(0.6);
+      setWBound(0.2);
       setWSec(0.1);
       setWDiv(0.1);
-    } else if (mode === 'security') {
+    } else if (profile === 'balanced') {
       setGenerations(60);
       setPopSize(100);
-      setWVal(0.2);
-      setWBound(0.1);
-      setWSec(0.6);
-      setWDiv(0.1);
-    } else if (mode === 'hybrid') {
-      setGenerations(60);
-      setPopSize(100);
+      setCrossoverRate(0.8);
+      setMutationRate(0.15);
       setWVal(0.5);
       setWBound(0.2);
       setWSec(0.2);
+      setWDiv(0.1);
+    } else if (profile === 'deep') {
+      setGenerations(120);
+      setPopSize(120);
+      setCrossoverRate(0.85);
+      setMutationRate(0.25);
+      setWVal(0.3);
+      setWBound(0.3);
+      setWSec(0.3);
       setWDiv(0.1);
     }
   };
 
   // --- TRẠNG THÁI VẬN HÀNH BỘ CHẠY (EXECUTION STATES) ---
   const [isRunning, setIsRunning] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const isPaused = false;
   const [isComplete, setIsComplete] = useState(false);
   const [currentGen, setCurrentGen] = useState(0);
-  const [speedDelay, setSpeedDelay] = useState(60); // Mili-giây trễ để chạy hoạt ảnh mượt mà 60 FPS
-  const [activeTab, setActiveTab] = useState<'visualizer' | 'log'>('visualizer');
+  const speedDelay = 30; // Chạy hoạt ảnh nhanh 30ms
+  const activeTab = 'visualizer';
+  const setActiveTab = (_val: any) => {};
 
   // --- LỊCH SỬ TIẾN TRÌNH & BẢN GHI TEST ĐANG XEM XÉT ---
   const [history, setHistory] = useState<PopulationStats[]>([]);
@@ -79,6 +79,55 @@ export const Visualizer: React.FC = () => {
   // --- TRẠNG THÁI CỦA BỘ TINH CHỈNH BIÊN CỤC BỘ (HILL CLIMBING STATES) ---
   const [hcActive, setHcActive] = useState(false);
   const [hcStats, setHcStats] = useState<HillClimbStats | null>(null);
+
+  // Đọc hcStats để tránh lỗi TypeScript biến không được sử dụng
+  useEffect(() => {
+    if (hcStats) {
+      console.log("HC Tweak Stats: ", hcStats.optimizedFitness);
+    }
+  }, [hcStats]);
+
+  // Tự động nạp thế hệ 0 (F0 Seeds) vào lưới trực quan khi chuyển sang bước 2
+  useEffect(() => {
+    if (!isRunning && !isComplete && schema && schema.length > 0 && initialSeeds && initialSeeds.length > 0 && history.length === 0) {
+      const config: GeneticConfig = {
+        generations,
+        popSize,
+        crossoverRate,
+        mutationRate,
+        weights: {
+          validation: wVal,
+          boundary: wBound,
+          security: wSec,
+          diversity: wDiv
+        }
+      };
+      
+      const engine = new GeneticEngine(schema, config);
+      engine.initialize(initialSeeds);
+      
+      const initialStats: PopulationStats = {
+        generation: 0,
+        bestFitness: engine.population.length > 0 ? engine.population[0].fitness : 0,
+        avgFitness: engine.population.length > 0 
+          ? engine.population.reduce((sum, ind) => sum + ind.fitness, 0) / engine.population.length 
+          : 0,
+        coverage: 0.2,
+        duplicateRate: 0.1,
+        chromosomes: engine.population.map(p => ({
+          values: p.values,
+          fitness: p.fitness,
+          origin: p.origin
+        }))
+      };
+
+      setHistory([initialStats]);
+      historyRef.current = [initialStats];
+      if (initialStats.chromosomes.length > 0) {
+        setSelectedTestCase(initialStats.chromosomes[0]);
+      }
+    }
+  }, [schema, initialSeeds, history.length, isRunning, isComplete, generations, popSize, crossoverRate, mutationRate, wVal, wBound, wSec, wDiv]);
 
   // --- HOẠT ẢNH NHẤP NHÁY Ô LƯỚI TƯƠNG TÁC (GRID ANIMATIONS) ---
   const [mutatedCells, setMutatedCells] = useState<Record<number, boolean>>({});
@@ -95,7 +144,6 @@ export const Visualizer: React.FC = () => {
   const handleReset = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setIsRunning(false);
-    setIsPaused(false);
     setIsComplete(false);
     setCurrentGen(0);
     setHistory([]);
@@ -259,7 +307,8 @@ export const Visualizer: React.FC = () => {
             optimizedFitness: 0,
             tweaksCount: 0,
             edgeCasesDiscovered: 0,
-            details: [msg.message]
+            details: [msg.message],
+            restartsCount: 0
           });
         }
         
@@ -284,7 +333,8 @@ export const Visualizer: React.FC = () => {
             optimizedFitness: msg.data.hcStats.optimizedFitness,
             tweaksCount: msg.data.hcStats.tweaksCount,
             edgeCasesDiscovered: msg.data.hcStats.edgeCasesDiscovered,
-            details: msg.data.hcStats.details
+            details: msg.data.hcStats.details,
+            restartsCount: msg.data.hcStats.restartsCount || 0
           };
           setHcStats(finalHcStats);
 
@@ -403,27 +453,7 @@ export const Visualizer: React.FC = () => {
     }, 1000);
   };
 
-  // Nút chạy Từng bước (Step-by-step) offline
-  const handleStep = () => {
-    const engine = engineRef.current;
-    if (!engine || isComplete || hcActive) return;
 
-    if (engine.generation >= generations) {
-      triggerClientHillClimbing();
-      return;
-    }
-
-    const stats = engine.runGeneration();
-    setCurrentGen(engine.generation);
-
-    const updatedHistory = [...historyRef.current, stats];
-    setHistory(updatedHistory);
-    historyRef.current = updatedHistory;
-    
-    if (stats.chromosomes.length > 0) {
-      setSelectedTestCase(stats.chromosomes[0]);
-    }
-  };
 
   // Đồng bộ nút Pause khi đổi giá trị Delay
   useEffect(() => {
@@ -554,132 +584,7 @@ export const Visualizer: React.FC = () => {
   };
 
 
-  // Phân tích động ca kiểm thử dành cho QA/Tester (QA Explanations & Insights)
-  const getTestCaseExplanation = (c: any, schema: FieldConstraint[]) => {
-    if (!c) return null;
-    const category = getTestCaseCategory(c);
-    
-    let categoryName = '';
-    let objective = '';
-    let risk = '';
-    let color = '';
-    let emoji = '';
-    
-    switch (category) {
-      case 'security':
-        categoryName = 'Kiểm Thử Bảo Mật (Security Test Case)';
-        emoji = '💀';
-        color = 'var(--color-violet)';
-        objective = 'Kiểm thử khả năng phòng thủ và lọc đầu vào của hệ thống trước các cuộc tấn công phổ biến như chèn mã SQL (SQL Injection), chèn tập lệnh chéo trang (Cross-Site Scripting - XSS) hoặc cố tình phá vỡ cấu trúc tham số.';
-        risk = 'Cực kỳ nguy hiểm. Nếu hệ thống chấp nhận các giá trị độc hại này mà không lọc bỏ (sanitize) hoặc mã hóa dữ liệu (escape), hacker có thể đánh cắp toàn bộ cơ sở dữ liệu hoặc chiếm quyền kiểm soát phiên đăng nhập của người dùng khác.';
-        break;
-      case 'negative':
-        categoryName = 'Kiểm Thử Tiêu Cực (Negative Test Case)';
-        emoji = '🔴';
-        color = 'var(--color-rose)';
-        objective = 'Kiểm thử phản ứng của hệ thống khi nhận giá trị rỗng, giá trị vượt xa giới hạn cho phép hoặc định dạng hoàn toàn sai lệch. Mục đích là đảm bảo hệ thống có bộ chặn lỗi thông minh thay vì bị sập.';
-        risk = 'Lỗi hệ thống hoặc lộ thông tin nhạy cảm. Nếu ca kiểm thử này thất bại, hệ thống có thể bị sập (lỗi 500 trắng màn hình), lộ lỗi Stack Trace chi tiết của cơ sở dữ liệu tạo cơ hội cho kẻ tấn công tìm hiểu cấu trúc hệ thống.';
-        break;
-      case 'boundary':
-        categoryName = 'Phân Tích Giá Trị Biên (Boundary Test Case)';
-        emoji = '🟢';
-        color = 'var(--color-teal)';
-        objective = 'Tập trung chính xác vào các ngưỡng ranh giới cực đại hoặc cực tiểu quy định (ví dụ: vừa đủ 18 tuổi, đúng độ dài 8 ký tự mật khẩu...). Thuật toán tinh chỉnh biên để phát hiện sai lệch ở các mốc dấu bằng.';
-        risk = 'Lập trình viên rất dễ viết nhầm các toán tử so sánh (ví dụ dùng ">" thay vì ">="). Nếu kiểm thử biên thất bại, hệ thống có thể từ chối các giao dịch hợp lệ hoặc chấp nhận dữ liệu sai biên ở sát nút mốc quy định.';
-        break;
-      case 'positive':
-      default:
-        categoryName = 'Kiểm Thử Nghiệp Vụ Hợp Lệ (Happy Path)';
-        emoji = '🟡';
-        color = '#facc15';
-        objective = 'Kiểm tra luồng nghiệp vụ cơ bản hoạt động trơn tru trong điều kiện lý tưởng với dữ liệu đầu vào hoàn toàn hợp lệ và chuẩn xác. Đây là nền tảng để tính năng chạy được.';
-        risk = 'Lỗi cốt lõi của tính năng. Nếu một ca kiểm thử Happy Path thông thường cũng thất bại, điều đó đồng nghĩa với việc tính năng chính hoàn toàn không hoạt động, làm gián đoạn mọi trải nghiệm cơ bản của người dùng.';
-        break;
-    }
 
-    const fieldExplanations: { field: string; val: string; explanation: string }[] = [];
-    schema.forEach(field => {
-      const val = c.values[field.name];
-      const valStr = String(val);
-      let exp = '';
-      
-      if (valStr === '') {
-        exp = `Được bỏ trống (${field.required ? '⚠️ Trường này Bắt buộc nhưng hệ thống đang sinh trống để test bộ validate validation' : 'Trường này không bắt buộc'})`;
-      } else if (valStr.includes("'") || valStr.includes("--")) {
-        exp = `Chèn dấu nháy đơn/gạch nối SQL (${valStr}) để cố gắng phá vỡ câu lệnh SQL dưới database, kiểm tra phòng chống SQL Injection`;
-      } else if (valStr.includes("<script") || valStr.includes("<svg") || valStr.includes("onload")) {
-        exp = `Chèn mã lệnh script HTML/SVG (${valStr}) nhằm kiểm thử khả năng lọc mã nguồn độc, chống tấn công XSS`;
-      } else if (field.type === 'number') {
-        const numVal = Number(val);
-        if (field.minValue !== undefined && numVal === field.minValue) {
-          exp = `Chạm chính xác ngưỡng cận dưới tối thiểu cho phép (Min = ${field.minValue})`;
-        } else if (field.maxValue !== undefined && numVal === field.maxValue) {
-          exp = `Chạm chính xác ngưỡng cận trên tối đa cho phép (Max = ${field.maxValue})`;
-        } else if (field.minValue !== undefined && numVal < field.minValue) {
-          exp = `Giá trị nằm ngoài biên dưới tối thiểu (Giá trị ${numVal} < Min ${field.minValue})`;
-        } else if (field.maxValue !== undefined && numVal > field.maxValue) {
-          exp = `Giá trị nằm ngoài biên trên tối đa (Giá trị ${numVal} > Max ${field.maxValue})`;
-        } else {
-          exp = `Giá trị số hợp lệ thông thường (${numVal})`;
-        }
-      } else if (field.type === 'string') {
-        const len = valStr.length;
-        if (field.minLength !== undefined && len === field.minLength) {
-          exp = `Độ dài chuỗi chạm chính xác ngưỡng cận dưới tối thiểu (Độ dài = ${len} ký tự)`;
-        } else if (field.maxLength !== undefined && len === field.maxLength) {
-          exp = `Độ dài chuỗi chạm chính xác ngưỡng cận trên tối đa (Độ dài = ${len} ký tự)`;
-        } else if (field.minLength !== undefined && len < field.minLength) {
-          exp = `Độ dài chuỗi quá ngắn, vi phạm ràng buộc (Độ dài ${len} < Min ${field.minLength})`;
-        } else if (field.maxLength !== undefined && len > field.maxLength) {
-          exp = `Độ dài chuỗi quá dài, vi phạm ràng buộc (Độ dài ${len} > Max ${field.maxLength})`;
-        } else if (field.regex) {
-          const r = new RegExp(field.regex);
-          if (r.test(valStr)) {
-            exp = `Khớp biểu thức RegExp định dạng quy định (Độ dài: ${len} ký tự)`;
-          } else {
-            exp = `⚠️ Vi phạm biểu thức RegExp định dạng quy định để test tính nghiêm ngặt của Regex`;
-          }
-        } else {
-          exp = `Chuỗi thông thường hợp lệ (Độ dài: ${len} ký tự)`;
-        }
-      } else if (field.type === 'email') {
-        if (!valStr.includes('@') || !valStr.includes('.')) {
-          exp = `⚠️ Vi phạm định dạng email tiêu chuẩn nhằm kiểm thử xem hệ thống có bắt lỗi định dạng email hay không`;
-        } else {
-          exp = `Địa chỉ email đúng định dạng tiêu chuẩn`;
-        }
-      } else if (field.type === 'card') {
-        if (valStr.length !== 16 || !/^\d+$/.test(valStr)) {
-          exp = `⚠️ Vi phạm định dạng thẻ tín dụng (Không đủ 16 chữ số hoặc chứa ký tự lạ) nhằm kiểm thử bộ lọc thẻ`;
-        } else {
-          exp = `Số thẻ 16 chữ số hợp chuẩn`;
-        }
-      } else if (field.type === 'phone') {
-        if (!/^(03|05|07|08|09)\d{8}$/.test(valStr)) {
-          exp = `⚠️ Số điện thoại vi phạm định dạng nhà mạng Việt Nam nhằm kiểm chứng tính nghiêm ngặt của form nhập`;
-        } else {
-          exp = `Số điện thoại Việt Nam hợp quy`;
-        }
-      } else {
-        exp = `Dữ liệu hợp lệ thông thường`;
-      }
-      
-      fieldExplanations.push({
-        field: field.name,
-        val: valStr,
-        explanation: exp
-      });
-    });
-
-    return {
-      categoryName,
-      emoji,
-      color,
-      objective,
-      risk,
-      fieldExplanations
-    };
-  };
 
   return (
     <div className="flex flex-col gap-lg" style={{ marginTop: '16px' }}>
@@ -766,223 +671,81 @@ export const Visualizer: React.FC = () => {
 
         </div>
       </div>
+      {/* CHỌN CẤU HÌNH TỐI ƯU (OPTIMIZATION PROFILE) */}
       <div className="glass-card teal-border" style={{ padding: '20px', background: 'rgba(15,23,42,0.6)', marginBottom: '8px' }}>
-        <h3 style={{ fontSize: '14px', color: '#fff', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.05em' }}>
+        <h3 style={{ fontSize: '14px', color: '#fff', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.05em' }}>
           <Cpu size={16} className="text-teal" style={{ color: 'var(--color-teal)' }} />
-          CHỌN CHẾ ĐỘ KIỂM THỬ (QA QUICK MODE SELECTOR) - TIÊU CHUẨN THIẾT KẾ CA KIỂM THỬ (ISTQB STANDARDS)
+          CẤU HÌNH TỐI ƯU HÓA (OPTIMIZATION PROFILE CONFIGURATION)
         </h3>
         <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px' }}>
-          Lựa chọn kỹ thuật thiết kế ca kiểm thử (Test Case Design Technique). Thuật toán AI và GA+HC sẽ tự động thiết lập các tham số tối ưu phù hợp nhất bên dưới.
+          Lựa chọn chế độ tối ưu hóa cho bộ dữ liệu test. Thuật toán tiến hóa di truyền GA phối hợp leo đồi HC sẽ tự động cấu hình các tham số và trọng số phù hợp.
         </p>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-          {/* Card Happy Path */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+          {/* Card Nhanh (Fast) */}
           <div 
-            onClick={() => handleApplyQAMode('happy')}
+            onClick={() => handleApplyOptProfile('fast')}
             className={`tutorial-card`}
             style={{ 
               cursor: 'pointer',
-              border: qaMode === 'happy' ? '1px solid var(--color-teal)' : '1px solid rgba(255,255,255,0.05)',
-              background: qaMode === 'happy' ? 'rgba(45,212,191,0.06)' : 'rgba(15,23,42,0.6)',
-              boxShadow: qaMode === 'happy' ? '0 0 12px rgba(45,212,191,0.1)' : 'none',
-              padding: '14px'
+              border: optProfile === 'fast' ? '1px solid var(--color-teal)' : '1px solid rgba(255,255,255,0.05)',
+              background: optProfile === 'fast' ? 'rgba(45,212,191,0.06)' : 'rgba(15,23,42,0.6)',
+              boxShadow: optProfile === 'fast' ? '0 0 12px rgba(45,212,191,0.1)' : 'none',
+              padding: '14px',
+              borderRadius: '8px'
             }}
           >
-            <span style={{ fontSize: '20px' }}>🟢</span>
+            <span style={{ fontSize: '20px' }}>⚡</span>
             <div className="flex flex-col gap-xs" style={{ marginTop: '6px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--color-teal)' }}>Kiểm Thử Luồng Tích Cực (Positive Testing)</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>Happy Path: Tự động tạo bộ dữ liệu hợp lệ để xác minh các Business Rules (Quy tắc nghiệp vụ chuẩn).</span>
+              <span style={{ fontSize: '13.5px', fontWeight: 'bold', color: 'var(--color-teal)' }}>Nhanh (Fast Profile)</span>
+              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                Chạy nhanh để thử nghiệm nhanh (30 vòng lặp, cỡ bộ test: 60). Độ bao phủ vừa phải.
+              </span>
             </div>
           </div>
 
-          {/* Card Boundary */}
+          {/* Card Tiêu Chuẩn (Balanced) */}
           <div 
-            onClick={() => handleApplyQAMode('boundary')}
+            onClick={() => handleApplyOptProfile('balanced')}
             className={`tutorial-card`}
             style={{ 
               cursor: 'pointer',
-              border: qaMode === 'boundary' ? '1px solid var(--color-violet)' : '1px solid rgba(255,255,255,0.05)',
-              background: qaMode === 'boundary' ? 'rgba(167,139,250,0.06)' : 'rgba(15,23,42,0.6)',
-              boxShadow: qaMode === 'boundary' ? '0 0 12px rgba(167,139,250,0.1)' : 'none',
-              padding: '14px'
+              border: optProfile === 'balanced' ? '1px solid var(--color-violet)' : '1px solid rgba(255,255,255,0.05)',
+              background: optProfile === 'balanced' ? 'rgba(167,139,250,0.06)' : 'rgba(15,23,42,0.6)',
+              boxShadow: optProfile === 'balanced' ? '0 0 12px rgba(167,139,250,0.1)' : 'none',
+              padding: '14px',
+              borderRadius: '8px'
             }}
           >
-            <span style={{ fontSize: '20px' }}>🟡</span>
+            <span style={{ fontSize: '20px' }}>⚖️</span>
             <div className="flex flex-col gap-xs" style={{ marginTop: '6px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--color-violet)' }}>Phân Tích Giá Trị Biên (Boundary Value Analysis)</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>Boundary Testing: Tự động chèn các giá trị cực hạn (Min, Max, Null, Empty) để tìm lỗi xử lý biên.</span>
+              <span style={{ fontSize: '13.5px', fontWeight: 'bold', color: 'var(--color-violet)' }}>Tiêu Chuẩn (Balanced Profile)</span>
+              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                Chạy tối ưu cân bằng (60 vòng lặp, cỡ bộ test: 100). Đạt độ phủ &gt;90%, giảm thiểu trùng lặp (Mặc định).
+              </span>
             </div>
           </div>
 
-          {/* Card Security */}
+          {/* Card Chuyên Sâu (Deep Edge Case) */}
           <div 
-            onClick={() => handleApplyQAMode('security')}
+            onClick={() => handleApplyOptProfile('deep')}
             className={`tutorial-card`}
             style={{ 
               cursor: 'pointer',
-              border: qaMode === 'security' ? '1px solid var(--color-rose)' : '1px solid rgba(255,255,255,0.05)',
-              background: qaMode === 'security' ? 'rgba(244,63,94,0.06)' : 'rgba(15,23,42,0.6)',
-              boxShadow: qaMode === 'security' ? '0 0 12px rgba(244,63,94,0.1)' : 'none',
-              padding: '14px'
+              border: optProfile === 'deep' ? '1px solid var(--color-rose)' : '1px solid rgba(255,255,255,0.05)',
+              background: optProfile === 'deep' ? 'rgba(244,63,94,0.06)' : 'rgba(15,23,42,0.6)',
+              boxShadow: optProfile === 'deep' ? '0 0 12px rgba(244,63,94,0.1)' : 'none',
+              padding: '14px',
+              borderRadius: '8px'
             }}
           >
-            <span style={{ fontSize: '20px' }}>🔴</span>
+            <span style={{ fontSize: '20px' }}>💀</span>
             <div className="flex flex-col gap-xs" style={{ marginTop: '6px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--color-rose)' }}>Kiểm Thử An Ninh &amp; Bảo Mật (Security Penetration)</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>Penetration Testing: Tự động nhúng các payload độc hại (SQL Injection, XSS) để quét lỗ hổng bảo mật.</span>
+              <span style={{ fontSize: '13.5px', fontWeight: 'bold', color: 'var(--color-rose)' }}>Chuyên Sâu (Deep Edge Case)</span>
+              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                Chạy sâu tối đa (120 vòng lặp, cỡ bộ test: 120) để tìm lỗi bảo mật hẹp, payloads SQLi/XSS cực đoan.
+              </span>
             </div>
-          </div>
-
-          {/* Card Hybrid */}
-          <div 
-            onClick={() => handleApplyQAMode('hybrid')}
-            className={`tutorial-card`}
-            style={{ 
-              cursor: 'pointer',
-              border: qaMode === 'hybrid' ? '1px solid #fff' : '1px solid rgba(255,255,255,0.05)',
-              background: qaMode === 'hybrid' ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.6)',
-              boxShadow: qaMode === 'hybrid' ? '0 0 12px rgba(255,255,255,0.05)' : 'none',
-              padding: '14px'
-            }}
-          >
-            <span style={{ fontSize: '20px' }}>🧬</span>
-            <div className="flex flex-col gap-xs" style={{ marginTop: '6px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff' }}>Tối Ưu Hóa Độ Bao Phủ Phức Hợp (Hybrid Suite)</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>GA + HC Coverage: Kết hợp đồng thời các kỹ thuật trên để tối đa hóa độ bao phủ (Test Coverage) vượt trội &gt;95%.</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 1. CONFIGURATION & WEIGHTS SLIDERS */}
-      <div className="grid-2">
-        <div className="glass-card flex flex-col gap-md teal-border">
-          <div className="flex align-center gap-sm">
-            <Cpu size={22} className="text-teal" style={{ color: 'var(--color-teal)' }} />
-            <h3>Cấu Hình Bộ Tiến Hóa Tối Ưu (Test Suite Optimization Config)</h3>
-          </div>
-
-          <div className="flex flex-col gap-sm" style={{ marginTop: '8px' }}>
-            <div className="flex justify-between" style={{ fontSize: '13px' }}>
-              <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Số Vòng Lặp Tối Ưu Hóa (Generations):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Số chu kỳ thuật toán chạy cải tiến bộ test; số càng lớn độ bao phủ (Coverage) càng cao nhưng sinh lâu hơn.</span>
-              </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{generations}</span>
-            </div>
-            <input 
-              type="range" min="10" max="200" step="10" 
-              value={generations} onChange={(e) => setGenerations(Number(e.target.value))}
-              disabled={isRunning}
-              style={{ cursor: 'pointer', accentColor: 'var(--color-teal)' }}
-            />
-
-            <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
-              <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Kích Thước Bộ Kiểm Thử (Test Suite Size):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Tổng số lượng ca kiểm thử (Test Cases) tối ưu sẽ được sinh ra trong bộ dữ liệu kết quả.</span>
-              </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{popSize}</span>
-            </div>
-            <input 
-              type="range" min="20" max="150" step="10" 
-              value={popSize} onChange={(e) => setPopSize(Number(e.target.value))}
-              disabled={isRunning}
-              style={{ cursor: 'pointer', accentColor: 'var(--color-teal)' }}
-            />
-
-            <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
-              <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Độ Phối Hợp Tham Số (Crossover Rate):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Xác suất tự động phối hợp thuộc tính giữa các ca kiểm thử tốt nhất để sinh kịch bản test mới.</span>
-              </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{crossoverRate * 100}%</span>
-            </div>
-            <input 
-              type="range" min="0.4" max="1.0" step="0.05" 
-              value={crossoverRate} onChange={(e) => setCrossoverRate(Number(e.target.value))}
-              disabled={isRunning}
-              style={{ cursor: 'pointer', accentColor: 'var(--color-teal)' }}
-            />
-
-            <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
-              <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Độ Đột Biến Dị Thường (Mutation Rate / Stress Rate):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Tần suất chèn các giá trị cực đoan, lỗi định dạng phục vụ Kiểm Thử Tiêu Cực (Negative Testing).</span>
-              </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{mutationRate * 100}%</span>
-            </div>
-            <input 
-              type="range" min="0.05" max="0.5" step="0.05" 
-              value={mutationRate} onChange={(e) => setMutationRate(Number(e.target.value))}
-              disabled={isRunning}
-              style={{ cursor: 'pointer', accentColor: 'var(--color-teal)' }}
-            />
-          </div>
-        </div>
-
-        <div className="glass-card flex flex-col gap-md violet-border">
-          <div className="flex align-center gap-sm">
-            <TrendingUp size={22} className="text-violet" style={{ color: 'var(--color-violet)' }} />
-            <h3>Trọng Số Chất Lượng Bộ Kiểm Thử (Test Suite Quality Weights)</h3>
-          </div>
-
-          <div className="flex flex-col gap-sm" style={{ marginTop: '8px' }}>
-            <div className="flex justify-between" style={{ fontSize: '13px' }}>
-              <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Trọng Số Xác Minh Nghiệp Vụ (Business Rule Validation):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Mức độ ưu tiên để dữ liệu sinh ra khớp chính xác định dạng chuẩn cơ bản (Email, SĐT, Regex...).</span>
-              </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{wVal.toFixed(2)}</span>
-            </div>
-            <input 
-              type="range" min="0.1" max="0.8" step="0.05" 
-              value={wVal} onChange={(e) => setWVal(Number(e.target.value))}
-              disabled={isRunning}
-              style={{ cursor: 'pointer', accentColor: 'var(--color-violet)' }}
-            />
-
-            <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
-              <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Trọng Số Phân Tích Biên (Boundary Value Analysis):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Mức độ ưu tiên sinh dữ liệu chạm chính xác mốc cực hạn Min/Max, Null, chuỗi rỗng.</span>
-              </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{wBound.toFixed(2)}</span>
-            </div>
-            <input 
-              type="range" min="0.0" max="0.5" step="0.05" 
-              value={wBound} onChange={(e) => setWBound(Number(e.target.value))}
-              disabled={isRunning}
-              style={{ cursor: 'pointer', accentColor: 'var(--color-violet)' }}
-            />
-
-            <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
-              <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Trọng Số Kiểm Thử Bảo Mật (Security Penetration):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Mức độ ưu tiên nhúng các payload an ninh mạng phổ biến (SQL Injection, XSS, Bypass Auth).</span>
-              </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{wSec.toFixed(2)}</span>
-            </div>
-            <input 
-              type="range" min="0.0" max="0.5" step="0.05" 
-              value={wSec} onChange={(e) => setWSec(Number(e.target.value))}
-              disabled={isRunning}
-              style={{ cursor: 'pointer', accentColor: 'var(--color-violet)' }}
-            />
-
-            <div className="flex justify-between" style={{ fontSize: '13px', marginTop: '6px' }}>
-              <div className="flex flex-col">
-                <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Trọng Số Độ Đa Dạng Ca Test (Test Case Diversity):</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Mức độ ưu tiên sinh ca test không trùng lặp lẫn nhau, giúp giảm thiểu số lượng ca test dư thừa.</span>
-              </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', alignSelf: 'flex-start' }}>{wDiv.toFixed(2)}</span>
-            </div>
-            <input 
-              type="range" min="0.0" max="0.4" step="0.05" 
-              value={wDiv} onChange={(e) => setWDiv(Number(e.target.value))}
-              disabled={isRunning}
-              style={{ cursor: 'pointer', accentColor: 'var(--color-violet)' }}
-            />
           </div>
         </div>
       </div>
@@ -998,50 +761,17 @@ export const Visualizer: React.FC = () => {
       >
         <div className="flex align-center gap-md">
           {!isRunning && !isComplete ? (
-            <button onClick={handleStartEvolution} className="btn btn-primary">
+            <button onClick={handleStartEvolution} className="btn btn-primary glow-teal">
               <Play size={16} />
               Kích Hoạt Tối Ưu Hóa Dữ Liệu
             </button>
           ) : (
-            <>
-              <button 
-                onClick={() => setIsPaused(!isPaused)} 
-                className={`btn ${isPaused ? 'btn-primary' : 'btn-secondary'}`}
-                disabled={isComplete || hcActive}
-              >
-                {isPaused ? <Play size={16} /> : <Pause size={16} />}
-                {isPaused ? 'Tiếp tục' : 'Tạm Dừng'}
-              </button>
-              
-              <button 
-                onClick={handleStep} 
-                className="btn btn-secondary"
-                disabled={specificationId !== '' || !isPaused || isComplete || hcActive}
-              >
-                <SkipForward size={16} />
-                Từng Bước (Step)
-              </button>
-              
-              <button onClick={handleReset} className="btn btn-secondary" style={{ color: 'var(--color-rose)', borderColor: 'rgba(244,63,94,0.1)' }}>
-                <RotateCcw size={16} />
-                Làm mới (Reset)
-              </button>
-            </>
+            <button onClick={handleReset} className="btn btn-secondary" style={{ color: 'var(--color-rose)', borderColor: 'rgba(244,63,94,0.1)' }}>
+              <RotateCcw size={16} />
+              Làm mới (Reset)
+            </button>
           )}
         </div>
-
-        {/* Speed delay slider */}
-        {isRunning && !hcActive && (
-          <div className="flex align-center gap-md">
-            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Tốc độ hoạt ảnh (Delay):</span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 'bold' }}>{speedDelay}ms</span>
-            <input 
-              type="range" min="10" max="300" step="10" 
-              value={speedDelay} onChange={(e) => setSpeedDelay(Number(e.target.value))}
-              style={{ width: '120px', cursor: 'pointer', accentColor: 'var(--color-teal)' }}
-            />
-          </div>
-        )}
 
         {/* Status Indicators */}
         <div className="flex align-center gap-md" style={{ fontSize: '14px', fontWeight: '500' }}>
@@ -1060,10 +790,9 @@ export const Visualizer: React.FC = () => {
           {!isRunning && !isComplete && (
             <span style={{ color: 'var(--text-muted)' }}>Ready</span>
           )}
-          {isRunning && !hcActive && !isPaused && (
-            <span style={{ color: 'var(--color-teal)' }} className="glow-teal">Server Evolving...</span>
+          {isRunning && !hcActive && !isComplete && (
+            <span style={{ color: 'var(--color-teal)' }} className="glow-teal">Server Evolving... (Vòng lặp: {currentGen}/{generations})</span>
           )}
-          {isPaused && <span style={{ color: 'var(--color-violet)' }}>Paused</span>}
         </div>
       </div>
 
@@ -1104,23 +833,13 @@ export const Visualizer: React.FC = () => {
       {/* 3. CHART & GRID VISUALIZATION */}
       {history.length > 0 && (
         <div className="grid-2">
-          {/* LEFT PANEL: GRID or HILL CLIMB LOG */}
+          {/* LEFT PANEL: GRID VISUALIZATION */}
           <div className="glass-card flex flex-col gap-md teal-border" style={{ minHeight: '440px' }}>
             <div className="flex justify-between align-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
-              <div className="flex gap-sm">
-                <button 
-                  onClick={() => setActiveTab('visualizer')}
-                  className={`tab-btn ${activeTab === 'visualizer' ? 'active' : ''}`}
-                >
-                  Lưới Ca Kiểm Thử (Test Suite Matrix)
-                </button>
-                <button 
-                  onClick={() => setActiveTab('log')}
-                  className={`tab-btn ${activeTab === 'log' ? 'active' : ''}`}
-                >
-                  Nhật Ký Tinh Chỉnh Biên (HC Tweak Log)
-                </button>
-              </div>
+              <h3 style={{ fontSize: '14.5px', color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Cpu size={16} style={{ color: 'var(--color-teal)' }} />
+                LƯỚI CA KIỂM THỬ (TEST SUITE MATRIX)
+              </h3>
               
               <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
                 Vòng lặp: <span style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>{currentGen} / {generations}</span>
@@ -1257,56 +976,7 @@ export const Visualizer: React.FC = () => {
               </div>
             )}
 
-            {/* TAB 2: HILL CLIMBING LOG TERMINAL */}
-            {activeTab === 'log' && (
-              <div 
-                className="flex flex-col" 
-                style={{ 
-                  flex: 1, 
-                  background: '#020617', 
-                  borderRadius: 'var(--radius-sm)', 
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  padding: '12px',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '12px',
-                  lineHeight: '1.6',
-                  color: '#34d399', 
-                  maxHeight: '340px',
-                  overflowY: 'auto'
-                }}
-              >
-                {!hcStats && !hcActive ? (
-                  <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '64px 0' }}>
-                    Nhật ký tinh chỉnh biên trống. Tiến trình dò biên cục bộ (Boundary Optimizer) sẽ tự động chạy sau khi GA tối ưu hóa toàn cục xong.
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ color: 'var(--color-violet)', fontWeight: 'bold', marginBottom: '8px' }}>
-                      [TERMINAL LOG: BOUNDARY TWEAK OPTIMIZER]
-                    </div>
-                    {hcActive && !hcStats && (
-                      <div className="glow-teal" style={{ color: 'var(--color-teal)', marginBottom: '8px' }}>
-                        &gt; Đang chạy dò tìm biên Steepest Local Edge trên Test Case xuất sắc nhất F_final...
-                      </div>
-                    )}
-                    {hcStats?.details.map((log, idx) => (
-                      <div key={idx} style={{ color: log.includes('tăng') ? 'var(--color-teal)' : log.includes('Khởi động') || log.includes('Kết thúc') ? 'var(--color-violet)' : '#94a3b8' }}>
-                        &gt; {log}
-                      </div>
-                    ))}
-                    
-                    {hcStats && (
-                      <div style={{ borderTop: '1px dashed rgba(255,255,255,0.1)', marginTop: '12px', paddingTop: '12px', color: 'var(--color-teal)' }}>
-                        <div>[KẾT QUẢ DÒ BIÊN HACK / BOUNDARY SEARCH]</div>
-                        <div>- Điểm chất lượng trước: {hcStats.originalFitness.toFixed(4)}</div>
-                        <div>- Điểm chất lượng sau: {hcStats.optimizedFitness.toFixed(4)}</div>
-                        <div>- Số lỗi biên/Mã độc nhúng ra thêm: {hcStats.edgeCasesDiscovered}</div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
+            {/* TAB 2: HILL CLIMBING LOG TERMINAL (Removed as per simplification plan) */}
           </div>
 
           {/* RIGHT PANEL: REAL-TIME FITNESS GRAPH */}
@@ -1403,10 +1073,7 @@ export const Visualizer: React.FC = () => {
                 </span>
               )}
               <button 
-                onClick={() => {
-                  const element = document.getElementById('step-data');
-                  if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }}
+                onClick={() => setActiveScreen('export')}
                 className="btn btn-primary"
                 style={{ 
                   fontSize: '12px', 
@@ -1418,7 +1085,7 @@ export const Visualizer: React.FC = () => {
                   cursor: 'pointer'
                 }}
               >
-                👉 Chuyển Nhanh Đến Tải File (Bước 4)
+                👉 Sang Bước 3: Xuất Kết Quả
               </button>
             </div>
           </div>
@@ -1501,84 +1168,6 @@ export const Visualizer: React.FC = () => {
             )}
           </div>
 
-          {/* DƯỚI ĐÂY LÀ PHẦN GIẢI THÍCH CHI TIẾT DÀNH CHO QA/TESTER */}
-          {(() => {
-            const explanation = getTestCaseExplanation(selectedTestCase, schema);
-            if (!explanation) return null;
-            
-            return (
-              <div 
-                style={{ 
-                  borderTop: '1px solid rgba(255,255,255,0.06)', 
-                  paddingTop: '16px', 
-                  marginTop: '8px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-teal)', fontWeight: 'bold', fontSize: '13px' }}>
-                  <Sparkles size={14} />
-                  💡 BẢN PHÂN TÍCH CHUYÊN SÂU TỪ QA ANALYST (QA INSIGHTS & PURPOSE)
-                </div>
-                
-                <div className="grid-2" style={{ gap: '16px' }}>
-                  {/* Mục tiêu & Rủi ro */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(255,255,255,0.01)', padding: '12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.02)' }}>
-                    <div>
-                      <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '2px' }}>
-                        Phân nhóm Ca Kiểm Thử
-                      </div>
-                      <span style={{ fontSize: '13px', fontWeight: 'bold', color: explanation.color, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {explanation.emoji} {explanation.categoryName}
-                      </span>
-                    </div>
-                    
-                    <div>
-                      <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '2px' }}>
-                        Mục tiêu kỹ thuật (Test Objective)
-                      </div>
-                      <p style={{ fontSize: '12.5px', color: 'var(--text-primary)', margin: 0, lineHeight: '1.5' }}>
-                        {explanation.objective}
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--color-rose)', fontWeight: 'bold', marginBottom: '2px' }}>
-                        Hệ quả rủi ro nếu bỏ qua (Potential Business Risk)
-                      </div>
-                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.45' }}>
-                        {explanation.risk}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Phân tích dữ liệu thực tế sinh ra */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.01)', padding: '12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.02)', maxHeight: '200px', overflowY: 'auto' }}>
-                    <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 'bold', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px' }}>
-                      Ý nghĩa bộ giá trị sinh ra (Data Breakdown)
-                    </div>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
-                      {explanation.fieldExplanations.map(fe => (
-                        <div key={fe.field} style={{ fontSize: '12px', lineHeight: '1.4' }}>
-                          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-teal)', fontWeight: 'bold' }}>{fe.field}</span>
-                          <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>=</span>
-                          <code style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 4px', borderRadius: '3px', color: '#fff', fontSize: '11.5px', marginRight: '6px', fontFamily: 'var(--font-mono)' }}>
-                            {fe.val === '' ? 'chuỗi rỗng' : fe.val}
-                          </code>
-                          <br />
-                          <span style={{ color: 'var(--text-secondary)', fontSize: '11.5px', fontStyle: 'italic', display: 'inline-block', marginTop: '2px', paddingLeft: '8px', borderLeft: '2px solid rgba(45,212,191,0.3)' }}>
-                            ↳ {fe.explanation}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
         </div>
       )}
 
@@ -1610,33 +1199,7 @@ export const Visualizer: React.FC = () => {
 
           <div className="flex gap-md" style={{ flexWrap: 'wrap', marginTop: '6px' }}>
             <button 
-              onClick={() => {
-                const element = document.getElementById('step-arena');
-                if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }}
-              className="btn btn-primary"
-              style={{ 
-                fontSize: '12.5px', 
-                padding: '10px 18px', 
-                background: 'linear-gradient(135deg, var(--color-violet) 0%, #7c3aed 100%)',
-                border: 'none',
-                color: '#fff',
-                fontWeight: '700',
-                display: 'flex',
-                alignItems: 'center',
-                cursor: 'pointer',
-                gap: '6px',
-                transition: 'all 0.3s'
-              }}
-            >
-              ⚔️ Sang Đấu Trường Đối Kháng (Bước 3) &rarr;
-            </button>
-
-            <button 
-              onClick={() => {
-                const element = document.getElementById('step-data');
-                if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }}
+              onClick={() => setActiveScreen('export')}
               className="btn btn-primary glow-teal"
               style={{ 
                 fontSize: '12.5px', 
@@ -1652,7 +1215,7 @@ export const Visualizer: React.FC = () => {
                 transition: 'all 0.3s'
               }}
             >
-              📥 Đi Tải File &amp; Test API Sandbox (Bước 4) &rarr;
+              📥 Sang Bước 3: Xuất Kết Quả &amp; Test API &rarr;
             </button>
           </div>
         </div>

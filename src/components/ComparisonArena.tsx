@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { Chromosome, GeneticConfig } from '../algorithms/genetic';
 import { GeneticEngine, generateRandomValue } from '../algorithms/genetic';
 import { runHillClimbing } from '../algorithms/hillClimbing';
-import { Play, ShieldAlert, Award, Zap, Copy, Cpu, Sparkles } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { Play, Award, Zap, Cpu, Sparkles } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAppStore } from '../store/useAppStore';
+import { toast } from '../store/useToastStore';
 
 // --- CẤU TRÚC KẾT QUẢ SO SÁNH ĐỐI KHÁNG THUẬT TOÁN ---
 interface BattleResult {
@@ -27,9 +28,6 @@ export const ComparisonArena: React.FC = () => {
   // --- THIẾT LẬP CÁC TRẠNG THÁI (STATE) HOẠT ĐỘNG ---
   const [isBattleRunning, setIsBattleRunning] = useState(false);
   const [battleResults, setBattleResults] = useState<BattleResult[] | null>(null);
-  
-  // Trạng thái chọn thuật toán nào để soi mẫu dữ liệu thực tế sinh ra
-  const [selectedPreviewAlgo, setSelectedPreviewAlgo] = useState<string>('hybrid');
 
   // Trạng thái lưu trữ log cuộn giả lập để minh bạch hóa tiến trình giải thuật
   const [currentLogs, setCurrentLogs] = useState<string[]>([]);
@@ -96,7 +94,7 @@ export const ComparisonArena: React.FC = () => {
   // --- HÀM KÍCH HOẠT VÀ TIẾN HÀNH ĐẤU THUẬT TOÁN THỰC TẾ ---
   const handleLaunchBattle = () => {
     if (schema.length === 0) {
-      alert('Vui lòng chọn hoặc nạp một JSON Schema ràng buộc trước khi đấu thuật toán!');
+      toast.warning('Vui lòng chọn hoặc nạp một JSON Schema ràng buộc trước khi đấu thuật toán!');
       return;
     }
 
@@ -316,8 +314,6 @@ export const ComparisonArena: React.FC = () => {
 
       setBattleResults(results);
       setIsBattleRunning(false);
-      // Reset về xem hybrid mặc định sau khi chạy
-      setSelectedPreviewAlgo('hybrid');
     }, 1800);
   };
 
@@ -333,54 +329,14 @@ export const ComparisonArena: React.FC = () => {
           </button>
         </div>
       ) : isBattleRunning ? (
-        // DIỆN MẠO ĐANG CHẠY: HIỂN THỊ CÁC TIẾN TRÌNH STACK TERMINAL CHUYỂN ĐỘNG TRỰC QUAN
-        <div className="glass-card teal-border" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '24px' }}>
-          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-            <Cpu className="glow-teal" size={40} style={{ color: 'var(--color-teal)', animation: 'spin 3s linear infinite' }} />
-            <div style={{ color: 'var(--color-teal)', fontWeight: 'bold', fontSize: '14px' }}>
-              Đang chạy song song 5 giải thuật tối ưu hóa dưới nền...
-            </div>
+        <div className="glass-card teal-border" style={{ textAlign: 'center', padding: '64px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', background: 'rgba(15,23,42,0.6)' }}>
+          <Cpu className="glow-teal" size={48} style={{ color: 'var(--color-teal)', animation: 'spin 2s linear infinite' }} />
+          <div style={{ color: 'var(--color-teal)', fontWeight: 'bold', fontSize: '15px', letterSpacing: '0.02em' }}>
+            ĐANG CHẠY SO SÁNH ĐỐI KHÁNG 5 THUẬT TOÁN...
           </div>
-          
-          <div style={{
-            background: '#020617',
-            border: '1px solid rgba(45,212,191,0.25)',
-            boxShadow: '0 0 20px rgba(45,212,191,0.08)',
-            borderRadius: '8px',
-            padding: '16px 20px',
-            fontFamily: 'var(--font-mono)',
-            textAlign: 'left',
-            maxHeight: '220px',
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(45,212,191,0.15)', paddingBottom: '6px', marginBottom: '8px', fontSize: '11px', color: 'var(--color-teal)', fontWeight: 'bold' }}>
-              <span>📟 NHẬT KÝ THỰC THI KIỂM THỬ ĐỐI KHÁNG (SIMULATOR CORE LOGS)</span>
-              <span style={{ color: 'var(--color-rose)' }}>● ACTIVE_RUNNING</span>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              {currentLogs.map((log, index) => {
-                if (!log) return null;
-                let logColor = '#e2e8f0';
-                if (log.includes('GA')) logColor = 'var(--color-teal)';
-                else if (log.includes('HC')) logColor = 'var(--color-violet)';
-                else if (log.includes('HYBRID')) logColor = 'var(--color-rose)';
-                else if (log.includes('RANDOM')) logColor = '#94a3b8';
-                else if (log.includes('GEMINI')) logColor = '#38bdf8';
-                
-                return (
-                  <div key={index} style={{ fontSize: '11.5px', color: logColor, fontFamily: 'var(--font-mono)', lineHeight: '1.45' }}>
-                    <span style={{ color: 'rgba(255,255,255,0.15)', marginRight: '8px' }}>[{index + 1}]</span>
-                    {log}
-                  </div>
-                );
-              })}
-              <div ref={logEndRef} />
-            </div>
-          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13px', maxWidth: '400px', margin: 0 }}>
+            Hệ thống đang chạy song song các giải thuật (Random, LLM thô, GA, HC, GA+HC) trên cấu hình đặc tả để so sánh hiệu năng và chất lượng.
+          </p>
         </div>
       ) : (
         // DIỆN MẠO SAU KHI CHẠY XONG: HIỂN THỊ CÁC BIỂU ĐỒ RECHARTS VÀ BẢNG THỐNG KÊ
@@ -390,81 +346,52 @@ export const ComparisonArena: React.FC = () => {
             <div className="flex flex-col gap-lg" style={{ marginTop: '8px' }}>
               
               {/* BỐ TRÍ 3 BIỂU ĐỒ CỘT SO SÁNH SONG SONG */}
-              <div className="grid-3" style={{ gap: '20px' }}>
+              {/* BIỂU ĐỒ TỔNG HỢP SO SÁNH CHẤT LƯỢNG THUẬT TOÁN */}
+              <div className="glass-card flex flex-col gap-sm" style={{ padding: '20px 24px', background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <h3 style={{ fontSize: '15px', color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Award size={18} className="text-teal" style={{ color: 'var(--color-teal)' }} />
+                  BIỂU ĐỒ ĐỐI KHÁNG TỔNG HỢP (ALGORITHM BATTLEFIELD UNIFIED CHART)
+                </h3>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '4px 0 12px 0', lineHeight: '1.5' }}>
+                  So sánh trực tiếp các chỉ số chính (Độ phủ, Trùng lặp, Số ca lỗi biên) giữa 5 giải thuật sinh dữ liệu.
+                </p>
+
+                <div style={{ width: '100%', height: '300px', marginTop: '8px' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={results} margin={{ top: 10, right: 10, left: -25, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                      <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                      <YAxis stroke="var(--text-muted)" fontSize={11} />
+                      <Tooltip 
+                        contentStyle={{ background: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px' }} 
+                        formatter={(value, name) => {
+                          if (name === 'coverage') return [`${value}%`, 'Độ phủ Biên & Ràng buộc'];
+                          if (name === 'duplicateRate') return [`${value}%`, 'Tỷ lệ trùng lặp'];
+                          if (name === 'edgeCases') return [`${value} ca`, 'Số lỗi biên tìm thấy'];
+                          return [value, name];
+                        }}
+                      />
+                      <Bar dataKey="coverage" fill="#2dd4bf" name="Độ phủ biên (%)" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="duplicateRate" fill="#a78bfa" name="Trùng lặp (%)" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="edgeCases" fill="#f43f5e" name="Số ca lỗi biên (ca)" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
                 
-                {/* BIỂU ĐỒ THỨ 1: ĐỘ PHỦ BẢN GHI VÀ RÀNG BUỘC BIÊN */}
-                <div className="glass-card flex flex-col gap-xs" style={{ padding: '16px', background: 'rgba(15,23,42,0.6)' }}>
-                  <div className="flex align-center gap-sm" style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                    <Award size={16} style={{ color: 'var(--color-teal)' }} /> Độ phủ Biên &amp; Ràng buộc (Coverage %)
-                  </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', marginTop: '2px' }}>
-                    Tỷ lệ logic ranh giới &amp; validate đặc tả được phủ trúng (Càng cao càng tốt)
-                  </div>
-                  <div style={{ width: '100%', height: '180px', marginTop: '12px' }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={results} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                        <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={9} tickLine={false} />
-                        <YAxis domain={[0, 100]} stroke="var(--text-muted)" fontSize={10} />
-                        <Tooltip contentStyle={{ background: '#0f172a', borderColor: 'rgba(255,255,255,0.1)' }} />
-                        <Bar dataKey="coverage">
-                          {results.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* BIỂU ĐỒ THỨ 2: TỈ LỆ TRÙNG LẶP DỮ LIỆU */}
-                <div className="glass-card flex flex-col gap-xs" style={{ padding: '16px', background: 'rgba(15,23,42,0.6)' }}>
-                  <div className="flex align-center gap-sm" style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                    <Copy size={16} style={{ color: 'var(--color-violet)' }} /> Tỉ lệ trùng lặp dữ liệu (Duplicate %)
-                  </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', marginTop: '2px' }}>
-                    Tỷ lệ giá trị trùng nhau gây phí tài nguyên test (Càng thấp càng tốt)
-                  </div>
-                  <div style={{ width: '100%', height: '180px', marginTop: '12px' }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={results} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                        <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={9} tickLine={false} />
-                        <YAxis domain={[0, 50]} stroke="var(--text-muted)" fontSize={10} />
-                        <Tooltip contentStyle={{ background: '#0f172a', borderColor: 'rgba(255,255,255,0.1)' }} />
-                        <Bar dataKey="duplicateRate">
-                          {results.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* BIỂU ĐỒ THỨ 3: SỐ CA LỖI BIÊN HOẶC ĐỘC HẠI TÌM THẤY */}
-                <div className="glass-card flex flex-col gap-xs" style={{ padding: '16px', background: 'rgba(15,23,42,0.6)' }}>
-                  <div className="flex align-center gap-sm" style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                    <ShieldAlert size={16} style={{ color: 'var(--color-rose)' }} /> Số ca lỗi biên &amp; độc hại tìm được
-                  </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', marginTop: '2px' }}>
-                    Số lượng kịch bản lỗ hổng và ranh giới rủi ro phát hiện (Càng cao càng tốt)
-                  </div>
-                  <div style={{ width: '100%', height: '180px', marginTop: '12px' }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={results} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                        <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={9} tickLine={false} />
-                        <YAxis stroke="var(--text-muted)" fontSize={10} />
-                        <Tooltip contentStyle={{ background: '#0f172a', borderColor: 'rgba(255,255,255,0.1)' }} />
-                        <Bar dataKey="edgeCases">
-                          {results.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                {/* Legend chú thích */}
+                <div style={{ display: 'flex', gap: '20px', fontSize: '12px', justifyContent: 'center', marginTop: '12px', flexWrap: 'wrap', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '10px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: '12px', height: '12px', background: '#2dd4bf', borderRadius: '3px' }}></span>
+                    Độ phủ biên &amp; ràng buộc (%)
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: '12px', height: '12px', background: '#a78bfa', borderRadius: '3px' }}></span>
+                    Tỷ lệ trùng lặp (%)
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: '12px', height: '12px', background: '#f43f5e', borderRadius: '3px' }}></span>
+                    Số ca lỗi biên &amp; độc hại tìm thấy (ca)
+                  </span>
                 </div>
               </div>
 
@@ -609,153 +536,7 @@ export const ComparisonArena: React.FC = () => {
                 </table>
               </div>
 
-              {/* PHẦN SOI MẪU DỮ LIỆU SINH RA THỰC TẾ */}
-              <div 
-                className="glass-card flex flex-col gap-md"
-                style={{
-                  padding: '20px',
-                  background: 'rgba(15,23,42,0.55)',
-                  border: '1px solid rgba(167,139,250,0.2)',
-                  borderRadius: '8px',
-                  boxShadow: '0 0 15px rgba(167,139,250,0.05)',
-                  marginTop: '16px'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14.5px', fontWeight: 'bold', color: 'var(--color-violet)' }}>
-                    <Sparkles size={18} style={{ color: 'var(--color-violet)' }} />
-                    🔍 KÍNH SOI MẪU DỮ LIỆU SINH RA THỰC TẾ (REAL DATA SAMPLE INSPECTOR)
-                  </div>
-                  
-                  {/* Tabs chọn giải thuật để soi */}
-                  <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto', flexWrap: 'wrap' }}>
-                    {results.map(r => (
-                      <button
-                        key={r.key}
-                        onClick={() => setSelectedPreviewAlgo(r.key)}
-                        className={`tab-btn`}
-                        style={{
-                          fontSize: '11.5px',
-                          padding: '4px 10px',
-                          borderRadius: '16px',
-                          background: selectedPreviewAlgo === r.key ? r.color : 'rgba(255,255,255,0.04)',
-                          color: selectedPreviewAlgo === r.key ? '#fff' : 'var(--text-secondary)',
-                          border: selectedPreviewAlgo === r.key ? `1px solid ${r.color}` : '1px solid rgba(255,255,255,0.08)',
-                          cursor: 'pointer',
-                          fontWeight: selectedPreviewAlgo === r.key ? 'bold' : 'normal',
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        {r.key === 'llm' ? 'Gemini Sinh Thô' : r.key === 'hybrid' ? 'GA rồi dùng HC (Hybrid)' : r.name.split(' ')[0]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
 
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0, lineHeight: '1.45' }}>
-                  Nhấp chọn các Tab ở trên để soi thực tế **3 ca kiểm thử tiêu biểu** mà thuật toán đó đã sinh ra. Nhìn vào dữ liệu thực tế, bạn sẽ dễ dàng kiểm chứng và so sánh sự khác biệt:
-                </p>
-
-                {(() => {
-                  const selectedAlgo = results.find(r => r.key === selectedPreviewAlgo);
-                  if (!selectedAlgo) return null;
-                  
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '4px' }}>
-                      {/* Bảng chứa 3 ca kiểm thử mẫu */}
-                      <div 
-                        style={{ 
-                          background: '#020617', 
-                          padding: '12px', 
-                          borderRadius: '6px', 
-                          border: '1px solid rgba(255,255,255,0.05)',
-                          overflowX: 'auto'
-                        }}
-                      >
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-                          <thead>
-                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
-                              <th style={{ padding: '6px 8px', width: '70px' }}>Mẫu Ca</th>
-                              {schema.map(field => (
-                                <th key={field.name} style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{field.name}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedAlgo.sampleData.map((data, idx) => (
-                              <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                <td style={{ padding: '8px', color: selectedAlgo.color, fontWeight: 'bold' }}>
-                                  #{idx + 1}
-                                </td>
-                                {schema.map(field => {
-                                  const val = data[field.name];
-                                  const valStr = String(val);
-                                  const isSecurity = valStr.includes("'") || valStr.includes("<script") || valStr.includes("--");
-                                  const isEmpty = valStr === '';
-                                  
-                                  return (
-                                    <td key={field.name} style={{ padding: '8px', fontFamily: 'var(--font-mono)' }}>
-                                      <span 
-                                        style={{ 
-                                          color: isSecurity ? 'var(--color-rose)' : isEmpty ? 'var(--text-muted)' : '#fff',
-                                          fontWeight: isSecurity ? 'bold' : 'normal',
-                                          background: isSecurity ? 'rgba(244,63,94,0.1)' : 'none',
-                                          padding: isSecurity ? '2px 4px' : '0',
-                                          borderRadius: '3px'
-                                        }}
-                                      >
-                                        {isEmpty ? <i>chuỗi rỗng</i> : valStr}
-                                      </span>
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Lời bình QA Lead về mẫu dữ liệu này */}
-                      <div 
-                        style={{ 
-                          fontSize: '12.5px', 
-                          padding: '10px 14px', 
-                          background: 'rgba(255,255,255,0.02)', 
-                          borderLeft: `3px solid ${selectedAlgo.color}`,
-                          color: 'var(--text-primary)',
-                          lineHeight: '1.5'
-                        }}
-                      >
-                        {selectedPreviewAlgo === 'random' && (
-                          <span>
-                            ⚠️ <b>NHẬN XÉT QA:</b> Các giá trị sinh ra hoàn toàn rời rạc và vô nghĩa, không tuân thủ cấu trúc email/số thẻ thực tế, độ dài chuỗi rất lộn xộn. Kiểu sinh này không đem lại giá trị trong kiểm thử phần mềm chuyên nghiệp.
-                          </span>
-                        )}
-                        {selectedPreviewAlgo === 'llm' && (
-                          <span>
-                            💡 <b>NHẬN XÉT QA:</b> Gemini Sinh Thô cho ra kết quả ngữ cảnh khá tốt, nhưng các bản ghi có xu hướng rập khuôn và bị lặp lại các bộ dữ liệu cơ bản (như email tương tự nhau, mật khẩu cố định). Ít phát hiện được lỗi biên dị thường.
-                          </span>
-                        )}
-                        {selectedPreviewAlgo === 'ga' && (
-                          <span>
-                            🧬 <b>NHẬN XÉT QA:</b> Thuật toán Di truyền (GA) tạo ra sự phối hợp tham số đa dạng, cấu trúc phong phú và sạch bóng trùng lặp. Tuy nhiên, nó vẫn có xác suất bỏ sót các điểm ranh giới rập khuôn cực hạn (Min/Max chính xác).
-                          </span>
-                        )}
-                        {selectedPreviewAlgo === 'hc' && (
-                          <span>
-                            🧗‍♂️ <b>NHẬN XÉT QA:</b> Leo đồi (HC) dò tìm biên tuyệt vời, sinh ra các giá trị chạm sát nút ngưỡng Min/Max của kịch bản kiểm thử, nhưng do chỉ chạy hẹp quanh Seeds nên thiếu đi sự phong phú đa dạng ở mặt cấu trúc tổng thể.
-                          </span>
-                        )}
-                        {selectedPreviewAlgo === 'hybrid' && (
-                          <span>
-                            🏆 <b>NHẬN XÉT QA:</b> Sự kết hợp hoàn hảo của **GA rồi dùng HC (Hybrid)**. Hãy nhìn vào 3 ca mẫu ở trên: chúng vừa giữ được độ đa dạng cấu trúc vượt trội của GA, vừa được leo đồi HC gọt giũa tỉ mỉ để chạm chính xác ngưỡng biên, đồng thời cài cắm các payload bảo mật XSS/SQLi cực kỳ tinh vi!
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
 
               {/* BẢNG TỪ ĐIỂN HOẠT ĐỘNG CÁC GIẢI THUẬT */}
               <div className="flex flex-col gap-sm" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '20px', marginTop: '12px' }}>

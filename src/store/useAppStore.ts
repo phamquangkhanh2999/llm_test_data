@@ -1,8 +1,9 @@
 import { create } from 'zustand';
-import { PRESETS } from '../algorithms/presets';
 import type { PresetSpec, FieldConstraint } from '../algorithms/presets';
 import type { Chromosome, PopulationStats } from '../algorithms/genetic';
 import type { HillClimbStats } from '../algorithms/hillClimbing';
+import { config } from '../config';
+import { toast } from './useToastStore';
 
 export interface HistoryRun {
   timestamp: string;
@@ -31,7 +32,6 @@ interface AppState {
   apiKey: string;
   optimizedDataset: Chromosome[];
   historyRuns: HistoryRun[];
-  showGuide: boolean;
   completedScreens: string[];
   activeSection: string;
   activeScreen: string;
@@ -40,6 +40,7 @@ interface AppState {
   evaluationResult: EvaluationResult | null;
   specificationHistory: any[];
   isFetchingHistory: boolean;
+  parseError: string | null;
 
   // Actions
   setRawText: (text: string) => void;
@@ -49,7 +50,6 @@ interface AppState {
   setSpecificationId: (id: string) => void;
   setApiKey: (key: string) => void;
   setOptimizedDataset: (dataset: Chromosome[]) => void;
-  setShowGuide: (show: boolean) => void;
   setActiveSection: (section: string) => void;
   markScreenCompleted: (screen: string) => void;
   setActiveScreen: (screen: string) => void;
@@ -65,9 +65,9 @@ interface AppState {
   fetchSpecificationHistory: () => Promise<void>;
   handleHistorySelect: (historyItem: any) => void;
   handleSwitchScreen: (screen: string) => void;
+  setParseError: (error: string | null) => void;
+  handleClearSpecData: () => void;
 }
-
-const defaultPreset = PRESETS[0];
 
 export const useAppStore = create<AppState>((set, get) => {
   // Initialize historyRuns from localStorage
@@ -84,23 +84,23 @@ export const useAppStore = create<AppState>((set, get) => {
 
   return {
     // Initial State
-    rawText: defaultPreset.rawText,
-    parsedSchema: defaultPreset.fields,
-    initialSeeds: defaultPreset.initialPopulation,
-    schemaName: defaultPreset.title.split(' (')[0],
+    rawText: '',
+    parsedSchema: [],
+    initialSeeds: [],
+    schemaName: '',
     specificationId: '',
     apiKey: initialApiKey,
     optimizedDataset: [],
     historyRuns: initialHistoryRuns,
-    showGuide: true,
     completedScreens: [],
     activeSection: '',
-    activeScreen: 'dashboard',
+    activeScreen: 'prepare',
     isParsing: false,
     isEvaluating: false,
     evaluationResult: null,
     specificationHistory: [],
     isFetchingHistory: false,
+    parseError: null,
 
     // Simple Setters
     setRawText: (text) => set({ rawText: text }),
@@ -117,7 +117,6 @@ export const useAppStore = create<AppState>((set, get) => {
       set({ apiKey: key });
     },
     setOptimizedDataset: (dataset) => set({ optimizedDataset: dataset }),
-    setShowGuide: (show) => set({ showGuide: show }),
     setActiveScreen: (screen) => set({ activeScreen: screen }),
     setActiveSection: (section) => set({ activeSection: section }),
     markScreenCompleted: (screen) => set((state) => ({
@@ -131,8 +130,9 @@ export const useAppStore = create<AppState>((set, get) => {
     handleParseSpec: async () => {
       const { rawText, apiKey } = get();
       set({ isParsing: true });
+      set({ parseError: null });
       try {
-        const response = await fetch("http://localhost:8000/api/specifications", {
+        const response = await fetch(`${config.API_BASE_URL}/api/specifications`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -160,17 +160,18 @@ export const useAppStore = create<AppState>((set, get) => {
         });
         
         if (res.is_mock) {
-          alert("⚠️ Cảnh báo: Chưa gán API Key (Gemini/OpenAI) hợp lệ!\n\nHệ thống đã sinh dữ liệu mẫu bằng bộ phân tích giả lập (Mock Fallback).\nVui lòng cấu hình API Key ở góc trên bên phải màn hình để thực hiện phân tích bằng AI thật.");
+          toast.warning("Chưa gán API Key (Gemini/OpenAI) hợp lệ!\nHệ thống đã sinh dữ liệu mẫu bằng bộ phân tích giả lập (Mock Fallback).\nVui lòng cấu hình API Key ở góc trên bên phải màn hình để thực hiện phân tích bằng AI thật.");
         } else if (res.cached) {
-          alert("Nạp dữ liệu phân tích đặc tả thành công (Lấy từ bộ nhớ cache hệ thống)!");
+          toast.success("Nạp dữ liệu phân tích đặc tả thành công (Lấy từ bộ nhớ cache hệ thống)!");
         } else {
-          alert("Phân tích đặc tả nghiệp vụ bằng AI thành công!\n\nQuy tắc ràng buộc (JSON Rules) và tập dữ liệu hạt giống F0 đã được tạo lập tự động ở phía dưới.");
+          toast.success("Phân tích đặc tả nghiệp vụ bằng AI thành công!\nQuy tắc ràng buộc (JSON Rules) và tập dữ liệu hạt giống F0 đã được tạo lập tự động.");
         }
         
       } catch (e: any) {
+        const errorMessage = `Đã xảy ra lỗi kết nối: ${e.message || "Hãy đảm bảo FastAPI Backend đang chạy!"}`;
         console.error(e);
-        alert(`Đã xảy ra lỗi kết nối: ${e.message || "Hãy đảm bảo FastAPI Backend đang chạy ở cổng 8000!"}`);
-        set({ isParsing: false });
+        toast.error(errorMessage);
+        set({ isParsing: false, parseError: errorMessage });
       }
     },
 
@@ -212,13 +213,14 @@ export const useAppStore = create<AppState>((set, get) => {
 
     handleLoadPastRun: (pastData) => {
       set({ optimizedDataset: pastData });
-      alert('Đã nạp lại mảng Test Cases tối ưu từ phiên chạy trước!');
+      toast.success('Đã nạp lại mảng Test Cases tối ưu từ phiên chạy trước!');
     },
 
     handleClearHistory: () => {
       if (window.confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử các phiên chạy đã lưu không?")) {
         set({ historyRuns: [] });
         localStorage.removeItem('testforge_history_runs');
+        toast.info('Đã xóa toàn bộ lịch sử phiên chạy.');
       }
     },
 
@@ -226,13 +228,15 @@ export const useAppStore = create<AppState>((set, get) => {
       set({ activeScreen: screen });
     },
 
+    setParseError: (error) => set({ parseError: error }),
+
     handleEvaluateSeeds: async (testMethod: string) => {
       const { rawText, parsedSchema, initialSeeds, apiKey } = get();
       if (!initialSeeds || initialSeeds.length === 0) return;
       
       set({ isEvaluating: true, evaluationResult: null });
       try {
-        const response = await fetch("http://localhost:8000/api/evaluate-seeds", {
+        const response = await fetch(`${config.API_BASE_URL}/api/evaluate-seeds`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -259,7 +263,7 @@ export const useAppStore = create<AppState>((set, get) => {
         }
       } catch (error: any) {
         console.error("Evaluation Error:", error);
-        alert(`Có lỗi xảy ra trong quá trình nhờ AI đánh giá: ${error.message}. Đã chuyển về dữ liệu đánh giá mô phỏng dự phòng.`);
+        toast.warning(`Có lỗi khi nhờ AI đánh giá. Đã chuyển về dữ liệu đánh giá mô phỏng dự phòng.`);
         // Mock fallback
         set({
           isEvaluating: false,
@@ -277,7 +281,7 @@ export const useAppStore = create<AppState>((set, get) => {
     fetchSpecificationHistory: async () => {
       set({ isFetchingHistory: true });
       try {
-        const response = await fetch("http://localhost:8000/api/specifications");
+        const response = await fetch(`${config.API_BASE_URL}/api/specifications`);
         if (response.ok) {
           const data = await response.json();
           set({ specificationHistory: data });
@@ -298,7 +302,19 @@ export const useAppStore = create<AppState>((set, get) => {
         specificationId: historyItem.id,
         optimizedDataset: []
       });
-      alert("Đã nạp thành công đặc tả từ lịch sử!");
+      toast.success("Đã nạp thành công đặc tả từ lịch sử!");
+    },
+
+    handleClearSpecData: () => {
+      set({
+        parsedSchema: [],
+        initialSeeds: [],
+        schemaName: '',
+        specificationId: '',
+        optimizedDataset: [],
+        evaluationResult: null,
+        parseError: null
+      });
     }
   };
 });

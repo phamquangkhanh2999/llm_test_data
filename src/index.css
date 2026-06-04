@@ -346,3 +346,68 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-title); font-weight: 600; lette
   height: 60%;
   border-radius: 0 2px 2px 0;
 }
+
+/* ==========================================
+   TOAST NOTIFICATIONS
+   ========================================== */
+@keyframes toastSlideIn {
+  from {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toastProgress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* ==========================================
+   ACCESSIBILITY: FOCUS-VISIBLE
+   ========================================== */
+*:focus-visible {
+  outline: 2px solid var(--color-teal);
+  outline-offset: 2px;
+}
+
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.btn:focus-visible {
+  outline-color: var(--color-teal);
+  outline-offset: 2px;
+}
+
+.glass-card:focus-within {
+  border-color: rgba(45, 212, 191, 0.25);
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--color-teal);
+  outline-offset: -2px;
+}
+
+/* ==========================================
+   ACCESSIBILITY: PREFERS-REDUCED-MOTION
+   ========================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .glow-teal,
+  .glow-yellow,
+  .glow-violet {
+    animation: none !important;
+  }
+}

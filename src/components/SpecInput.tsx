@@ -26,14 +26,15 @@ export const SpecInput: React.FC = () => {
     handleHistorySelect,
     setSpecificationId,
     setSchemaName,
-    setOptimizedDataset
+    setOptimizedDataset,
+    handleClearSpecData
   } = useAppStore();
 
   const hasApiKey = apiKey.trim().length > 10;
 
   // --- CÁC HOOK HOẠT ĐỘNG PHẠM VI NỘI BỘ COMPONENT ---
-  // Theo dõi ID của mẫu preset đang được lựa chọn (mặc định là User Sign Up)
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('user-signup');
+  // Theo dõi ID của mẫu preset đang được lựa chọn (Mặc định: trống)
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('');
   // State quản lý tên trường mới khi người dùng tự gõ thêm thủ công
   const [newFieldName, setNewFieldName] = useState('');
   // State quản lý kiểu dữ liệu của trường tự thêm (Mặc định: String)
@@ -49,6 +50,10 @@ export const SpecInput: React.FC = () => {
 
   // State quản lý việc buộc AI phân tích lại (Bypass cache)
   const [forceReanalyze, setForceReanalyze] = useState(false);
+
+  // States to control collapsible UI elements
+  const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
+  const [showSchemaDetails, setShowSchemaDetails] = useState(false);
 
   // Lưu trữ hạt giống F0 theo từng phương pháp riêng biệt để hiển thị bảng riêng
   const [methodSeeds, setMethodSeeds] = useState<Record<string, any[]>>({
@@ -521,12 +526,12 @@ export const SpecInput: React.FC = () => {
 
   return (
     <>
-      <div className="grid-2">
+      <div className={showSchemaDetails ? "grid-2" : (initialSeeds && initialSeeds.length > 0) ? "max-w-5xl mx-auto w-full" : "max-w-3xl mx-auto w-full"}>
         {/* 1. CỘT BÊN TRÁI: KHU VỰC NHẬP VĂN BẢN ĐẶC TẢ NGỮ NGHĨA VÀ CHỌN PRESETS */}
       <div className="glass-card flex flex-col gap-md teal-border glow-teal">
         <div className="flex align-center gap-sm">
           <FileText className="text-teal" size={24} style={{ color: 'var(--color-teal)' }} />
-          <h2>BƯỚC 1: ĐẶC TẢ &amp; PHƯƠNG PHÁP KIỂM THỬ</h2>
+          <h2>ĐẶC TẢ &amp; PHƯƠNG PHÁP SINH HẠT GIỐNG</h2>
         </div>
 
         <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
@@ -559,25 +564,46 @@ export const SpecInput: React.FC = () => {
             </span>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            {PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                onClick={() => onPresetClick(preset)}
-                className={`tab-btn ${selectedPresetId === preset.id ? 'active' : ''}`}
-                title={preset.description}
-                style={{ fontSize: '13px' }}
-              >
-                {preset.title.split(' (')[0]}
-              </button>
-            ))}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', width: '100%' }}>
+            <select
+              value={selectedPresetId}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '') {
+                  setSelectedPresetId('');
+                  setRawText('');
+                  handleClearSpecData();
+                  setMethodSeeds({
+                    random: [],
+                    bva: [],
+                    ep: [],
+                    decision: []
+                  });
+                  setIsConnected(false);
+                  setProcessingStep(0);
+                  return;
+                }
+                const preset = PRESETS.find(p => p.id === val);
+                if (preset) onPresetClick(preset);
+              }}
+              className="input-field"
+              style={{ flex: 1, fontSize: '13.5px', cursor: 'pointer', padding: '8px 12px' }}
+            >
+              <option value="">— Chọn đặc tả mẫu (Presets) —</option>
+              {PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.title}
+                </option>
+              ))}
+            </select>
+            
             <button
               onClick={() => {
                 fetchSpecificationHistory();
                 setIsHistoryModalOpen(true);
               }}
-              className="tab-btn"
-              style={{ fontSize: '13px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)' }}
+              className="btn btn-secondary"
+              style={{ fontSize: '13px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
             >
               🕰️ Lịch sử Đặc tả
             </button>
@@ -588,7 +614,19 @@ export const SpecInput: React.FC = () => {
         {/* Vùng nhập đặc tả nghiệp vụ tự do */}
         <textarea
           value={rawText}
-          onChange={(e) => setRawText(e.target.value)}
+          onChange={(e) => {
+            setRawText(e.target.value);
+            setSelectedPresetId('');
+            handleClearSpecData();
+            setMethodSeeds({
+              random: [],
+              bva: [],
+              ep: [],
+              decision: []
+            });
+            setIsConnected(false);
+            setProcessingStep(0);
+          }}
           className="input-field"
           style={{ minHeight: '200px', resize: 'vertical', fontFamily: 'inherit', fontSize: '14px', lineHeight: '1.6' }}
           placeholder="Nhập mô tả nghiệp vụ cho dữ liệu cần sinh tại đây..."
@@ -699,171 +737,184 @@ export const SpecInput: React.FC = () => {
           }} />
         </div>
 
-        {/* CHỨC NĂNG BUỘC AI PHÂN TÍCH LẠI */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '12px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}>
+        {/* THANH ĐIỀU KHIỂN TINH GỌN (CONTROL TOOLBAR) */}
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '12px', width: '100%' }}>
+          {/* Nút Cấu hình sinh hạt giống */}
+          <button
+            onClick={() => setShowAdvancedConfig(!showAdvancedConfig)}
+            type="button"
+            className="btn btn-secondary"
+            style={{ fontSize: '13px', padding: '9px 14px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            ⚙️ {showAdvancedConfig ? 'Ẩn Cấu HÌnh' : 'Cấu Hình Sinh'}
+          </button>
+
+          {/* Checkbox Bypass Cache */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title="Buộc AI phân tích lại đặc tả (Bypass Cache hệ thống)">
             <input
               type="checkbox"
               checked={forceReanalyze}
               onChange={(e) => setForceReanalyze(e.target.checked)}
-              style={{ width: '15px', height: '15px', accentColor: 'var(--color-teal)', cursor: 'pointer' }}
+              style={{ width: '14px', height: '14px', accentColor: 'var(--color-teal)', cursor: 'pointer' }}
             />
-            <span>Buộc AI phân tích lại đặc tả (Bypass Cache hệ thống)</span>
+            <span>Bypass Cache</span>
           </label>
+
+          {/* Nút Phân Tích & Sinh F0 */}
+          <button
+            onClick={handleParseAndGenerateSeeds}
+            disabled={isParsing || !rawText.trim()}
+            className={`btn btn-primary ${isParsing || !rawText.trim() ? 'btn-disabled' : ''}`}
+            style={{ padding: '9px 20px', whiteSpace: 'nowrap' }}
+          >
+            {isParsing ? (
+              <>
+                <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+                Đang Phân Tích...
+              </>
+            ) : (
+              <>
+                <Sparkles size={15} />
+                Phân Tích &amp; Sinh F0
+              </>
+            )}
+          </button>
         </div>
 
         {/* CẤU HÌNH PHƯƠNG PHÁP KIỂM THỬ KHỞI TẠO (F0 SEEDS) */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          marginTop: '12px',
-          padding: '14px',
-          background: 'rgba(255, 255, 255, 0.02)',
-          border: '1px solid rgba(255, 255, 255, 0.05)',
-          borderRadius: '10px'
-        }}>
-          <span style={{
-            fontSize: '12px',
-            fontWeight: 'bold',
-            color: 'var(--color-teal)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em'
+        {showAdvancedConfig && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            marginTop: '12px',
+            padding: '14px',
+            background: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            borderRadius: '10px'
           }}>
-            ⚙️ Cấu hình phương pháp sinh F0 Seeds
-          </span>
+            <span style={{
+              fontSize: '12px',
+              fontWeight: 'bold',
+              color: 'var(--color-teal)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em'
+            }}>
+              ⚙️ Cấu hình phương pháp sinh F0 Seeds
+            </span>
 
-          {/* Phương pháp check boxes */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={selectedMethods.includes('random')}
-                onChange={() => toggleMethod('random')}
-                style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
-              />
-              <span>Ngẫu Nhiên / Lai Ghép</span>
-            </label>
+            {/* Phương pháp check boxes */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedMethods.includes('random')}
+                  onChange={() => toggleMethod('random')}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
+                />
+                <span>Ngẫu Nhiên / Lai Ghép</span>
+              </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={selectedMethods.includes('bva')}
-                onChange={() => toggleMethod('bva')}
-                style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
-              />
-              <span>Phân Tích Biên (BVA)</span>
-            </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedMethods.includes('bva')}
+                  onChange={() => toggleMethod('bva')}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
+                />
+                <span>Phân Tích Biên (BVA)</span>
+              </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={selectedMethods.includes('ep')}
-                onChange={() => toggleMethod('ep')}
-                style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
-              />
-              <span>Phân Vùng Tương Đương (EP)</span>
-            </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedMethods.includes('ep')}
+                  onChange={() => toggleMethod('ep')}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
+                />
+                <span>Phân Vùng Tương Đương (EP)</span>
+              </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={selectedMethods.includes('decision')}
-                onChange={() => toggleMethod('decision')}
-                style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
-              />
-              <span>Bảng Quyết Định</span>
-            </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedMethods.includes('decision')}
+                  onChange={() => toggleMethod('decision')}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
+                />
+                <span>Bảng Quyết Định</span>
+              </label>
+            </div>
+
+            {/* Cấu hình bổ sung cho BVA (nếu được chọn) */}
+            {selectedMethods.includes('bva') && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                padding: '8px 10px',
+                background: 'rgba(45, 212, 191, 0.04)',
+                borderLeft: '2px solid var(--color-teal)',
+                borderRadius: '4px',
+                marginTop: '4px'
+              }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Số điểm biên cần kiểm tra (BVA):
+                </span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {[2, 3, 5].map((num) => (
+                    <button
+                      key={num}
+                      onClick={() => setBoundaryCount(num)}
+                      type="button"
+                      style={{
+                        flex: 1,
+                        padding: '4px 8px',
+                        fontSize: '12px',
+                        background: boundaryCount === num ? 'var(--color-teal)' : 'rgba(255,255,255,0.05)',
+                        color: boundaryCount === num ? '#000' : 'var(--text-primary)',
+                        border: 'none',
+                        borderRadius: '4px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {num} biên
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Cấu hình bổ sung cho EP (nếu được chọn) */}
+            {selectedMethods.includes('ep') && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                padding: '8px 10px',
+                background: 'rgba(59, 130, 246, 0.04)',
+                borderLeft: '2px solid #3b82f6',
+                borderRadius: '4px',
+                marginTop: '4px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  <span>Số phân vùng tương đương:</span>
+                  <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>{partitionCount} phân vùng</span>
+                </div>
+                <input
+                  type="range"
+                  min="2"
+                  max="6"
+                  value={partitionCount}
+                  onChange={(e) => setPartitionCount(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#3b82f6', cursor: 'pointer' }}
+                />
+              </div>
+            )}
           </div>
-
-          {/* Cấu hình bổ sung cho BVA (nếu được chọn) */}
-          {selectedMethods.includes('bva') && (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
-              padding: '8px 10px',
-              background: 'rgba(45, 212, 191, 0.04)',
-              borderLeft: '2px solid var(--color-teal)',
-              borderRadius: '4px',
-              marginTop: '4px'
-            }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Số điểm biên cần kiểm tra (BVA):
-              </span>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {[2, 3, 5].map((num) => (
-                  <button
-                    key={num}
-                    onClick={() => setBoundaryCount(num)}
-                    type="button"
-                    style={{
-                      flex: 1,
-                      padding: '4px 8px',
-                      fontSize: '12px',
-                      background: boundaryCount === num ? 'var(--color-teal)' : 'rgba(255,255,255,0.05)',
-                      color: boundaryCount === num ? '#000' : 'var(--text-primary)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    {num} biên
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Cấu hình bổ sung cho EP (nếu được chọn) */}
-          {selectedMethods.includes('ep') && (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
-              padding: '8px 10px',
-              background: 'rgba(59, 130, 246, 0.04)',
-              borderLeft: '2px solid #3b82f6',
-              borderRadius: '4px',
-              marginTop: '4px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                <span>Số phân vùng tương đương:</span>
-                <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>{partitionCount} phân vùng</span>
-              </div>
-              <input
-                type="range"
-                min="2"
-                max="6"
-                value={partitionCount}
-                onChange={(e) => setPartitionCount(Number(e.target.value))}
-                style={{ width: '100%', accentColor: '#3b82f6', cursor: 'pointer' }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Nút bấm gửi yêu cầu lên API Backend AI trích xuất thông tin và sinh hạt giống F0 */}
-        <button
-          onClick={handleParseAndGenerateSeeds}
-          disabled={isParsing || !rawText.trim()}
-          className={`btn btn-primary ${isParsing || !rawText.trim() ? 'btn-disabled' : ''}`}
-          style={{ marginTop: '12px', alignSelf: 'flex-start', width: '100%', padding: '12px' }}
-        >
-          {isParsing ? (
-            <>
-              <div style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
-              Đang Phân Tích &amp; Sinh F0...
-            </>
-          ) : (
-            <>
-              <Sparkles size={18} />
-              Phân Tích Đặc Tả &amp; Sinh F0 Seeds
-            </>
-          )}
-        </button>
+        )}
 
         <style>{`
           @keyframes spin { to { transform: rotate(360deg); } }
@@ -872,11 +923,12 @@ export const SpecInput: React.FC = () => {
       </div>
 
       {/* 2. CỘT BÊN PHẢI: KHU VỰC CHỈNH SỬA SCHEMA RÀNG BUỘC CỦA ĐỒNG SÁNG LẬP */}
-      <div className="glass-card flex flex-col gap-md violet-border">
-        <div className="flex align-center gap-sm">
-          <FileJson className="text-yellow" size={24} style={{ color: 'var(--color-yellow)' }} />
-          <h2>BƯỚC 2: RÀNG BUỘC MIỀN GIÁ TRỊ (AI EXTRACTED)</h2>
-        </div>
+      {showSchemaDetails && (
+        <div className="glass-card flex flex-col gap-md violet-border">
+          <div className="flex align-center gap-sm">
+            <FileJson className="text-yellow" size={24} style={{ color: 'var(--color-yellow)' }} />
+            <h2>RÀNG BUỘC MIỀN GIÁ TRỊ (EXTRACTED SCHEMA)</h2>
+          </div>
 
         <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
           Xem và tinh chỉnh lại các ràng buộc miền giá trị (Domain Constraints) mà AI đã bóc tách từ yêu cầu nghiệp vụ.
@@ -1113,23 +1165,49 @@ export const SpecInput: React.FC = () => {
           </button>
         </div>
       </div>
+      )}
 
 
 
       {/* 3. PHẦN DƯỚI: HIỂN THỊ DỮ LIỆU HẠT GIỐNG F0 (PREVIEW INITIAL SEEDS) */}
       {(isParsing || (initialSeeds && initialSeeds.length > 0)) && (
-        <div className="glass-card flex flex-col gap-md violet-border glow-violet" style={{ gridColumn: 'span 2', marginTop: '20px' }}>
+        <div className="glass-card flex flex-col gap-md violet-border glow-violet" style={{ gridColumn: showSchemaDetails ? 'span 2' : 'span 1', marginTop: '20px' }}>
           <div className="flex justify-between align-center" style={{ flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '14px', marginBottom: '10px' }}>
-            <div className="flex align-center gap-sm">
-              <Database className="text-violet" size={24} style={{ color: 'var(--color-violet)' }} />
-              <h2 style={{ fontSize: '18px', margin: 0 }}>KẾT QUẢ &amp; CẤU HÌNH: TẬP DỮ LIỆU HẠT GIỐNG F0 (INITIAL SEEDS)</h2>
+            <div className="flex flex-col gap-xs">
+              <div className="flex align-center gap-sm">
+                <Database className="text-violet" size={20} style={{ color: 'var(--color-violet)' }} />
+                <h2 style={{ fontSize: '16px', margin: 0 }}>DANH SÁCH TẬP HẠT GIỐNG F0 (INITIAL SEEDS)</h2>
+              </div>
+              {parsedSchema.length > 0 && (
+                <span style={{ fontSize: '12px', color: 'var(--color-teal)', fontWeight: '500', marginLeft: '26px' }}>
+                  ✓ Đã bóc tách {parsedSchema.length} trường &amp; {initialSeeds.length} ca test mầm
+                </span>
+              )}
             </div>
-            {isRegenerating && (
-              <span style={{ fontSize: '12.5px', color: 'var(--color-violet)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span className="status-dot-pulse" style={{ width: '8px', height: '8px', background: 'var(--color-violet)', borderRadius: '50%', display: 'inline-block' }} />
-                Đang cập nhật hạt giống...
-              </span>
-            )}
+            
+            <div className="flex align-center gap-sm">
+              {isRegenerating && (
+                <span style={{ fontSize: '12px', color: 'var(--color-violet)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span className="status-dot-pulse" style={{ width: '6px', height: '6px', background: 'var(--color-violet)', borderRadius: '50%', display: 'inline-block' }} />
+                  Đang cập nhật...
+                </span>
+              )}
+              {parsedSchema.length > 0 && (
+                <button
+                  onClick={() => setShowSchemaDetails(!showSchemaDetails)}
+                  className="btn btn-secondary flex align-center gap-xs"
+                  style={{ 
+                    fontSize: '12px', 
+                    padding: '6px 12px', 
+                    background: showSchemaDetails ? 'rgba(167,139,250,0.1)' : 'rgba(255,255,255,0.03)',
+                    borderColor: showSchemaDetails ? 'var(--color-violet)' : 'rgba(255,255,255,0.08)',
+                    color: showSchemaDetails ? 'var(--color-violet)' : 'var(--text-secondary)'
+                  }}
+                >
+                  🔧 {showSchemaDetails ? 'Ẩn Sơ Đồ Ràng Buộc' : 'Tinh Chỉnh Ràng Buộc (Schema)'}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Bảng giải thích chiến lược kiểm thử */}

@@ -219,6 +219,55 @@ export const PRESETS: PresetSpec[] = [
       { policyNumber: "VIP-000000' OR '1'='1", monthlyIncome: 30000, preExistingConditions: 'None', beneficiaryEmail: 'sql@attacker.com' }, // security SQLi seed
       { policyNumber: 'VIP-111111', monthlyIncome: 45000, preExistingConditions: '<script>alert(1)</script>', beneficiaryEmail: 'xss@attacker.com' } // security XSS seed
     ]
+  },
+  {
+    id: 'login-form',
+    title: 'Đăng nhập Hệ thống (Login Form)',
+    description: 'Form đăng nhập với username/password và tùy chọn ghi nhớ. Kiểm thử SQL injection, brute-force pattern, và credential stuffing.',
+    rawText: `Yêu cầu chức năng đăng nhập:
+- Username: Bắt buộc, độ dài từ 3 đến 32 ký tự, có thể là email hoặc tên đăng nhập.
+- Password: Bắt buộc, tối thiểu 6 ký tự, tối đa 30 ký tự.
+- Remember Me: Không bắt buộc, giá trị boolean (true/false).`,
+    fields: [
+      { name: 'username', type: 'string', required: true, minLength: 3, maxLength: 32, description: 'Tên đăng nhập hoặc email' },
+      { name: 'password', type: 'string', required: true, minLength: 6, maxLength: 30, description: 'Mật khẩu đăng nhập' },
+      { name: 'rememberMe', type: 'string', required: false, allowedValues: ['true', 'false'], description: 'Ghi nhớ đăng nhập' }
+    ],
+    initialPopulation: [
+      { username: 'admin', password: 'Admin@123!', rememberMe: 'true' },
+      { username: 'john.doe@gmail.com', password: 'JohnDoe2026!', rememberMe: 'false' },
+      { username: '', password: 'short', rememberMe: 'true' }, // lỗi empty + short
+      { username: 'a'.repeat(33), password: 'ValidPass1!', rememberMe: 'maybe' }, // lỗi max length + invalid enum
+      { username: "admin' OR '1'='1", password: "' OR 1=1 --", rememberMe: 'true' }, // SQLi
+      { username: '<img src=x onerror=alert(1)>', password: 'XssPass!', rememberMe: 'false' }, // XSS
+      { username: 'test_user', password: 'PassW0rd!', rememberMe: 'false' },
+    ]
+  },
+  {
+    id: 'product-search',
+    title: 'Tìm kiếm Sản phẩm (Product Search API)',
+    description: 'API endpoint tìm kiếm sản phẩm với phân trang, sắp xếp và lọc. Kiểm thử injection, boundary pagination, và invalid sort parameters.',
+    rawText: `Đặc tả API tìm kiếm sản phẩm:
+- Query: Từ khóa tìm kiếm, bắt buộc, dài 1-200 ký tự.
+- Limit: Số kết quả mỗi trang, không bắt buộc, từ 1 đến 100.
+- Page: Số trang, không bắt buộc, từ 1 đến 1000.
+- Sort By: Tiêu chí sắp xếp, không bắt buộc, chỉ nhận: relevance, date, price, name.
+- Order: Thứ tự, không bắt buộc, chỉ nhận: asc hoặc desc.`,
+    fields: [
+      { name: 'query', type: 'string', required: true, minLength: 1, maxLength: 200, description: 'Từ khóa tìm kiếm' },
+      { name: 'limit', type: 'number', required: false, minValue: 1, maxValue: 100, description: 'Số kết quả mỗi trang' },
+      { name: 'page', type: 'number', required: false, minValue: 1, maxValue: 1000, description: 'Số trang' },
+      { name: 'sortBy', type: 'string', required: false, allowedValues: ['relevance', 'date', 'price', 'name'], description: 'Tiêu chí sắp xếp' },
+      { name: 'order', type: 'string', required: false, allowedValues: ['asc', 'desc'], description: 'Thứ tự sắp xếp' }
+    ],
+    initialPopulation: [
+      { query: 'laptop gaming', limit: 20, page: 1, sortBy: 'relevance', order: 'desc' },
+      { query: '', limit: 0, page: 0, sortBy: 'invalid', order: 'asc' }, // lỗi validation
+      { query: 'phone', limit: 100, page: 1, sortBy: 'price', order: 'asc' }, // biên limit max
+      { query: 'x'.repeat(201), limit: 101, page: 1001, sortBy: 'name', order: 'desc' }, // lỗi biên max
+      { query: "laptop' UNION SELECT * FROM users --", limit: 50, page: 1, sortBy: 'date', order: 'desc' }, // SQLi
+      { query: '<script>alert(document.cookie)</script>', limit: 10, page: 1, sortBy: 'relevance', order: 'asc' }, // XSS
+    ]
   }
 ];
 

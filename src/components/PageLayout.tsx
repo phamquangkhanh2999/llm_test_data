@@ -15,11 +15,9 @@ export interface WorkflowStep {
 }
 
 export const WORKFLOW_STEPS: WorkflowStep[] = [
-  { id: 'step-spec',   label: 'Phân Tích AI',        shortLabel: 'AI Parser',   color: '#3b82f6' },
-  { id: 'data-import', label: 'Tải Lên Dữ Liệu',     shortLabel: 'Data Import', color: '#facc15' },
-  { id: 'optimizer',   label: 'Tối Ưu Thuật Toán',   shortLabel: 'Optimizer',   color: '#a78bfa' },
-  { id: 'arena',       label: 'Đấu Trường',           shortLabel: 'Arena',       color: '#f43f5e' },
-  { id: 'history',     label: 'Lịch Sử & Xuất File', shortLabel: 'Export',      color: '#2dd4bf' },
+  { id: 'prepare',  label: 'Chuẩn Bị Dữ Liệu',  shortLabel: 'Dữ Liệu',   color: '#3b82f6' },
+  { id: 'optimize', label: 'Tối Ưu & So Sánh',  shortLabel: 'Tối Ưu',    color: '#a78bfa' },
+  { id: 'export',   label: 'Xuất Kết Quả',       shortLabel: 'Xuất File', color: '#2dd4bf' },
 ];
 
 // ─── Prerequisite definition ───────────────────────────────────────────────────
@@ -58,7 +56,7 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
         : 'Chưa có — cần Phân Tích AI hoặc Upload file',
       color: '#3b82f6',
       done: hasSchema && hasSeeds,
-      screen: 'step-spec',
+      screen: 'prepare',
     },
     {
       id: 'optimizer',
@@ -72,7 +70,7 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
           : 'Chờ nguồn dữ liệu từ bước trên',
       color: '#a78bfa',
       done: hasOptimized,
-      screen: 'optimizer',
+      screen: 'optimize',
     },
     {
       id: 'history',
@@ -84,7 +82,7 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
         : 'Chưa có — chạy thuật toán ít nhất 1 lần',
       color: '#2dd4bf',
       done: hasHistory,
-      screen: 'history',
+      screen: 'export',
     },
   ];
 
@@ -107,9 +105,9 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
       <div style={{ display: 'flex', alignItems: 'stretch', gap: '0' }}>
         {nodes.map((node, idx) => {
           const isCurrent =
-            (currentScreen === 'step-spec' || currentScreen === 'data-import') && node.id === 'source'
-            || currentScreen === 'optimizer' && node.id === 'optimizer'
-            || (currentScreen === 'arena' || currentScreen === 'history') && node.id === 'history';
+            (currentScreen === 'prepare') && node.id === 'source'
+            || currentScreen === 'optimize' && node.id === 'optimizer'
+            || (currentScreen === 'export') && node.id === 'history';
 
           return (
             <React.Fragment key={node.id}>
@@ -134,6 +132,14 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
                   (e.currentTarget as HTMLElement).style.background = `${node.color}10`;
                 }}
                 onMouseOut={e => {
+                  (e.currentTarget as HTMLElement).style.borderColor = isCurrent ? `${node.color}50` : node.done ? 'rgba(45,212,191,0.2)' : 'rgba(255,255,255,0.06)';
+                  (e.currentTarget as HTMLElement).style.background = isCurrent ? `${node.color}12` : node.done ? 'rgba(45,212,191,0.04)' : 'rgba(255,255,255,0.02)';
+                }}
+                onFocus={e => {
+                  (e.currentTarget as HTMLElement).style.borderColor = `${node.color}60`;
+                  (e.currentTarget as HTMLElement).style.background = `${node.color}10`;
+                }}
+                onBlur={e => {
                   (e.currentTarget as HTMLElement).style.borderColor = isCurrent ? `${node.color}50` : node.done ? 'rgba(45,212,191,0.2)' : 'rgba(255,255,255,0.06)';
                   (e.currentTarget as HTMLElement).style.background = isCurrent ? `${node.color}12` : node.done ? 'rgba(45,212,191,0.04)' : 'rgba(255,255,255,0.02)';
                 }}
@@ -267,35 +273,34 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
                     onClick={() => setActiveScreen(step.id)}
                     title={step.label}
                     style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'center',
-                      gap: '5px', background: 'none', border: 'none',
-                      cursor: 'pointer', padding: '0 8px', flexShrink: 0,
+                      display: 'flex', alignItems: 'center',
+                      gap: '8px', background: 'none', border: 'none',
+                      cursor: 'pointer', padding: '0 4px', flexShrink: 0,
                     }}
                   >
                     <div style={{
-                      width: '30px', height: '30px', borderRadius: '50%',
+                      width: '32px', height: '32px', borderRadius: '50%',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '12px', fontWeight: 700,
-                      background: isCurrent ? accentColor : isDone || isPast ? 'rgba(45,212,191,0.18)' : 'rgba(255,255,255,0.05)',
+                      fontSize: '13px', fontWeight: 700,
+                      background: isCurrent ? step.color : isDone || isPast ? 'rgba(45,212,191,0.18)' : 'rgba(255,255,255,0.05)',
                       color: isCurrent ? '#000' : isDone || isPast ? '#2dd4bf' : 'var(--text-muted)',
-                      border: isCurrent ? `2px solid ${accentColor}` : isDone || isPast ? '2px solid rgba(45,212,191,0.4)' : '2px solid rgba(255,255,255,0.09)',
-                      boxShadow: isCurrent ? `0 0 14px ${accentColor}55` : 'none',
-                      transition: 'all 0.3s ease',
+                      border: isCurrent ? `2px solid ${step.color}` : isDone || isPast ? '2px solid rgba(45,212,191,0.4)' : '2px solid rgba(255,255,255,0.09)',
+                      boxShadow: isCurrent ? `0 0 14px ${step.color}55` : 'none',
+                      transition: 'all 0.3s ease', flexShrink: 0,
                     }}>
-                      {isDone ? <CheckCircle2 size={14} /> : idx + 1}
+                      {isDone || isPast ? <CheckCircle2 size={15} /> : idx + 1}
                     </div>
                     <span style={{
-                      fontSize: '10px',
-                      color: isCurrent ? accentColor : isDone || isPast ? 'var(--text-secondary)' : 'var(--text-muted)',
-                      fontWeight: isCurrent ? 700 : 400,
-                      whiteSpace: 'nowrap',
+                      fontSize: '13px',
+                      color: isCurrent ? step.color : isDone || isPast ? 'var(--text-secondary)' : 'var(--text-muted)',
+                      fontWeight: isCurrent ? 700 : 500, whiteSpace: 'nowrap',
                     }}>
-                      {step.shortLabel}
+                      {step.label}
                     </span>
                   </button>
                   {idx < WORKFLOW_STEPS.length - 1 && (
                     <div style={{
-                      flex: 1, height: '2px', marginBottom: '20px',
+                      flex: 1, height: '2px', margin: '0 12px',
                       background: isDone || isPast
                         ? 'linear-gradient(90deg, rgba(45,212,191,0.5), rgba(45,212,191,0.15))'
                         : 'rgba(255,255,255,0.06)',
@@ -433,6 +438,14 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
               (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 8px 28px ${accentColor}50`;
             }}
             onMouseOut={e => {
+              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 4px 20px ${accentColor}30`;
+            }}
+            onFocus={e => {
+              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 8px 28px ${accentColor}50`;
+            }}
+            onBlur={e => {
               (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
               (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 4px 20px ${accentColor}30`;
             }}
