@@ -184,7 +184,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
         res["is_mock"] = True
         res["engine"] = "mock"
         log_ai_call(db, "/api/specifications", "Mock", "mock-ai-local", raw_text, json.dumps(res, ensure_ascii=False), "SUCCESS")
-        return res
+        return enrich_result_with_expected_results(res)
 
     # Nhận diện xem Key thuộc về Gemini hay OpenAI (Key OpenAI bắt đầu bằng sk-)
     is_openai = active_key.strip().startswith("sk-")
@@ -277,7 +277,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
                     # In log dữ liệu trả về từ Gemini REST API đẹp đẽ lên console của Backend
                     print(">>> INFO: Gemini REST API Response:\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
                     log_ai_call(db, "/api/specifications", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
-                    return parsed_result
+                    return enrich_result_with_expected_results(parsed_result)
             except urllib.error.HTTPError as http_err:
                 raise http_err
             except Exception as ssl_err:
@@ -295,7 +295,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
                     # In log dữ liệu trả về từ Gemini REST API đẹp đẽ lên console của Backend (chế độ Unverified SSL)
                     print(">>> INFO: Gemini REST API Response (Unverified SSL):\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
                     log_ai_call(db, "/api/specifications", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
-                    return parsed_result
+                    return enrich_result_with_expected_results(parsed_result)
         else:
             print(">>> INFO: Phat hien OpenAI API Key. Dang su dung GPT lam AI engine...")
             client = OpenAI(api_key=active_key)
@@ -318,7 +318,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
             # In log dữ liệu trả về từ OpenAI API đẹp đẽ lên console của Backend
             print(">>> INFO: OpenAI API Response:\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
             log_ai_call(db, "/api/specifications", "OpenAI", "gpt-3.5-turbo", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
-            return parsed_result
+            return enrich_result_with_expected_results(parsed_result)
 
     except Exception as e:
         error_msg = str(e)
@@ -333,8 +333,92 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
         res["is_mock"] = True
         res["engine"] = "mock"
         log_ai_call(db, "/api/specifications (Fallback)", "Mock", "mock-ai-local", raw_text, json.dumps(res, ensure_ascii=False), "SUCCESS")
-        return res
+        return enrich_result_with_expected_results(res)
 
+def check_record_expected_result(record, fields):
+    import re
+    errors = []
+    
+    # 1. Kiểm tra payload tấn công bảo mật trước tiên
+    security_fields = []
+    for f in fields:
+        name = f["name"]
+        val = record.get(name)
+        if val is not None:
+            val_str = str(val).lower()
+            if ("' or" in val_str or 
+                "--" in val_str or 
+                "<script" in val_str or 
+                "union select" in val_str or 
+                "drop table" in val_str or
+                "select * from" in val_str):
+                security_fields.append(name)
+                
+    if security_fields:
+        return f"Chặn tấn công: Phát hiện payload bảo mật ở trường {', '.join(security_fields)}"
+
+    # 2. Kiểm tra ràng buộc hợp lệ thông thường
+    for f in fields:
+        name = f["name"]
+        val = record.get(name)
+        ftype = f.get("type", "string")
+        required = f.get("required", False)
+        
+        # Kiểm tra bắt buộc
+        if required and (val is None or str(val).strip() == ""):
+            errors.append(f"thiếu '{name}'")
+            continue
+            
+        if val is None or str(val).strip() == "":
+            continue
+            
+        val_str = str(val)
+        
+        if ftype == "email":
+            if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
+                errors.append(f"'{name}' sai định dạng email")
+        elif ftype == "card":
+            if not re.match(r"^\d{16}$", val_str):
+                errors.append(f"'{name}' phải gồm 16 chữ số")
+        elif ftype == "phone":
+            if not re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
+                errors.append(f"'{name}' sai đầu số di động VN")
+        elif ftype == "number":
+            try:
+                num = float(val)
+                min_v = f.get("minValue")
+                max_v = f.get("maxValue")
+                if min_v is not None and num < float(min_v):
+                    errors.append(f"'{name}' nhỏ hơn {min_v}")
+                if max_v is not None and num > float(max_v):
+                    errors.append(f"'{name}' lớn hơn {max_v}")
+            except (ValueError, TypeError):
+                errors.append(f"'{name}' không phải số")
+        else: # string
+            if f.get("allowedValues") and f["allowedValues"]:
+                if val_str not in [str(v) for v in f["allowedValues"]]:
+                    errors.append(f"'{name}' không nằm trong danh sách cho phép")
+            else:
+                min_l = f.get("minLength")
+                max_l = f.get("maxLength")
+                if min_l is not None and len(val_str) < int(min_l):
+                    errors.append(f"'{name}' ngắn hơn {min_l} ký tự")
+                if max_l is not None and len(val_str) > int(max_l):
+                    errors.append(f"'{name}' vượt quá {max_l} ký tự")
+                    
+    if errors:
+        return "Lỗi: " + ", ".join(errors)
+    return "Hợp lệ"
+
+
+def enrich_result_with_expected_results(parsed_result):
+    if parsed_result and "initialPopulation" in parsed_result:
+        fields = parsed_result.get("fields", [])
+        seeds = parsed_result.get("initialPopulation", [])
+        for seed in seeds:
+            if "expectedResult" not in seed:
+                seed["expectedResult"] = check_record_expected_result(seed, fields)
+    return parsed_result
 
 
 def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, partition_count: int) -> list:
@@ -427,7 +511,11 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
             chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
             return "".join(random.choice(chars) for _ in range(actual_len))
 
-    # BVA local generator
+    # =========================================================================
+    # [BVA - PHÂN TÍCH GIÁ TRỊ BIÊN] KHỞI TẠO BỘ TẬP DỮ LIỆU KIỂM THỬ BAN ĐẦU (SEEDS)
+    # Nguyên lý BVA: Tập trung sinh dữ liệu kiểm thử xung quanh các biên của miền giá trị.
+    # Nhắm vào các điểm nhạy cảm: Min, Max, cận trên, cận dưới, điểm vi phạm cận biên.
+    # =========================================================================
     if test_method == "bva":
         field_targets = {}
         for f in fields:
@@ -435,45 +523,58 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
             ftype = f.get("type", "string")
             targets = []
             
-            # Hàm tạo offsets chuẩn theo số lượng điểm biên (2, 3, 5)
-            # Ánh xạ theo chuẩn kỹ thuật phân tích giá trị biên (Boundary Value Analysis):
-            # - 2 biên: Kiểm thử 2 điểm sát nhau (1 hợp lệ, 1 lỗi). VD: biên Min sẽ test (Min-1) và Min.
-            # - 3 biên (Robust): Kiểm thử 3 điểm (Min-1, Min, Min+1) để bao quát toàn bộ 2 bên biên.
-            # - 5 biên (Worst-case): Tăng cường mở rộng kiểm tra 5 điểm (-2, -1, 0, 1, 2) cho các hệ thống nhạy cảm.
+            # --- [BVA] Xác định độ lệch (offsets) so với điểm biên ---
+            # Dựa vào số lượng điểm biên (Boundary Count) được lựa chọn (2, 3, hoặc 5 điểm):
+            # - 2 điểm biên (BVA tiêu chuẩn): Kiểm tra giá trị biên chuẩn và giá trị vi phạm ngoài biên kề sát.
+            #   Ví dụ với Min: Min (hợp lệ) và Min - 1 (vô hiệu/lỗi).
+            # - 3 điểm biên (Robustness testing): Thêm giá trị kề trong biên (Min-1, Min, Min+1).
+            # - 5 điểm biên (Worst-case boundary analysis): Mở rộng phạm vi thêm 2 bước sai số để kiểm tra khả năng chịu tải.
             def get_bva_offsets(b_count, is_min=True):
                 if b_count == 2:
-                    # Với biên Min, ta lấy [-1, 0] (dưới biên và tại biên)
-                    # Với biên Max, ta lấy [0, 1] (tại biên và trên biên)
+                    # Biên dưới (Min): chọn điểm ngoài biên (Min-1) và tại biên (Min)
+                    # Biên trên (Max): chọn điểm tại biên (Max) và ngoài biên (Max+1)
                     return [-1, 0] if is_min else [0, 1]
                 elif b_count == 3:
+                    # Kiểm thử Robust: 3 điểm bao quát [Biên - 1, Biên, Biên + 1]
                     return [-1, 0, 1]
                 elif b_count == 5:
+                    # Kiểm thử Worst-case mở rộng: [Biên - 2, Biên - 1, Biên, Biên + 1, Biên + 2]
                     return [-2, -1, 0, 1, 2]
                 else:
                     half = b_count // 2
                     return list(range(-half, half + 1))
 
+            # --- [BVA] Áp dụng kỹ thuật biên cho kiểu dữ liệu số (Number) ---
             if ftype == "number":
                 min_v = f.get("minValue")
                 max_v = f.get("maxValue")
                 
+                # Tạo hạt giống kiểm thử xung quanh giá trị tối thiểu (minValue)
                 if min_v is not None:
                     for o in get_bva_offsets(boundary_count, is_min=True):
                         targets.append(min_v + o)
+                # Tạo hạt giống kiểm thử xung quanh giá trị tối đa (maxValue)
                 if max_v is not None:
                     for o in get_bva_offsets(boundary_count, is_min=False):
                         targets.append(max_v + o)
+            
+            # --- [BVA] Áp dụng kỹ thuật biên cho độ dài chuỗi (String/Email/Card/Phone) ---
             elif ftype in ["string", "email", "card", "phone"]:
                 min_l = f.get("minLength")
                 max_l = f.get("maxLength")
                 
+                # Tạo độ dài chuỗi xung quanh độ dài tối thiểu (minLength)
                 if min_l is not None:
                     for o in get_bva_offsets(boundary_count, is_min=True):
+                        # Độ dài chuỗi không được âm (max(0, ...))
                         targets.append(max(0, min_l + o))
+                # Tạo độ dài chuỗi xung quanh độ dài tối đa (maxLength)
                 if max_l is not None:
                     for o in get_bva_offsets(boundary_count, is_min=False):
+                        # Độ dài chuỗi không được âm (max(0, ...))
                         targets.append(max(0, max_l + o))
             
+            # Sắp xếp và loại bỏ trùng lặp để có danh sách mục tiêu kiểm thử biên chuẩn hóa
             if targets:
                 field_targets[name] = sorted(list(set(targets)))
             else:
@@ -598,6 +699,10 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
         print(f">>> INFO: No API key found. Running local seed generator for method '{test_method}'...")
         seeds = generate_seeds_locally(fields, test_method, boundary_count, partition_count)
         log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Mock", "mock-ai-local", user_prompt, json.dumps(seeds, ensure_ascii=False), "SUCCESS")
+        # Bổ sung expectedResult trước khi trả về
+        for s in seeds:
+            if "expectedResult" not in s:
+                s["expectedResult"] = check_record_expected_result(s, fields)
         return seeds
 
     # Nhận diện xem Key thuộc về Gemini hay OpenAI (Key OpenAI bắt đầu bằng sk-)
@@ -745,6 +850,9 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
                     parsed_result = json.loads(text_content)
                     seeds = parsed_result.get("initialPopulation", [])
                     log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    for s in seeds:
+                        if "expectedResult" not in s:
+                            s["expectedResult"] = check_record_expected_result(s, fields)
                     return seeds
             except urllib.error.HTTPError as http_err:
                 raise http_err
@@ -758,6 +866,9 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
                     parsed_result = json.loads(text_content)
                     seeds = parsed_result.get("initialPopulation", [])
                     log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    for s in seeds:
+                        if "expectedResult" not in s:
+                            s["expectedResult"] = check_record_expected_result(s, fields)
                     return seeds
         else:
             print(f">>> INFO: Calling OpenAI API for seed regeneration (Method: {test_method})...")
@@ -778,6 +889,9 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             parsed_result = json.loads(raw_response_content)
             seeds = parsed_result.get("initialPopulation", [])
             log_ai_call(db, f"/api/generate-seeds?method={test_method}", "OpenAI", "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+            for s in seeds:
+                if "expectedResult" not in s:
+                    s["expectedResult"] = check_record_expected_result(s, fields)
             return seeds
 
     except Exception as e:
@@ -789,6 +903,9 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
         print(f">>> WARNING: AI API failed for seed regeneration ({error_msg}). Running local generator fallback...")
         seeds = generate_seeds_locally(fields, test_method, boundary_count, partition_count)
         log_ai_call(db, f"/api/generate-seeds?method={test_method} (Fallback)", "Mock", "mock-ai-local", user_prompt, json.dumps(seeds, ensure_ascii=False), "SUCCESS")
+        for s in seeds:
+            if "expectedResult" not in s:
+                s["expectedResult"] = check_record_expected_result(s, fields)
         return seeds
 
 

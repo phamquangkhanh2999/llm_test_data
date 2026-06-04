@@ -174,7 +174,11 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
             current_val = optimized[field_name]
             neighbors = []
 
-            # --- 1. Sinh tập lân cận (Neighborhood) ---
+            # =========================================================================
+            # [BVA] SINH TẬP CÁC PHƯƠNG ÁN LÂN CẬN (NEIGHBORHOOD GENERATION FOR LOCAL SEARCH)
+            # Nhằm dò tìm các điểm biên cục bộ xung quanh giải pháp hiện tại.
+            # Tận dụng các phép biến đổi giá trị số học và độ dài chuỗi để tiệm cận các biên.
+            # =========================================================================
             if field_type == "number":
                 try:
                     num = float(current_val)
@@ -183,55 +187,62 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
                     max_v = field.get("maxValue", 1000)
                     field_range = max(abs(max_v - min_v), 1)
 
-                    # Bước nhỏ
+                    # --- Lân cận bước nhỏ (chênh lệch ±1 đơn vị) ---
                     neighbors.extend([num + 1, num - 1])
-                    # Bước trung bình (tỷ lệ với phạm vi)
+                    # --- Lân cận bước trung bình (10% phạm vi miền giá trị) ---
                     medium_step = max(1, int(field_range * 0.1))
                     neighbors.extend([num + medium_step, num - medium_step])
-                    # Bước lớn
+                    # --- Lân cận bước lớn (50% phạm vi miền giá trị) ---
                     large_step = max(1, int(field_range * 0.5))
                     neighbors.extend([num + large_step, num - large_step])
-                    # Nhiễu Gaussian
+                    # --- Nhiễu loạn ngẫu nhiên phân phối Gauss ---
                     sigma = field_range * 0.05
                     neighbors.append(num + random.gauss(0, sigma))
-                    # Giá trị biên
+                    
+                    # --- [BVA] Ép giá trị về các điểm biên đặc tả ---
                     neighbors.extend([0])
                     if field.get("minValue") is not None:
+                        # Điểm biên dưới (Min) và điểm vi phạm dưới biên (Min - 1)
                         neighbors.extend([field["minValue"], field["minValue"] - 1])
                     if field.get("maxValue") is not None:
+                        # Điểm biên trên (Max) và điểm vi phạm trên biên (Max + 1)
                         neighbors.extend([field["maxValue"], field["maxValue"] + 1])
                 except (ValueError, TypeError):
                     pass
             else:
                 str_val = str(current_val)
 
-                # Tinh chỉnh ở cấp độ ký tự
+                # --- Biến đổi ký tự (Thêm/Bớt/Nhúng mã độc để kiểm tra robustness) ---
                 for char in special_chars[:8]:  # tập con để giới hạn số lân cận
                     neighbors.append(str_val + char)
                     neighbors.append(char + str_val)
 
-                # Xóa ký tự
+                # Xóa ký tự để thay đổi độ dài chuỗi
                 if len(str_val) > 0:
                     neighbors.append(str_val[:-1])
                     neighbors.append(str_val[1:])
                     neighbors.append("")
 
-                # Nhúng payload bảo mật
+                # Nhúng payload kiểm thử an toàn thông tin
                 for tag in security_tags[:2]:
                     neighbors.append(str_val + tag)
                     neighbors.append(tag)
 
-                # Tinh chỉnh biên độ dài chuỗi (thích nghi)
+                # --- [BVA] Tinh chỉnh độ dài chuỗi tiệm cận biên đặc tả ---
                 if field.get("minLength") is not None:
                     target = field["minLength"]
                     if len(str_val) > target:
+                        # Cắt chuỗi để bằng đúng độ dài tối thiểu (Min Length)
                         neighbors.append(str_val[:target])
                     else:
+                        # Đệm thêm ký tự để đạt độ dài tối thiểu (Min Length)
                         neighbors.append(str_val.ljust(target, "A"))
                 if field.get("maxLength") is not None:
                     target = field["maxLength"]
                     if len(str_val) < target:
+                        # Đệm thêm ký tự để đạt đúng độ dài tối đa (Max Length)
                         neighbors.append(str_val.ljust(target, "A"))
+                    # Đệm thêm ký tự vượt quá độ dài tối đa 1 đơn vị để tạo ca kiểm thử vi phạm biên trên (Max Length + 1)
                     neighbors.append(str_val.ljust(target + 1, "X"))
 
             # --- 2. Đánh giá các lân cận (có lọc Tabu) ---

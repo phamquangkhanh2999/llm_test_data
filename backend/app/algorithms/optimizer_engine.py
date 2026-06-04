@@ -288,43 +288,54 @@ class TestSuiteOptimizer:
             if is_valid:
                 validation_score += 1
 
-                # --- 2. Kiểm tra biên (Boundary) với near-boundary credit ---
+                # =========================================================================
+                # [BVA] ĐÁNH GIÁ ĐỘ THÍCH NGHI ĐỘ PHỦ BIÊN (BOUNDARY FITNESS EVALUATION)
+                # GA cần tín hiệu hướng dẫn (fitness landscape) để tiến hóa về các giá trị sát biên.
+                # Do đó, ta thiết lập 2 cấp độ ghi điểm:
+                # - Điểm tuyệt đối (1.0) khi giá trị rơi chính xác vào điểm Biên (Boundary).
+                # - Điểm bộ phận (0.5) khi giá trị kề sát biên (Near-boundary) để tạo đà tiến hóa.
+                # =========================================================================
                 if field["type"] == "number":
                     num = float(val)
                     min_v = field.get("minValue")
                     max_v = field.get("maxValue")
 
+                    # Kiểm tra biên dưới số học
                     if min_v is not None:
                         if num == min_v:
-                            is_boundary = True
+                            is_boundary = True  # Rơi đúng điểm biên Min
                         elif num == min_v + 1:
-                            is_near_boundary = True
+                            is_near_boundary = True  # Kề sát điểm biên Min (khoảng cách = 1)
 
+                    # Kiểm tra biên trên số học
                     if max_v is not None:
                         if num == max_v:
-                            is_boundary = True
+                            is_boundary = True  # Rơi đúng điểm biên Max
                         elif num == max_v - 1:
-                            is_near_boundary = True
+                            is_near_boundary = True  # Kề sát điểm biên Max (khoảng cách = -1)
                 else:
                     min_l = field.get("minLength")
                     max_l = field.get("maxLength")
 
+                    # Kiểm tra biên dưới độ dài chuỗi ký tự
                     if min_l is not None:
                         if len(val_str) == min_l:
-                            is_boundary = True
+                            is_boundary = True  # Độ dài chuỗi bằng đúng minLength
                         elif len(val_str) == min_l + 1:
-                            is_near_boundary = True
+                            is_near_boundary = True  # Độ dài chuỗi kề sát minLength (chênh lệch +1)
 
+                    # Kiểm tra biên trên độ dài chuỗi ký tự
                     if max_l is not None:
                         if len(val_str) == max_l:
-                            is_boundary = True
+                            is_boundary = True  # Độ dài chuỗi bằng đúng maxLength
                         elif len(val_str) == max_l - 1:
-                            is_near_boundary = True
+                            is_near_boundary = True  # Độ dài chuỗi kề sát maxLength (chênh lệch -1)
 
+                # Cộng điểm thích nghi biên vào hàm mục tiêu (Fitness Function)
                 if is_boundary:
-                    boundary_score += 1.0
+                    boundary_score += 1.0  # Phần thưởng tối đa cho ca kiểm thử biên chuẩn
                 elif is_near_boundary:
-                    boundary_score += 0.5  # partial credit for near-boundary
+                    boundary_score += 0.5  # Điểm bộ phận khuyến khích thuật toán di chuyển gần hơn tới biên
 
             # --- 3. Kiểm tra nhúng mã độc (Security Payloads) ---
             security_keywords = ["' or", '" or', "--", "union", "select", "drop table", "<script", "onload=", "onerror="]

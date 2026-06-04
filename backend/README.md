@@ -156,3 +156,7 @@ uvicorn app.main:app --reload
 
 ---
 *Chúc bạn phát triển và kiểm thử dự án thành công cùng **Hyperion TestForge Backend**!* 🚀
+
+
+# Chạy trực tiếp uvicorn từ môi trường ảo backend
+./backend/venv/bin/uvicorn app.main:app --reload --app-dir backend

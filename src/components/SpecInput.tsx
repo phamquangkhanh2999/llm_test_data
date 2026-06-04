@@ -1363,6 +1363,11 @@ export const SpecInput: React.FC = () => {
                                   </div>
                                 </th>
                               ))}
+                              <th style={{ padding: '10px 16px', color: 'var(--color-violet)', fontWeight: '600' }}>
+                                <div style={{ minWidth: '150px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                                  Kết quả mong đợi
+                                </div>
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1413,6 +1418,24 @@ export const SpecInput: React.FC = () => {
                                     </td>
                                   );
                                 })}
+                                <td style={{ padding: '12px 16px', verticalAlign: 'top' }}>
+                                  <div
+                                    style={{
+                                      color: seed.expectedResult?.startsWith('Lỗi') ? 'var(--color-rose)' :
+                                             seed.expectedResult?.startsWith('Chặn') ? 'var(--color-violet)' :
+                                             'var(--color-teal)',
+                                      fontWeight: '500',
+                                      minWidth: '150px',
+                                      maxWidth: '300px',
+                                      maxHeight: '80px',
+                                      overflowY: 'auto',
+                                      wordBreak: 'break-word',
+                                      whiteSpace: 'normal'
+                                    }}
+                                  >
+                                    {seed.expectedResult || 'Hợp lệ'}
+                                  </div>
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -1461,6 +1484,11 @@ export const SpecInput: React.FC = () => {
                                         </div>
                                       </th>
                                     ))}
+                                    <th style={{ padding: '8px 12px', color: 'var(--color-violet)', fontWeight: '600' }}>
+                                      <div style={{ minWidth: '150px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                                        Kết quả mong đợi
+                                      </div>
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1511,6 +1539,24 @@ export const SpecInput: React.FC = () => {
                                           </td>
                                         );
                                       })}
+                                      <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
+                                        <div
+                                          style={{
+                                            color: seed.expectedResult?.startsWith('Lỗi') ? 'var(--color-rose)' :
+                                                   seed.expectedResult?.startsWith('Chặn') ? 'var(--color-violet)' :
+                                                   'var(--color-teal)',
+                                            fontWeight: '500',
+                                            minWidth: '150px',
+                                            maxWidth: '300px',
+                                            maxHeight: '80px',
+                                            overflowY: 'auto',
+                                            wordBreak: 'break-word',
+                                            whiteSpace: 'normal'
+                                          }}
+                                        >
+                                          {seed.expectedResult || 'Hợp lệ'}
+                                        </div>
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -1710,6 +1756,9 @@ export const SpecInput: React.FC = () => {
                                   <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{f.name}</div>
                                 </th>
                               ))}
+                              <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--color-violet)' }}>
+                                <div style={{ minWidth: '150px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Kết quả mong đợi</div>
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1723,6 +1772,24 @@ export const SpecInput: React.FC = () => {
                                     </div>
                                   </td>
                                 ))}
+                                <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
+                                  <div
+                                    style={{
+                                      color: seed.expectedResult?.startsWith('Lỗi') ? 'var(--color-rose)' :
+                                             seed.expectedResult?.startsWith('Chặn') ? 'var(--color-violet)' :
+                                             'var(--color-teal)',
+                                      fontWeight: '500',
+                                      minWidth: '150px',
+                                      maxWidth: '300px',
+                                      maxHeight: '80px',
+                                      overflowY: 'auto',
+                                      wordBreak: 'break-word',
+                                      whiteSpace: 'normal'
+                                    }}
+                                  >
+                                    {seed.expectedResult || 'Hợp lệ'}
+                                  </div>
+                                </td>
                               </tr>
                             ))}
                           </tbody>
