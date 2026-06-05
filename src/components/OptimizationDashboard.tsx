@@ -4,7 +4,7 @@ import { GeneticEngine, generateRandomValue } from '../algorithms/genetic';
 import { runHillClimbing } from '../algorithms/hillClimbing';
 import { 
   Play, Zap, Cpu, Award, Sparkles, 
-  Database, RefreshCw, BarChart2, ShieldAlert, CheckCircle2, ArrowRight
+  Database, RefreshCw, BarChart2, ShieldAlert, CheckCircle2, ArrowRight, Eye
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -117,6 +117,9 @@ export const OptimizationDashboard: React.FC = () => {
   const [inspectFilterType, setInspectFilterType] = useState<'all' | 'happy' | 'boundary' | 'security'>('all');
   const [coverageHistory, setCoverageHistory] = useState<any[]>([]);
   const historyRef = useRef<Record<number, any>>({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [previewSuite, setPreviewSuite] = useState<DashboardResult | null>(null);
+  const [drawerFilterType, setDrawerFilterType] = useState<'all' | 'happy' | 'boundary' | 'security'>('all');
 
   // Helper phân loại ca kiểm thử ngay tại Step 2 để lọc dữ liệu trực tiếp
   const getRowCategory = (row: Chromosome, fields: any[]): 'happy' | 'boundary' | 'security' => {
@@ -260,10 +263,10 @@ export const OptimizationDashboard: React.FC = () => {
     stepGens.forEach(g => {
       historyRef.current[g] = {
         name: `T.${g}`,
-        'Traditional Baseline': 0,
-        'Hill Climbing (HC)': 0,
-        'Genetic Algorithm (GA)': 0,
-        'Hybrid GA -> HC': 0
+        'Baseline Validation': 0,
+        'Local Refinement': 0,
+        'Genetic Optimization': 0,
+        'Hybrid AI Optimization': 0
       };
     });
 
@@ -272,17 +275,17 @@ export const OptimizationDashboard: React.FC = () => {
       if (!historyRef.current[g]) {
         historyRef.current[g] = {
           name: `T.${g}`,
-          'Traditional Baseline': 0,
-          'Hill Climbing (HC)': 0,
-          'Genetic Algorithm (GA)': 0,
-          'Hybrid GA -> HC': 0
+          'Baseline Validation': 0,
+          'Local Refinement': 0,
+          'Genetic Optimization': 0,
+          'Hybrid AI Optimization': 0
         };
       }
       
       const mappedKey = 
-        key === 'traditional' ? 'Traditional Baseline' :
-        key === 'hc' ? 'Hill Climbing (HC)' :
-        key === 'ga' ? 'Genetic Algorithm (GA)' : 'Hybrid GA -> HC';
+        key === 'traditional' ? 'Baseline Validation' :
+        key === 'hc' ? 'Local Refinement' :
+        key === 'ga' ? 'Genetic Optimization' : 'Hybrid AI Optimization';
 
       historyRef.current[g][mappedKey] = value;
       
@@ -620,7 +623,7 @@ export const OptimizationDashboard: React.FC = () => {
       // --- CẤU HÌNH KẾT QUẢ ĐỐI KHÁNG TỔNG HỢP ---
       const finalResults: DashboardResult[] = [
         {
-          name: traditionalAlgo === 'random' ? 'Traditional Random' : 'Traditional BVA',
+          name: traditionalAlgo === 'random' ? 'Baseline Validation (Random)' : 'Baseline Validation (BVA)',
           key: 'traditional',
           coverage: tRes.metrics.coverage,
           duplicateRate: tRes.metrics.duplicateRate,
@@ -632,7 +635,7 @@ export const OptimizationDashboard: React.FC = () => {
           allData: tRes.chromosomes
         },
         {
-          name: 'Genetic Algorithm (GA)',
+          name: 'Genetic Optimization',
           key: 'ga',
           coverage: gaRes.metrics.coverage,
           duplicateRate: gaRes.metrics.duplicateRate,
@@ -644,7 +647,7 @@ export const OptimizationDashboard: React.FC = () => {
           allData: gaRes.chromosomes
         },
         {
-          name: 'Hill Climbing (HC)',
+          name: 'Local Refinement',
           key: 'hc',
           coverage: hcRes.metrics.coverage,
           duplicateRate: hcRes.metrics.duplicateRate,
@@ -656,7 +659,7 @@ export const OptimizationDashboard: React.FC = () => {
           allData: hcRes.chromosomes
         },
         {
-          name: 'Hybrid GA -> HC',
+          name: 'Hybrid AI Optimization',
           key: 'hybrid',
           coverage: hyRes.metrics.coverage,
           duplicateRate: hyRes.metrics.duplicateRate,
@@ -761,10 +764,10 @@ export const OptimizationDashboard: React.FC = () => {
       const step = i / pointsCount;
       data.push({
         name: `T.${Math.round(step * generations)}`,
-        'Traditional Baseline': traditional,
-        'Hill Climbing (HC)': hc,
-        'Genetic Algorithm (GA)': Math.round(20 + (gaMax - 20) * step),
-        'Hybrid GA -> HC': Math.round(20 + (hybridMax - 20) * Math.sqrt(step))
+        'Baseline Validation': traditional,
+        'Local Refinement': hc,
+        'Genetic Optimization': Math.round(20 + (gaMax - 20) * step),
+        'Hybrid AI Optimization': Math.round(20 + (hybridMax - 20) * Math.sqrt(step))
       });
     }
     return data;
@@ -773,142 +776,304 @@ export const OptimizationDashboard: React.FC = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
 
-      {/* 1. KHU VỰC CẤU HÌNH THAM SỐ VÀ TRIGGER CHẠY */}
-      <div className="grid-3" style={{ gap: '16px' }}>
-        
-        {/* Card 1: GA Parameters */}
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <h4 style={{ fontSize: '13.5px', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Cpu size={15} style={{ color: 'var(--color-teal)' }} />
-            Tham Số Di Truyền (GA Parameters)
-          </h4>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Số thế hệ (Gens)</label>
-              <input 
-                type="number" 
-                value={generations} 
-                onChange={(e) => setGenerations(Math.max(1, parseInt(e.target.value) || 0))}
-                className="input-field"
-                style={{ padding: '6px 10px', fontSize: '12px', marginTop: '4px' }}
-                disabled={isRunning}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Cỡ quần thể (Pop)</label>
-              <input 
-                type="number" 
-                value={popSize} 
-                onChange={(e) => setPopSize(Math.max(5, parseInt(e.target.value) || 0))}
-                className="input-field"
-                style={{ padding: '6px 10px', fontSize: '12px', marginTop: '4px' }}
-                disabled={isRunning}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '4px' }}>
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Tỷ lệ lai ghép</label>
-              <input 
-                type="number" 
-                step="0.05"
-                value={crossoverRate} 
-                onChange={(e) => setCrossoverRate(Math.min(1.0, Math.max(0.1, parseFloat(e.target.value) || 0)))}
-                className="input-field"
-                style={{ padding: '6px 10px', fontSize: '12px', marginTop: '4px' }}
-                disabled={isRunning}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Tỷ lệ đột biến</label>
-              <input 
-                type="number" 
-                step="0.05"
-                value={mutationRate} 
-                onChange={(e) => setMutationRate(Math.min(1.0, Math.max(0.01, parseFloat(e.target.value) || 0)))}
-                className="input-field"
-                style={{ padding: '6px 10px', fontSize: '12px', marginTop: '4px' }}
-                disabled={isRunning}
-              />
-            </div>
-          </div>
+      {/* 1. TIÊU ĐỀ HỆ THỐNG */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255, 255, 255, 0.05)', paddingBottom: '12px', marginBottom: '4px' }}>
+        <div>
+          <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Sparkles size={20} style={{ color: 'var(--color-teal)' }} />
+            Tối Ưu Hóa & So Sánh Thuật Toán (Step 2 - Optimization & Comparison)
+          </h2>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            Lựa chọn cấu hình độ sâu và chạy phân tích đối kháng song song để tìm ra bộ test suite tối thượng.
+          </p>
         </div>
+      </div>
 
-        {/* Card 2: Optimization Profiles */}
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h4 style={{ fontSize: '13.5px', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {/* 2. KHU VỰC CẤU HÌNH THAM SỐ VÀ TRIGGER CHẠY (QUICK START) */}
+      <div className="grid-2" style={{ gap: '16px' }}>
+        
+        {/* Left Side: Profile Selector Cards */}
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Sparkles size={15} style={{ color: 'var(--color-violet)' }} />
             Chế Độ Tối Ưu Hóa (Optimization Profile)
-          </h4>
+          </h3>
+          <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+            Chọn cấu hình phù hợp với mục tiêu kiểm thử. Cấu hình mặc định: Cân bằng (Balanced).
+          </p>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
             <button 
               onClick={() => handleApplyOptProfile('fast')}
               style={{
                 width: '100%',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                background: optProfile === 'fast' ? 'rgba(45, 212, 191, 0.08)' : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${optProfile === 'fast' ? 'var(--color-teal)' : 'rgba(255,255,255,0.06)'}`,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px'
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: optProfile === 'fast' ? 'rgba(45, 212, 191, 0.06)' : 'rgba(0,0,0,0.15)',
+                border: `1.5px solid ${optProfile === 'fast' ? 'var(--color-teal)' : 'rgba(255,255,255,0.06)'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px',
+                textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s',
+                boxShadow: optProfile === 'fast' ? '0 0 10px rgba(45,212,191,0.15)' : 'none'
               }}
               disabled={isRunning}
             >
-              <span>⚡ Nhanh (Fast Run)</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>30 Gens | Pop 60</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontWeight: 'bold', color: optProfile === 'fast' ? '#fff' : 'var(--text-primary)' }}>⚡ Nhanh (Fast Run)</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Tiết kiệm thời gian, tối ưu quy tắc cơ bản.</span>
+              </div>
+              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 'bold' }}>30 Gens | Pop 60</span>
             </button>
 
             <button 
               onClick={() => handleApplyOptProfile('balanced')}
               style={{
                 width: '100%',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                background: optProfile === 'balanced' ? 'rgba(167, 139, 250, 0.08)' : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${optProfile === 'balanced' ? 'var(--color-violet)' : 'rgba(255,255,255,0.06)'}`,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px'
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: optProfile === 'balanced' ? 'rgba(167, 139, 250, 0.06)' : 'rgba(0,0,0,0.15)',
+                border: `1.5px solid ${optProfile === 'balanced' ? 'var(--color-violet)' : 'rgba(255,255,255,0.06)'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px',
+                textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s',
+                boxShadow: optProfile === 'balanced' ? '0 0 10px rgba(167,139,250,0.15)' : 'none'
               }}
               disabled={isRunning}
             >
-              <span>⚖️ Cân bằng (Balanced)</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>60 Gens | Pop 100</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontWeight: 'bold', color: optProfile === 'balanced' ? '#fff' : 'var(--text-primary)' }}>⚖️ Cân bằng (Balanced)</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Độ bao phủ tối ưu với tốc độ hợp lý. Khuyên dùng.</span>
+              </div>
+              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 'bold' }}>60 Gens | Pop 100</span>
             </button>
 
             <button 
               onClick={() => handleApplyOptProfile('deep')}
               style={{
                 width: '100%',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                background: optProfile === 'deep' ? 'rgba(244, 63, 94, 0.08)' : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${optProfile === 'deep' ? 'var(--color-rose)' : 'rgba(255,255,255,0.06)'}`,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px'
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: optProfile === 'deep' ? 'rgba(244, 63, 94, 0.06)' : 'rgba(0,0,0,0.15)',
+                border: `1.5px solid ${optProfile === 'deep' ? 'var(--color-rose)' : 'rgba(255,255,255,0.06)'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px',
+                textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s',
+                boxShadow: optProfile === 'deep' ? '0 0 10px rgba(244,63,94,0.15)' : 'none'
               }}
               disabled={isRunning}
             >
-              <span>🔥 Chuyên sâu (Deep Run)</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>120 Gens | Pop 120</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontWeight: 'bold', color: optProfile === 'deep' ? '#fff' : 'var(--text-primary)' }}>🔥 Chuyên sâu (Deep Run)</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Dò quét sâu mọi ngóc ngách biên và payload an ninh.</span>
+              </div>
+              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 'bold' }}>120 Gens | Pop 120</span>
             </button>
           </div>
         </div>
 
-        {/* Card 3: Traditional selection & main run button */}
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px', justifyContent: 'space-between' }}>
+        {/* Right Side: Expected Results Preview Panel */}
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px', justifyContent: 'space-between' }}>
           <div>
-            <h4 style={{ fontSize: '13.5px', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <Database size={15} style={{ color: 'var(--color-yellow)' }} />
-              Thuật Toán Đối Trọng (Traditional Baseline)
-            </h4>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Award size={16} style={{ color: 'var(--color-teal)' }} />
+              Kết Quả Dự Kiến (Expected Results)
+            </h3>
+            <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+              Ước tính hiệu quả tối ưu hóa dựa trên profile đã lựa chọn.
+            </p>
+
+            {(() => {
+              const expected = optProfile === 'fast' ? { coverage: '75%', duplicates: '<15%', time: '~3s' } :
+                               optProfile === 'balanced' ? { coverage: '90%', duplicates: '<5%', time: '~8s' } :
+                               { coverage: 'Lên tới 98%', duplicates: '<2%', time: '~15s' };
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginTop: '12px' }}>
+                  <div style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>Độ bao phủ</div>
+                    <div style={{ fontSize: '15px', fontWeight: 'bold', color: 'var(--color-teal)' }}>{expected.coverage}</div>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>Trùng lặp</div>
+                    <div style={{ fontSize: '15px', fontWeight: 'bold', color: 'var(--color-violet)' }}>{expected.duplicates}</div>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>Thời gian</div>
+                    <div style={{ fontSize: '15px', fontWeight: 'bold', color: 'var(--color-rose)' }}>{expected.time}</div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          <button 
+            onClick={handleLaunchLaunch} 
+            disabled={isRunning}
+            className={`btn ${isRunning ? 'btn-disabled' : 'btn-primary glow-teal'}`}
+            style={{
+              width: '100%',
+              marginTop: '16px',
+              padding: '11px',
+              fontSize: '13.5px',
+              fontWeight: 'bold',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              boxShadow: isRunning ? 'none' : '0 0 15px rgba(45, 212, 191, 0.25)',
+              cursor: isRunning ? 'default' : 'pointer'
+            }}
+          >
+            {isRunning ? (
+              <>
+                <RefreshCw size={15} style={{ animation: 'spin 1.5s linear infinite', marginRight: '6px' }} />
+                Đang tối ưu hóa...
+              </>
+            ) : (
+              <>
+                <Play size={15} style={{ marginRight: '6px' }} />
+                Bắt Đầu Tối Ưu Hóa (Run Optimization)
+              </>
+            )}
+          </button>
+        </div>
+
+      </div>
+
+      {/* 3. CẤU HÌNH NÂNG CAO (COLLAPSIBLE ACCORDION) */}
+      <details 
+        className="glass-card" 
+        open={showAdvanced}
+        onToggle={(e: any) => setShowAdvanced(e.target.open)}
+        style={{
+          border: '1px solid rgba(255,255,255,0.04)',
+          borderRadius: '8px',
+          background: 'rgba(15,23,42,0.3)',
+          padding: '10px 14px'
+        }}
+      >
+        <summary style={{ cursor: 'pointer', outline: 'none', listStyle: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
+            <Cpu size={14} style={{ color: 'var(--color-teal)' }} />
+            Cấu Hình Nâng Cao (Advanced Settings)
+          </div>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            {showAdvanced ? 'Thu gọn ▲' : 'Mở rộng ▼'}
+          </span>
+        </summary>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginTop: '14px', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '14px' }}>
+          
+          {/* GA params */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Cpu size={13} style={{ color: 'var(--color-teal)' }} />
+              Tham số Di truyền (GA Config)
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div>
+                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Số thế hệ (Gens)</label>
+                <input 
+                  type="number" 
+                  value={generations} 
+                  onChange={(e) => setGenerations(Math.max(1, parseInt(e.target.value) || 0))}
+                  className="input-field"
+                  style={{ padding: '5px 8px', fontSize: '11.5px', marginTop: '2px', width: '100%', boxSizing: 'border-box' }}
+                  disabled={isRunning}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Cỡ quần thể (Pop)</label>
+                <input 
+                  type="number" 
+                  value={popSize} 
+                  onChange={(e) => setPopSize(Math.max(5, parseInt(e.target.value) || 0))}
+                  className="input-field"
+                  style={{ padding: '5px 8px', fontSize: '11.5px', marginTop: '2px', width: '100%', boxSizing: 'border-box' }}
+                  disabled={isRunning}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div>
+                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Tỷ lệ lai ghép</label>
+                <input 
+                  type="number" 
+                  step="0.05"
+                  value={crossoverRate} 
+                  onChange={(e) => setCrossoverRate(Math.min(1.0, Math.max(0.1, parseFloat(e.target.value) || 0)))}
+                  className="input-field"
+                  style={{ padding: '5px 8px', fontSize: '11.5px', marginTop: '2px', width: '100%', boxSizing: 'border-box' }}
+                  disabled={isRunning}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Tỷ lệ đột biến</label>
+                <input 
+                  type="number" 
+                  step="0.05"
+                  value={mutationRate} 
+                  onChange={(e) => setMutationRate(Math.min(1.0, Math.max(0.01, parseFloat(e.target.value) || 0)))}
+                  className="input-field"
+                  style={{ padding: '5px 8px', fontSize: '11.5px', marginTop: '2px', width: '100%', boxSizing: 'border-box' }}
+                  disabled={isRunning}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Evaluator Weights */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <BarChart2 size={13} style={{ color: 'var(--color-violet)' }} />
+              Trọng số Đánh giá (Quality Weights)
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9.5px', color: 'var(--text-secondary)' }}>
+                <span>Đúng đắn (Validation): {Math.round(wVal * 100)}%</span>
+              </div>
+              <input 
+                type="range" min="0" max="1" step="0.05" value={wVal} 
+                onChange={(e) => setWVal(parseFloat(e.target.value))}
+                disabled={isRunning}
+                style={{ height: '3px', cursor: 'pointer', accentColor: 'var(--color-teal)', width: '100%' }}
+              />
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                <span>Biên (Boundary BVA): {Math.round(wBound * 100)}%</span>
+              </div>
+              <input 
+                type="range" min="0" max="1" step="0.05" value={wBound} 
+                onChange={(e) => setWBound(parseFloat(e.target.value))}
+                disabled={isRunning}
+                style={{ height: '3px', cursor: 'pointer', accentColor: 'var(--color-violet)', width: '100%' }}
+              />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                <span>An ninh (Security): {Math.round(wSec * 100)}%</span>
+              </div>
+              <input 
+                type="range" min="0" max="1" step="0.05" value={wSec} 
+                onChange={(e) => setWSec(parseFloat(e.target.value))}
+                disabled={isRunning}
+                style={{ height: '3px', cursor: 'pointer', accentColor: 'var(--color-rose)', width: '100%' }}
+              />
+            </div>
+          </div>
+
+          {/* Traditional Baseline configuration */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Database size={13} style={{ color: 'var(--color-yellow)' }} />
+              Thuật toán Đối trọng (Baseline Validation)
+            </div>
+            
+            <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
               <button
                 onClick={() => setTraditionalAlgo('random')}
                 style={{
-                  flex: 1, padding: '7px 10px', borderRadius: '6px', fontSize: '11px',
+                  flex: 1, padding: '6px 8px', borderRadius: '6px', fontSize: '10.5px', cursor: 'pointer',
                   background: traditionalAlgo === 'random' ? 'rgba(250, 204, 21, 0.08)' : 'rgba(255,255,255,0.02)',
                   border: `1px solid ${traditionalAlgo === 'random' ? 'var(--color-yellow)' : 'rgba(255,255,255,0.06)'}`,
-                  color: traditionalAlgo === 'random' ? 'var(--color-yellow)' : 'var(--text-secondary)'
+                  color: traditionalAlgo === 'random' ? 'var(--color-yellow)' : 'var(--text-secondary)',
+                  fontWeight: traditionalAlgo === 'random' ? 'bold' : 'normal'
                 }}
                 disabled={isRunning}
               >
@@ -917,617 +1082,1157 @@ export const OptimizationDashboard: React.FC = () => {
               <button
                 onClick={() => setTraditionalAlgo('bva')}
                 style={{
-                  flex: 1, padding: '7px 10px', borderRadius: '6px', fontSize: '11px',
+                  flex: 1, padding: '6px 8px', borderRadius: '6px', fontSize: '10.5px', cursor: 'pointer',
                   background: traditionalAlgo === 'bva' ? 'rgba(250, 204, 21, 0.08)' : 'rgba(255,255,255,0.02)',
                   border: `1px solid ${traditionalAlgo === 'bva' ? 'var(--color-yellow)' : 'rgba(255,255,255,0.06)'}`,
-                  color: traditionalAlgo === 'bva' ? 'var(--color-yellow)' : 'var(--text-secondary)'
+                  color: traditionalAlgo === 'bva' ? 'var(--color-yellow)' : 'var(--text-secondary)',
+                  fontWeight: traditionalAlgo === 'bva' ? 'bold' : 'normal'
                 }}
                 disabled={isRunning}
               >
                 Phân tích biên (BVA)
               </button>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '8px', lineHeight: '1.45', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span>
-                {traditionalAlgo === 'random' 
-                  ? '👉 Luồng 1 chạy sinh Ngẫu nhiên (Random Baseline) để đối trọng.'
-                  : '👉 Luồng 1 chạy phân tích Biên cơ bản (BVA Baseline) để đối trọng.'
-                }
-              </span>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '4px' }}>
-                Hệ thống sẽ khởi chạy song song 4 tiến trình:
-                <br />
-                Traditional ({traditionalAlgo === 'random' ? 'Random' : 'BVA'}) ➔ GA ➔ HC ➔ Hybrid
-              </span>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.4', marginTop: '4px' }}>
+              {traditionalAlgo === 'random' 
+                ? 'Luồng đối trọng sẽ sinh các trường dữ liệu ngẫu nhiên (Random Baseline).'
+                : 'Luồng đối trọng sẽ sinh các giá trị rìa biên tĩnh cơ bản (BVA Baseline).'
+              }
             </div>
           </div>
 
-          <button 
-            onClick={handleLaunchLaunch} 
-            disabled={isRunning}
-            className={`btn ${isRunning ? 'btn-disabled' : 'btn-primary glow-teal'}`}
-            style={{ width: '100%', marginTop: '12px', padding: '10px' }}
-          >
-            {isRunning ? (
-              <>
-                <RefreshCw size={15} style={{ animation: 'spin 1.5s linear infinite', marginRight: '6px' }} />
-                Đang chạy thử nghiệm đối kháng...
-              </>
-            ) : (
-              <>
-                <Play size={15} />
-                Chạy kiểm thử và so sánh 4 luồng
-              </>
-            )}
-          </button>
+        </div>
+      </details>
+
+      {/* 4. STATE RENDERING (EMPTY / LOADING / RESULT STATES) */}
+      {!isRunning && !isComplete ? (
+        
+        /* EMPTY STATE VIEW */
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 24px', textAlign: 'center', background: 'rgba(15,23,42,0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px' }}>
+          <div style={{ background: 'rgba(45, 212, 191, 0.08)', border: '1px solid rgba(45, 212, 191, 0.2)', width: '60px', height: '60px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+            <Sparkles size={28} style={{ color: 'var(--color-teal)' }} />
+          </div>
+          <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff', marginBottom: '8px' }}>
+            Nền tảng Tối ưu hóa AI đã sẵn sàng
+          </h3>
+          <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', maxWidth: '560px', lineHeight: '1.5', marginBottom: '24px' }}>
+            Chọn cấu hình tối ưu ở trên và nhấn nút <strong>Run Optimization</strong>. TestForge sẽ chạy song song, đối kháng và hiển thị kết quả kiểm thử tối ưu nhất cho đặc tả <strong>{schemaName || 'Hiện tại'}</strong>.
+          </p>
+          
+          <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap', width: '100%', maxWidth: '900px' }}>
+            {[
+              { title: 'Baseline Validation', desc: 'Sinh dữ liệu ngẫu nhiên hoặc biên tĩnh (Random/BVA) làm đối trọng so sánh.', step: 'Luồng 1 - Baseline' },
+              { title: 'Genetic Optimization', desc: 'Giải thuật di truyền GA tìm kiếm toàn cục, tối đa hóa độ bao phủ nghiệp vụ.', step: 'Luồng 2 - Toàn cục' },
+              { title: 'Local Refinement', desc: 'Dò biên cục bộ nâng cao (Simulated Annealing & Tabu Search) cho từng trường.', step: 'Luồng 3 - Dò biên' },
+              { title: 'Hybrid AI Optimization', desc: 'Mô hình lai ghép độc quyền: GA tìm kiếm rộng kết hợp HC tinh chỉnh sâu.', step: 'Luồng 4 - Tối ưu nhất' }
+            ].map((item, idx) => (
+              <div key={idx} style={{ flex: '1 1 200px', background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '14px', textAlign: 'left' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '12.5px', fontWeight: 'bold', color: '#fff' }}>{item.title}</span>
+                  <span style={{ fontSize: '9px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', padding: '2px 6px', borderRadius: '4px' }}>{item.step}</span>
+                </div>
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>{item.desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-      </div>
+      ) : (
 
-      {/* 2. TRỰC QUAN HÓA TIẾN TRÌNH VÀ DỮ LIỆU ĐỒNG THỜI CỦA 4 LUỒNG THUẬT TOÁN */}
-      <div className="glass-card" style={{ padding: '20px', background: 'rgba(15,23,42,0.7)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Cpu size={16} className="text-teal" style={{ color: 'var(--color-teal)' }} />
-            TRỰC QUAN HÓA TIẾN TRÌNH VÀ DỮ LIỆU ĐỒNG THỜI CỦA 4 LUỒNG THUẬT TOÁN
+        /* RUNNING / RESULT STATES VIEW */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
+          {/* A. LIVE DASHBOARD (CONCURRENT ALGORITHMS PROGRESS) */}
+          <div className="glass-card" style={{ padding: '20px', background: 'rgba(15,23,42,0.7)', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Cpu size={16} className="text-teal" style={{ color: 'var(--color-teal)' }} />
+              TIẾN TRÌNH TỐI ƯU HÓA SONG SONG (LIVE OPTIMIZATION DASHBOARD)
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+              
+              {/* CỘT 1: BASELINE VALIDATION */}
+              <div style={{
+                background: 'rgba(8,13,28,0.5)',
+                border: `1px solid ${runStates.traditional.status === 'running' ? '#64748b' : 'rgba(255,255,255,0.06)'}`,
+                borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px',
+                boxShadow: runStates.traditional.status === 'running' ? '0 0 10px rgba(100,116,139,0.15)' : 'none',
+                transition: 'all 0.3s'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Database size={14} style={{ color: '#64748b' }} />
+                    Baseline Validation
+                  </span>
+                  {runStates.traditional.status === 'running' && <RefreshCw size={12} className="tech-spinner" style={{ color: '#64748b' }} />}
+                  {runStates.traditional.status === 'completed' && <CheckCircle2 size={13} style={{ color: 'var(--color-teal)' }} />}
+                </div>
+                
+                {/* Progress bar */}
+                <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{ width: `${runStates.traditional.progress}%`, height: '100%', background: '#64748b', transition: 'width 0.1s' }} />
+                </div>
+                
+                {/* Live best chromosome preview */}
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Mẫu dữ liệu tốt nhất tìm thấy (Live Data):</div>
+                <div style={{
+                  background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.03)',
+                  borderRadius: '6px', padding: '10px', height: '110px', overflowY: 'auto',
+                  fontFamily: 'var(--font-mono)', fontSize: '11px'
+                }}>
+                  {runStates.traditional.bestTestCase ? (
+                    Object.entries(runStates.traditional.bestTestCase).slice(0, 4).map(([k, v]) => (
+                      <div key={k} style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginBottom: '2px' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>{k}:</span>{' '}
+                        <span style={{ color: runStates.traditional.status === 'running' ? '#64748b' : '#fff' }}>{String(v)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '30px' }}>Chờ chạy...</div>
+                  )}
+                </div>
+                
+                {/* Live logs console */}
+                <div style={{
+                  background: '#020408', border: '1px solid rgba(255,255,255,0.02)',
+                  borderRadius: '6px', padding: '8px', height: '90px', overflowY: 'auto',
+                  fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#94a3b8',
+                  boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)'
+                }}>
+                  {runStates.traditional.logs.slice(-3).map((l, i) => <div key={i} style={{ marginBottom: '2px' }}>{l}</div>)}
+                </div>
+              </div>
+
+              {/* CỘT 2: GENETIC OPTIMIZATION */}
+              <div style={{
+                background: 'rgba(8,13,28,0.5)',
+                border: `1px solid ${runStates.ga.status === 'running' ? 'var(--color-teal)' : 'rgba(255,255,255,0.06)'}`,
+                borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px',
+                boxShadow: runStates.ga.status === 'running' ? '0 0 10px rgba(45,212,191,0.15)' : 'none',
+                transition: 'all 0.3s'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Cpu size={14} style={{ color: 'var(--color-teal)' }} />
+                    Genetic Optimization
+                  </span>
+                  {runStates.ga.status === 'running' && <RefreshCw size={12} className="tech-spinner" style={{ color: 'var(--color-teal)' }} />}
+                  {runStates.ga.status === 'completed' && <CheckCircle2 size={13} style={{ color: 'var(--color-teal)' }} />}
+                </div>
+                
+                {/* Progress bar */}
+                <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{ width: `${runStates.ga.progress}%`, height: '100%', background: 'var(--color-teal)', transition: 'width 0.1s' }} />
+                </div>
+                
+                {/* Live best chromosome preview */}
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Mẫu dữ liệu tốt nhất tìm thấy (Live Data):</div>
+                <div style={{
+                  background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.03)',
+                  borderRadius: '6px', padding: '10px', height: '110px', overflowY: 'auto',
+                  fontFamily: 'var(--font-mono)', fontSize: '11px'
+                }}>
+                  {runStates.ga.bestTestCase ? (
+                    Object.entries(runStates.ga.bestTestCase).slice(0, 4).map(([k, v]) => (
+                      <div key={k} style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginBottom: '2px' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>{k}:</span>{' '}
+                        <span style={{ color: runStates.ga.status === 'running' ? 'var(--color-teal)' : '#fff' }}>{String(v)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '30px' }}>Chờ chạy...</div>
+                  )}
+                </div>
+                
+                {/* Live logs console */}
+                <div style={{
+                  background: '#020408', border: '1px solid rgba(255,255,255,0.02)',
+                  borderRadius: '6px', padding: '8px', height: '90px', overflowY: 'auto',
+                  fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-teal)',
+                  boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)', textShadow: '0 0 2px var(--color-teal)'
+                }}>
+                  {runStates.ga.logs.slice(-3).map((l, i) => <div key={i} style={{ marginBottom: '2px' }}>{l}</div>)}
+                </div>
+              </div>
+
+              {/* CỘT 3: LOCAL REFINEMENT */}
+              <div style={{
+                background: 'rgba(8,13,28,0.5)',
+                border: `1px solid ${runStates.hc.status === 'running' ? 'var(--color-violet)' : 'rgba(255,255,255,0.06)'}`,
+                borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px',
+                boxShadow: runStates.hc.status === 'running' ? '0 0 10px rgba(167,139,250,0.15)' : 'none',
+                transition: 'all 0.3s'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Zap size={14} style={{ color: 'var(--color-violet)' }} />
+                    Local Refinement
+                  </span>
+                  {runStates.hc.status === 'running' && <RefreshCw size={12} className="tech-spinner" style={{ color: 'var(--color-violet)' }} />}
+                  {runStates.hc.status === 'completed' && <CheckCircle2 size={13} style={{ color: 'var(--color-teal)' }} />}
+                </div>
+                
+                {/* Progress bar */}
+                <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{ width: `${runStates.hc.progress}%`, height: '100%', background: 'var(--color-violet)', transition: 'width 0.1s' }} />
+                </div>
+                
+                {/* Live best chromosome preview */}
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Mẫu dữ liệu tốt nhất tìm thấy (Live Data):</div>
+                <div style={{
+                  background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.03)',
+                  borderRadius: '6px', padding: '10px', height: '110px', overflowY: 'auto',
+                  fontFamily: 'var(--font-mono)', fontSize: '11px'
+                }}>
+                  {runStates.hc.bestTestCase ? (
+                    Object.entries(runStates.hc.bestTestCase).slice(0, 4).map(([k, v]) => (
+                      <div key={k} style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginBottom: '2px' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>{k}:</span>{' '}
+                        <span style={{ color: runStates.hc.status === 'running' ? 'var(--color-violet)' : '#fff' }}>{String(v)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '30px' }}>Chờ chạy...</div>
+                  )}
+                </div>
+                
+                {/* Live logs console */}
+                <div style={{
+                  background: '#020408', border: '1px solid rgba(255,255,255,0.02)',
+                  borderRadius: '6px', padding: '8px', height: '90px', overflowY: 'auto',
+                  fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-violet)',
+                  boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)', textShadow: '0 0 2px var(--color-violet)'
+                }}>
+                  {runStates.hc.logs.slice(-3).map((l, i) => <div key={i} style={{ marginBottom: '2px' }}>{l}</div>)}
+                </div>
+              </div>
+
+              {/* CỘT 4: HYBRID AI OPTIMIZATION */}
+              <div 
+                className={runStates.hybrid.status === 'running' || runStates.hybrid.status === 'completed' ? "hybrid-glow-card" : ""}
+                style={{
+                  background: 'rgba(8,13,28,0.5)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px',
+                  transition: 'all 0.4s ease-in-out',
+                  boxShadow: runStates.hybrid.status === 'running' ? '0 0 15px rgba(244,63,94,0.3)' : 'none'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Award size={14} style={{ color: 'var(--color-rose)' }} />
+                    Hybrid AI Optimization
+                  </span>
+                  {runStates.hybrid.status === 'running' && <RefreshCw size={12} className="tech-spinner" style={{ color: 'var(--color-rose)' }} />}
+                  {runStates.hybrid.status === 'completed' && <CheckCircle2 size={13} style={{ color: 'var(--color-teal)' }} />}
+                </div>
+                
+                {/* Progress bar */}
+                <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{ width: `${runStates.hybrid.progress}%`, height: '100%', background: 'var(--color-rose)', transition: 'width 0.1s' }} />
+                </div>
+                
+                {/* Live best chromosome preview */}
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Mẫu dữ liệu tốt nhất tìm thấy (Live Data):</div>
+                <div style={{
+                  background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.03)',
+                  borderRadius: '6px', padding: '10px', height: '110px', overflowY: 'auto',
+                  fontFamily: 'var(--font-mono)', fontSize: '11px'
+                }}>
+                  {runStates.hybrid.bestTestCase ? (
+                    Object.entries(runStates.hybrid.bestTestCase).slice(0, 4).map(([k, v]) => (
+                      <div key={k} style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginBottom: '2px' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>{k}:</span>{' '}
+                        <span style={{ color: runStates.hybrid.status === 'running' ? 'var(--color-rose)' : '#fff' }}>{String(v)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '30px' }}>Chờ chạy...</div>
+                  )}
+                </div>
+                
+                {/* Live logs console */}
+                <div style={{
+                  background: '#020408', border: '1px solid rgba(255,255,255,0.02)',
+                  borderRadius: '6px', padding: '8px', height: '90px', overflowY: 'auto',
+                  fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-rose)',
+                  boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)', textShadow: '0 0 2px var(--color-rose)'
+                }}>
+                  {runStates.hybrid.logs.slice(-3).map((l, i) => <div key={i} style={{ marginBottom: '2px' }}>{l}</div>)}
+                </div>
+              </div>
+
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
-            
-            {/* CỘT 1: TRADITIONAL */}
-            <div style={{
-              background: 'rgba(8,13,28,0.5)',
-              border: `1px solid ${runStates.traditional.status === 'running' ? '#64748b' : 'rgba(255,255,255,0.06)'}`,
-              borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px',
-              boxShadow: runStates.traditional.status === 'running' ? '0 0 10px rgba(100,116,139,0.15)' : 'none',
-              transition: 'all 0.3s'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Database size={14} style={{ color: '#64748b' }} />
-                  Traditional ({traditionalAlgo === 'random' ? 'Random' : 'BVA'})
-                </span>
-                {runStates.traditional.status === 'running' && <RefreshCw size={12} className="tech-spinner" style={{ color: '#64748b' }} />}
-                {runStates.traditional.status === 'completed' && <CheckCircle2 size={13} style={{ color: 'var(--color-teal)' }} />}
-              </div>
-              {/* Progress bar */}
-              <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                <div style={{ width: `${runStates.traditional.progress}%`, height: '100%', background: '#64748b', transition: 'width 0.1s' }} />
-              </div>
-              {/* Live best chromosome preview */}
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Mẫu dữ liệu tốt nhất tìm thấy (Live Data):</div>
-              <div style={{
-                background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.03)',
-                borderRadius: '6px', padding: '10px', height: '110px', overflowY: 'auto',
-                fontFamily: 'var(--font-mono)', fontSize: '11px'
-              }}>
-                {runStates.traditional.bestTestCase ? (
-                  Object.entries(runStates.traditional.bestTestCase).slice(0, 4).map(([k, v]) => (
-                    <div key={k} style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginBottom: '2px' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>{k}:</span>{' '}
-                      <span style={{ color: runStates.traditional.status === 'running' ? '#64748b' : '#fff' }}>{String(v)}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '30px' }}>Chờ chạy...</div>
-                )}
-              </div>
-              {/* Live logs console */}
-              <div style={{
-                background: '#020408', border: '1px solid rgba(255,255,255,0.02)',
-                borderRadius: '6px', padding: '8px', height: '90px', overflowY: 'auto',
-                fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#94a3b8',
-                boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)'
-              }}>
-                {runStates.traditional.logs.slice(-3).map((l, i) => <div key={i} style={{ marginBottom: '2px' }}>{l}</div>)}
-              </div>
-            </div>
+          {/* B. KẾT QUẢ ĐỐI KHÁNG THUẬT TOÁN (RESULT STATE - SHOW AFTER COMPLETE) */}
+          {isComplete && results && (
+            <div className="fade-in-up flex flex-col gap-lg" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              {/* Thẻ so sánh tóm tắt chỉ số */}
+              <div className="grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                {results.map((res) => {
+                  const isWinner = res.key === 'hybrid';
+                  
+                  const getProsCons = (key: string) => {
+                    switch (key) {
+                      case 'traditional':
+                        return [
+                          '✓ Sinh giá trị biên tĩnh cực nhanh',
+                          '✗ Trùng lặp cao, bao phủ logic thấp',
+                          '✗ Không có payload bảo mật nâng cao'
+                        ];
+                      case 'ga':
+                        return [
+                          '✓ Tìm kiếm toàn cục thông minh',
+                          '✓ Giảm thiểu trùng lặp hiệu quả',
+                          '✗ Dễ bỏ sót biên hẹp cục bộ'
+                        ];
+                      case 'hc':
+                        return [
+                          '✓ Tinh chỉnh biên cục bộ cực sâu',
+                          '✓ Phát hiện lỗi cận biên tốt',
+                          '✗ Thiếu phối hợp logic đa biến'
+                        ];
+                      case 'hybrid':
+                      default:
+                        return [
+                          '✓ Tối ưu lai GA + HC toàn diện nhất',
+                          '✓ Tiêm payload an ninh SQLi/XSS',
+                          '✓ Trùng lặp gần như 0, độ phủ tối đa'
+                        ];
+                    }
+                  };
 
-            {/* CỘT 2: GENETIC ALGORITHM */}
-            <div style={{
-              background: 'rgba(8,13,28,0.5)',
-              border: `1px solid ${runStates.ga.status === 'running' ? 'var(--color-teal)' : 'rgba(255,255,255,0.06)'}`,
-              borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px',
-              boxShadow: runStates.ga.status === 'running' ? '0 0 10px rgba(45,212,191,0.15)' : 'none',
-              transition: 'all 0.3s'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Cpu size={14} style={{ color: 'var(--color-teal)' }} />
-                  Genetic Algorithm (GA)
-                </span>
-                {runStates.ga.status === 'running' && <RefreshCw size={12} className="tech-spinner" style={{ color: 'var(--color-teal)' }} />}
-                {runStates.ga.status === 'completed' && <CheckCircle2 size={13} style={{ color: 'var(--color-teal)' }} />}
-              </div>
-              {/* Progress bar */}
-              <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                <div style={{ width: `${runStates.ga.progress}%`, height: '100%', background: 'var(--color-teal)', transition: 'width 0.1s' }} />
-              </div>
-              {/* Live best chromosome preview */}
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Mẫu dữ liệu tốt nhất tìm thấy (Live Data):</div>
-              <div style={{
-                background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.03)',
-                borderRadius: '6px', padding: '10px', height: '110px', overflowY: 'auto',
-                fontFamily: 'var(--font-mono)', fontSize: '11px'
-              }}>
-                {runStates.ga.bestTestCase ? (
-                  Object.entries(runStates.ga.bestTestCase).slice(0, 4).map(([k, v]) => (
-                    <div key={k} style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginBottom: '2px' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>{k}:</span>{' '}
-                      <span style={{ color: runStates.ga.status === 'running' ? 'var(--color-teal)' : '#fff' }}>{String(v)}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '30px' }}>Chờ chạy...</div>
-                )}
-              </div>
-              {/* Live logs console */}
-              <div style={{
-                background: '#020408', border: '1px solid rgba(255,255,255,0.02)',
-                borderRadius: '6px', padding: '8px', height: '90px', overflowY: 'auto',
-                fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-teal)',
-                boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)', textShadow: '0 0 2px var(--color-teal)'
-              }}>
-                {runStates.ga.logs.slice(-3).map((l, i) => <div key={i} style={{ marginBottom: '2px' }}>{l}</div>)}
-              </div>
-            </div>
+                  return (
+                    <div 
+                      key={res.key} 
+                      className="glass-card"
+                      style={{
+                        border: isWinner ? '1.5px solid var(--color-rose)' : '1px solid rgba(255,255,255,0.06)',
+                        background: isWinner ? 'rgba(244, 63, 94, 0.04)' : 'rgba(15,23,42,0.55)',
+                        padding: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        position: 'relative',
+                        boxShadow: isWinner ? '0 0 15px rgba(244,63,94,0.1)' : 'none',
+                        borderRadius: '8px'
+                      }}
+                    >
+                      {isWinner && (
+                        <span style={{
+                          position: 'absolute', top: '10px', right: '10px',
+                          background: 'rgba(244, 63, 94, 0.15)', color: 'var(--color-rose)',
+                          fontSize: '9.5px', padding: '3px 8px', borderRadius: '10px',
+                          border: '1px solid rgba(244,63,94,0.3)', fontWeight: 700
+                        }}>
+                          KHUYÊN DÙNG
+                        </span>
+                      )}
+                      
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: res.color }} />
+                          <h4 style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff' }}>{res.name}</h4>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{res.badge}</div>
+                      </div>
 
-            {/* CỘT 3: HILL CLIMBING */}
-            <div style={{
-              background: 'rgba(8,13,28,0.5)',
-              border: `1px solid ${runStates.hc.status === 'running' ? 'var(--color-violet)' : 'rgba(255,255,255,0.06)'}`,
-              borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px',
-              boxShadow: runStates.hc.status === 'running' ? '0 0 10px rgba(167,139,250,0.15)' : 'none',
-              transition: 'all 0.3s'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Zap size={14} style={{ color: 'var(--color-violet)' }} />
-                  Hill Climbing (HC)
-                </span>
-                {runStates.hc.status === 'running' && <RefreshCw size={12} className="tech-spinner" style={{ color: 'var(--color-violet)' }} />}
-                {runStates.hc.status === 'completed' && <CheckCircle2 size={13} style={{ color: 'var(--color-teal)' }} />}
-              </div>
-              {/* Progress bar */}
-              <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                <div style={{ width: `${runStates.hc.progress}%`, height: '100%', background: 'var(--color-violet)', transition: 'width 0.1s' }} />
-              </div>
-              {/* Live best chromosome preview */}
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Mẫu dữ liệu tốt nhất tìm thấy (Live Data):</div>
-              <div style={{
-                background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.03)',
-                borderRadius: '6px', padding: '10px', height: '110px', overflowY: 'auto',
-                fontFamily: 'var(--font-mono)', fontSize: '11px'
-              }}>
-                {runStates.hc.bestTestCase ? (
-                  Object.entries(runStates.hc.bestTestCase).slice(0, 4).map(([k, v]) => (
-                    <div key={k} style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginBottom: '2px' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>{k}:</span>{' '}
-                      <span style={{ color: runStates.hc.status === 'running' ? 'var(--color-violet)' : '#fff' }}>{String(v)}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '30px' }}>Chờ chạy...</div>
-                )}
-              </div>
-              {/* Live logs console */}
-              <div style={{
-                background: '#020408', border: '1px solid rgba(255,255,255,0.02)',
-                borderRadius: '6px', padding: '8px', height: '90px', overflowY: 'auto',
-                fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-violet)',
-                boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)', textShadow: '0 0 2px var(--color-violet)'
-              }}>
-                {runStates.hc.logs.slice(-3).map((l, i) => <div key={i} style={{ marginBottom: '2px' }}>{l}</div>)}
-              </div>
-            </div>
+                      {/* Vòng tròn phần trăm và thông số */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '2px 0' }}>
+                        <div style={{ position: 'relative', width: '50px', height: '50px', flexShrink: 0 }}>
+                          <svg width="50" height="50" viewBox="0 0 36 36">
+                            <path
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                              fill="none"
+                              stroke="rgba(255,255,255,0.05)"
+                              strokeWidth="3.5"
+                            />
+                            <path
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                              fill="none"
+                              stroke={res.color}
+                              strokeWidth="3.5"
+                              strokeDasharray={`${res.coverage}, 100`}
+                              strokeLinecap="round"
+                            />
+                            <text x="18" y="21.5" className="chart-text" fill="#fff" fontSize="9" fontWeight="bold" textAnchor="middle">
+                              {res.coverage}%
+                            </text>
+                          </svg>
+                        </div>
 
-            {/* CỘT 4: HYBRID GA -> HC */}
-            <div 
-              className={runStates.hybrid.status === 'running' || runStates.hybrid.status === 'completed' ? "hybrid-glow-card" : ""}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          <div>Số ca: <b style={{ color: '#fff' }}>{res.allData.length} ca</b></div>
+                          <div>Trùng lặp: <b style={{ color: res.duplicateRate > 10 ? 'var(--color-rose)' : '#fff' }}>{res.duplicateRate}%</b></div>
+                          <div>Lỗi biên: <b style={{ color: isWinner ? 'var(--color-rose)' : '#fff' }}>{res.edgeCases} ca</b></div>
+                          <div>Thời gian: <b style={{ color: '#fff' }}>{res.execTime} ms</b></div>
+                        </div>
+                      </div>
+
+                      {/* Đặc tính Pros & Cons */}
+                      <div style={{ fontSize: '11.5px', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '9px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '2px' }}>Đặc tính thuật toán:</div>
+                        {getProsCons(res.key).map((item, idx) => (
+                          <div key={idx} style={{ 
+                            color: item.startsWith('✓') ? '#2dd4bf' : 'var(--text-secondary)',
+                            fontSize: '10.5px',
+                            textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap'
+                          }}>
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Thao tác: Xem mẫu & Chọn */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                        <button 
+                          onClick={() => {
+                            setPreviewSuite(res);
+                            setDrawerFilterType('all');
+                          }}
+                          className="btn btn-secondary"
+                          style={{ 
+                            fontSize: '11px', padding: '8px 10px', width: '100%', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', 
+                            border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)',
+                            color: '#fff', cursor: 'pointer', borderRadius: '6px', fontWeight: 'bold',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <Eye size={12} style={{ color: res.color }} />
+                          Xem dữ liệu mẫu
+                        </button>
+                        
+                        <button 
+                          onClick={() => handleApplySuite(res)}
+                          className="btn"
+                          style={{ 
+                            fontSize: '11px', padding: '8px 10px', width: '100%', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', 
+                            background: isWinner ? 'var(--color-rose)' : 'rgba(255,255,255,0.08)',
+                            color: isWinner ? '#000' : '#fff', border: 'none', cursor: 'pointer', borderRadius: '6px', fontWeight: 'bold',
+                            boxShadow: isWinner ? '0 0 10px rgba(244,63,94,0.3)' : 'none',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <CheckCircle2 size={12} />
+                          Chọn làm kết quả cuối
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* C. BẢNG SO SÁNH CHỈ SỐ CHI TIẾT */}
+              <div className="glass-card" style={{ padding: '20px', background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                  <BarChart2 size={16} style={{ color: 'var(--color-teal)' }} />
+                  BẢNG SO SÁNH THỰC NGHIỆM ĐA CHỈ SỐ (COMPARATIVE METRICS GRID)
+                </h3>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left', color: 'var(--text-secondary)' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#fff' }}>
+                        <th style={{ padding: '10px' }}>Chỉ số đánh giá</th>
+                        {results.map(r => (
+                          <th 
+                            key={r.key} 
+                            style={{ 
+                              padding: '10px', 
+                              color: r.key === 'hybrid' ? 'var(--color-rose)' : '#fff',
+                              background: r.key === 'hybrid' ? 'rgba(244,63,94,0.04)' : 'none',
+                              borderLeft: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none',
+                              borderRight: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none'
+                            }}
+                          >
+                            {r.name} {r.key === 'hybrid' && '🏆'}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#fff' }}>Độ bao phủ (Coverage)</td>
+                        {results.map(r => (
+                          <td 
+                            key={r.key} 
+                            style={{ 
+                              padding: '10px', 
+                              fontWeight: r.key === 'hybrid' ? 'bold' : 'normal',
+                              color: r.key === 'hybrid' ? 'var(--color-rose)' : r.key === 'ga' ? 'var(--color-teal)' : r.key === 'hc' ? 'var(--color-violet)' : '#64748b',
+                              background: r.key === 'hybrid' ? 'rgba(244,63,94,0.04)' : 'none',
+                              borderLeft: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none',
+                              borderRight: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none'
+                            }}
+                          >
+                            {r.coverage}%
+                          </td>
+                        ))}
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#fff' }}>Tỷ lệ trùng lặp (Duplicate Rate)</td>
+                        {results.map(r => (
+                          <td 
+                            key={r.key} 
+                            style={{ 
+                              padding: '10px', 
+                              fontWeight: r.key === 'hybrid' ? 'bold' : 'normal',
+                              color: r.duplicateRate > 10 ? 'var(--color-rose)' : '#fff',
+                              background: r.key === 'hybrid' ? 'rgba(244,63,94,0.04)' : 'none',
+                              borderLeft: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none',
+                              borderRight: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none'
+                            }}
+                          >
+                            {r.duplicateRate}%
+                          </td>
+                        ))}
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#fff' }}>Số ca test sinh ra (Test Cases)</td>
+                        {results.map(r => (
+                          <td 
+                            key={r.key} 
+                            style={{ 
+                              padding: '10px', 
+                              fontWeight: r.key === 'hybrid' ? 'bold' : 'normal',
+                              color: '#fff',
+                              background: r.key === 'hybrid' ? 'rgba(244,63,94,0.04)' : 'none',
+                              borderLeft: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none',
+                              borderRight: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none'
+                            }}
+                          >
+                            {r.allData.length} ca
+                          </td>
+                        ))}
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#fff' }}>Thời gian thực thi (Runtime)</td>
+                        {results.map(r => (
+                          <td 
+                            key={r.key} 
+                            style={{ 
+                              padding: '10px', 
+                              fontWeight: r.key === 'hybrid' ? 'bold' : 'normal',
+                              color: '#fff',
+                              background: r.key === 'hybrid' ? 'rgba(244,63,94,0.04)' : 'none',
+                              borderLeft: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none',
+                              borderRight: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none'
+                            }}
+                          >
+                            {r.execTime} ms
+                          </td>
+                        ))}
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#fff' }}>Đặc tính nổi bật</td>
+                        {results.map(r => (
+                          <td 
+                            key={r.key} 
+                            style={{ 
+                              padding: '10px', 
+                              fontSize: '11px',
+                              fontWeight: r.key === 'hybrid' ? 'bold' : 'normal',
+                              color: r.key === 'hybrid' ? 'var(--color-rose)' : 'var(--text-secondary)',
+                              background: r.key === 'hybrid' ? 'rgba(244,63,94,0.04)' : 'none',
+                              borderLeft: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none',
+                              borderRight: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none'
+                            }}
+                          >
+                            {r.key === 'traditional' && 'Biên cơ bản & sinh ngẫu nhiên làm đối trọng'}
+                            {r.key === 'ga' && 'Tiến hóa quần thể, tối ưu bao phủ toàn cục'}
+                            {r.key === 'hc' && 'Dò quét rìa biên hẹp & lỗi cận biên sâu'}
+                            {r.key === 'hybrid' && 'Tối ưu toàn diện lai GA+HC & Tiêm payload an ninh'}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#fff' }}>Hành động tương tác</td>
+                        {results.map(r => (
+                          <td 
+                            key={r.key} 
+                            style={{ 
+                              padding: '10px',
+                              background: r.key === 'hybrid' ? 'rgba(244,63,94,0.04)' : 'none',
+                              borderLeft: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none',
+                              borderRight: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none'
+                            }}
+                          >
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button 
+                                onClick={() => {
+                                  setPreviewSuite(r);
+                                  setDrawerFilterType('all');
+                                }}
+                                style={{
+                                  padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)',
+                                  background: 'rgba(255,255,255,0.02)', color: '#fff', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold'
+                                }}
+                              >
+                                Xem mẫu
+                              </button>
+                              <button 
+                                onClick={() => handleApplySuite(r)}
+                                style={{
+                                  padding: '4px 8px', borderRadius: '4px', border: 'none',
+                                  background: r.key === 'hybrid' ? 'var(--color-rose)' : 'rgba(255,255,255,0.08)',
+                                  color: r.key === 'hybrid' ? '#000' : '#fff', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold'
+                                }}
+                              >
+                                Áp dụng
+                              </button>
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Biểu đồ so sánh */}
+              <div className="grid-2" style={{ gap: '16px' }}>
+                {/* Grouped Bar Chart */}
+                <div className="glass-card" style={{ padding: '16px 20px', background: 'rgba(15,23,42,0.6)', borderRadius: '8px' }}>
+                  <h3 style={{ fontSize: '13.5px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <BarChart2 size={16} style={{ color: 'var(--color-teal)' }} />
+                    SO SÁNH CHỈ SỐ CHẤT LƯỢNG (QUALITY METRICS COMPARISON)
+                  </h3>
+                  <div style={{ width: '100%', height: '240px' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={results} margin={{ top: 10, right: 10, left: -25, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" />
+                        <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={9} tickLine={false} />
+                        <YAxis stroke="var(--text-muted)" fontSize={10} />
+                        <Tooltip 
+                          contentStyle={{ background: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', fontSize: '12px' }} 
+                        />
+                        <Bar dataKey="coverage" fill="#2dd4bf" name="Độ phủ (%)" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="duplicateRate" fill="#a78bfa" name="Trùng lặp (%)" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="edgeCases" fill="#f43f5e" name="Lỗi biên (ca)" radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Line Chart showing progression curve */}
+                <div className="glass-card" style={{ padding: '16px 20px', background: 'rgba(15,23,42,0.6)', borderRadius: '8px' }}>
+                  <h3 style={{ fontSize: '13.5px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <Zap size={16} style={{ color: 'var(--color-violet)' }} />
+                    ĐƯỜNG CONG TIẾN HÓA ĐỘ BAO PHỦ THỰC TẾ (EVOLUTION PATH)
+                  </h3>
+                  <div style={{ width: '100%', height: '240px' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={coverageHistory.length > 0 ? coverageHistory : getProgressChartData()} margin={{ top: 10, right: 15, left: -25, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" />
+                        <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={10} tickLine={false} />
+                        <YAxis stroke="var(--text-muted)" fontSize={10} unit="%" />
+                        <Tooltip contentStyle={{ background: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', fontSize: '12px' }} />
+                        <Legend wrapperStyle={{ fontSize: '11px', marginTop: '5px' }} />
+                        <Line type="monotone" dataKey="Baseline Validation" stroke="#64748b" strokeWidth={1.5} dot={false} />
+                        <Line type="monotone" dataKey="Local Refinement" stroke="#a78bfa" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
+                        <Line type="monotone" dataKey="Genetic Optimization" stroke="#2dd4bf" strokeWidth={1.8} dot={false} />
+                        <Line type="monotone" dataKey="Hybrid AI Optimization" stroke="#f43f5e" strokeWidth={2.5} activeDot={{ r: 5 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bản phân tích chuyên gia */}
+              <div className="glass-card" style={{ border: '1px solid rgba(45,212,191,0.2)', background: 'rgba(45,212,191,0.02)', padding: '16px 20px', borderRadius: '8px' }}>
+                <h4 style={{ fontSize: '13.5px', color: 'var(--color-teal)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', fontWeight: 'bold' }}>
+                  <Award size={16} />
+                  PHÂN TÍCH ĐÁNH GIÁ TỪ CHUYÊN GIA BẢO MẬT & QA (QA LEAD REPORT)
+                </h4>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                    Dựa trên kịch bản kiểm thử <strong>{schemaName || 'Hiện tại'}</strong> với <strong>{schema.length}</strong> trường dữ liệu, hệ thống đưa ra đánh giá thực nghiệm:
+                    <ul style={{ paddingLeft: '18px', marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <li>
+                        <strong>Baseline Validation</strong> ({results.find(r => r.key === 'traditional')?.coverage}%): Chỉ bao phủ các giá trị Happy path cơ bản hoặc biên thô tĩnh. Gặp lỗi trùng lặp cao và không thể phát hiện các lỗi kết hợp đa biến phức tạp.
+                      </li>
+                      <li>
+                        <strong>Genetic Optimization</strong> ({results.find(r => r.key === 'ga')?.coverage}%): Tìm kiếm tốt trên toàn bộ không gian tham số. Giảm thiểu trùng lặp đáng kể nhờ hàm phạt (penalty), tuy nhiên chưa thể chạm sâu vào các giá trị biên hẹp cục bộ.
+                      </li>
+                      <li>
+                        <strong>Local Refinement</strong> ({results.find(r => r.key === 'hc')?.coverage}%): Dò tìm biên cục bộ cực kì chuẩn xác cho từng trường riêng lẻ, tuy nhiên thiếu tầm nhìn toàn cục để phối hợp các liên kết điều kiện logic giữa các trường.
+                      </li>
+                      <li>
+                        <strong>Hybrid AI Optimization</strong> ({results.find(r => r.key === 'hybrid')?.coverage}%): Giải pháp lai ghép tốt nhất. GA giải quyết tìm kiếm rộng để đa dạng cấu trúc, sau đó HC tinh chỉnh sâu cận biên cực đoan và tiêm payload bảo mật (SQLi/XSS). Kết quả trùng lặp gần như bằng 0, độ bao phủ tối đa.
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Sample Inspector & Tab Table */}
+              <div className="glass-card" style={{ padding: '16px', borderRadius: '8px' }}>
+                <h4 style={{ fontSize: '13.5px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <ShieldAlert size={15} style={{ color: 'var(--color-rose)' }} />
+                  Thanh Tra &amp; So Sánh Bộ Dữ Liệu Theo Loại (Generated Test Suite Inspector)
+                </h4>
+
+                {/* Inspect Tabs */}
+                <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                  {results.map((res) => (
+                    <button
+                      key={res.key}
+                      onClick={() => { setSelectedInspectTab(res.key); setInspectFilterType('all'); }}
+                      style={{
+                        padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
+                        background: selectedInspectTab === res.key ? `${res.color}15` : 'transparent',
+                        border: `1px solid ${selectedInspectTab === res.key ? `${res.color}35` : 'transparent'}`,
+                        color: selectedInspectTab === res.key ? res.color : 'var(--text-secondary)',
+                        fontWeight: selectedInspectTab === res.key ? 'bold' : 'normal',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {res.name} ({res.coverage}%)
+                    </button>
+                  ))}
+                </div>
+
+                {/* Table of samples with local filter category */}
+                {(() => {
+                  const currentRes = results.find(r => r.key === selectedInspectTab);
+                  if (!currentRes) return null;
+                  
+                  const categorizedData = currentRes.allData.map((row, idx) => ({
+                    row,
+                    idx,
+                    category: getRowCategory(row, schema)
+                  }));
+
+                  const filteredInspectData = categorizedData.filter(item => {
+                    if (inspectFilterType === 'all') return true;
+                    return item.category === inspectFilterType;
+                  });
+
+                  const totalInspect = currentRes.allData.length;
+                  const happyInspect = categorizedData.filter(i => i.category === 'happy').length;
+                  const boundaryInspect = categorizedData.filter(i => i.category === 'boundary').length;
+                  const securityInspect = categorizedData.filter(i => i.category === 'security').length;
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      
+                      {/* Tabs bộ lọc loại ca test (Positive, Biên, An ninh) */}
+                      <div style={{ display: 'flex', gap: '4px', background: 'rgba(15, 23, 42, 0.4)', padding: '4px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <button 
+                          onClick={() => setInspectFilterType('all')}
+                          style={{ 
+                            flex: 1, padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                            background: inspectFilterType === 'all' ? 'rgba(255,255,255,0.08)' : 'transparent',
+                            color: inspectFilterType === 'all' ? '#fff' : 'var(--text-muted)'
+                          }}
+                        >
+                          Tất cả ({totalInspect})
+                        </button>
+                        <button 
+                          onClick={() => setInspectFilterType('happy')}
+                          style={{ 
+                            flex: 1, padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                            background: inspectFilterType === 'happy' ? 'rgba(45,212,191,0.08)' : 'transparent',
+                            color: inspectFilterType === 'happy' ? 'var(--color-teal)' : 'var(--text-muted)'
+                          }}
+                        >
+                          🟢 Positive ({happyInspect})
+                        </button>
+                        <button 
+                          onClick={() => setInspectFilterType('boundary')}
+                          style={{ 
+                            flex: 1, padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                            background: inspectFilterType === 'boundary' ? 'rgba(167,139,250,0.08)' : 'transparent',
+                            color: inspectFilterType === 'boundary' ? 'var(--color-violet)' : 'var(--text-muted)'
+                          }}
+                        >
+                          🟡 Rìa Biên ({boundaryInspect})
+                        </button>
+                        <button 
+                          onClick={() => setInspectFilterType('security')}
+                          style={{ 
+                            flex: 1, padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                            background: inspectFilterType === 'security' ? 'rgba(244,63,94,0.08)' : 'transparent',
+                            color: inspectFilterType === 'security' ? 'var(--color-rose)' : 'var(--text-muted)'
+                          }}
+                        >
+                          🔴 An Ninh ({securityInspect})
+                        </button>
+                      </div>
+
+                      <div style={{ overflowX: 'auto', background: 'rgba(0,0,0,0.15)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)', maxHeight: '380px' }}>
+                        {filteredInspectData.length === 0 ? (
+                          <div style={{ padding: '36px', color: 'var(--text-muted)', textAlign: 'center', fontSize: '12.5px' }}>
+                            Không có dữ liệu thuộc phân loại này được sinh ra từ giải thuật {currentRes.name}.
+                          </div>
+                        ) : (
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}>
+                                <th style={{ padding: '8px 10px', width: '50px' }}>STT</th>
+                                <th style={{ padding: '8px 10px', width: '100px' }}>Phân Loại</th>
+                                {schema.map(f => (
+                                  <th key={f.name} style={{ padding: '8px 10px' }}>{f.name}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredInspectData.slice(0, 10).map(({ row, idx, category }) => (
+                                <tr 
+                                  key={idx} 
+                                  style={{ 
+                                    borderBottom: '1px solid rgba(255,255,255,0.02)', 
+                                    color: 'var(--text-primary)',
+                                    background: category === 'security' ? 'rgba(244,63,94,0.02)' : category === 'boundary' ? 'rgba(167,139,250,0.02)' : 'none'
+                                  }}
+                                >
+                                  <td style={{ padding: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>#{idx + 1}</td>
+                                  <td style={{ padding: '10px' }}>
+                                    <span style={{
+                                      padding: '2px 6px', borderRadius: '4px', fontSize: '9px', fontWeight: 'bold',
+                                      background: category === 'security' ? 'rgba(244,63,94,0.15)' : category === 'boundary' ? 'rgba(167,139,250,0.15)' : 'rgba(45,212,191,0.15)',
+                                      color: category === 'security' ? 'var(--color-rose)' : category === 'boundary' ? 'var(--color-violet)' : 'var(--color-teal)'
+                                    }}>
+                                      {category === 'security' ? 'AN NINH' : category === 'boundary' ? 'RÌA BIÊN' : 'POSITIVE'}
+                                    </span>
+                                  </td>
+                                  {schema.map(f => {
+                                    const val = row[f.name];
+                                    const valStr = String(val !== undefined ? val : '—');
+                                    const isStr = typeof val === 'string';
+                                    const isMalicious = isStr && (val.includes("'") || val.includes("<script") || val.includes("<svg") || val.includes("--"));
+                                    return (
+                                      <td key={f.name} style={{ padding: '10px', fontFamily: 'var(--font-mono)' }}>
+                                        {isMalicious ? (
+                                          <div className="tooltip-container" style={{ position: 'relative', display: 'inline-block', cursor: 'help' }}>
+                                            <span style={{ color: 'var(--color-rose)', background: 'rgba(244,63,94,0.1)', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
+                                              ⚠️ {valStr}
+                                            </span>
+                                            <div className="tooltip-content" style={{
+                                              position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+                                              marginBottom: '6px', padding: '8px 12px', background: 'rgba(15,23,42,0.95)',
+                                              border: '1px solid rgba(244,63,94,0.3)', borderRadius: '6px', color: '#fff',
+                                              fontSize: '11px', whiteSpace: 'normal', width: '220px', zIndex: 9999,
+                                              boxShadow: '0 4px 12px rgba(0,0,0,0.5)', pointerEvents: 'none',
+                                              opacity: 0, transition: 'opacity 0.2s', visibility: 'hidden'
+                                            }}>
+                                              {getSecurityPayloadExplanation(valStr)}
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          valStr
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap', gap: '10px' }}>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                          Hiển thị <b>{filteredInspectData.slice(0, 10).length}</b> ca tiêu biểu trong tổng số <b>{filteredInspectData.length}</b> ca đã lọc của loại này (Tổng: {totalInspect}).
+                        </span>
+                        
+                        <button 
+                          onClick={() => handleApplySuite(currentRes)}
+                          className="btn btn-primary"
+                          style={{ background: currentRes.color, color: '#000', fontWeight: 'bold', cursor: 'pointer' }}
+                        >
+                          <CheckCircle2 size={14} style={{ marginRight: '6px' }} />
+                          Áp dụng bộ [{currentRes.name}] và lưu vào CSDL máy chủ
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* 5. RIGHT-SIDE SLIDE-OVER DRAWER FOR SUITE PREVIEW */}
+      {previewSuite && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1000,
+            display: 'flex',
+            justifyContent: 'flex-end',
+            transition: 'opacity 0.2s ease'
+          }}
+          onClick={() => setPreviewSuite(null)}
+        >
+          <div 
+            style={{
+              width: '580px',
+              maxWidth: '90%',
+              height: '100%',
+              background: 'rgba(15, 23, 42, 0.98)',
+              borderLeft: '1px solid rgba(255, 255, 255, 0.08)',
+              boxShadow: '-10px 0 35px rgba(0, 0, 0, 0.6)',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '24px',
+              boxSizing: 'border-box',
+              animation: 'drawer-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+              color: '#fff',
+              zIndex: 1001,
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button 
+              onClick={() => setPreviewSuite(null)}
               style={{
-                background: 'rgba(8,13,28,0.5)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px',
-                transition: 'all 0.4s ease-in-out',
-                boxShadow: runStates.hybrid.status === 'running' ? '0 0 15px rgba(244,63,94,0.3)' : 'none'
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'all 0.15s'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Award size={14} style={{ color: 'var(--color-rose)' }} />
-                  GA -&gt; HC Hybrid
-                </span>
-                {runStates.hybrid.status === 'running' && <RefreshCw size={12} className="tech-spinner" style={{ color: 'var(--color-rose)' }} />}
-                {runStates.hybrid.status === 'completed' && <CheckCircle2 size={13} style={{ color: 'var(--color-teal)' }} />}
+              ✕
+            </button>
+
+            {/* Header */}
+            <div style={{ marginBottom: '18px', paddingRight: '40px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: previewSuite.color }} />
+                <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>{previewSuite.name}</h3>
               </div>
-              {/* Progress bar */}
-              <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                <div style={{ width: `${runStates.hybrid.progress}%`, height: '100%', background: 'var(--color-rose)', transition: 'width 0.1s' }} />
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', marginBottom: 0 }}>
+                {previewSuite.badge} — Xem trước dữ liệu và chi tiết đánh giá
+              </p>
+            </div>
+
+            {/* Metrics Quick Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '18px' }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.05)', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginBottom: '2px' }}>Độ bao phủ</div>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: previewSuite.color }}>{previewSuite.coverage}%</div>
               </div>
-              {/* Live best chromosome preview */}
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Mẫu dữ liệu tốt nhất tìm thấy (Live Data):</div>
-              <div style={{
-                background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.03)',
-                borderRadius: '6px', padding: '10px', height: '110px', overflowY: 'auto',
-                fontFamily: 'var(--font-mono)', fontSize: '11px'
-              }}>
-                {runStates.hybrid.bestTestCase ? (
-                  Object.entries(runStates.hybrid.bestTestCase).slice(0, 4).map(([k, v]) => (
-                    <div key={k} style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginBottom: '2px' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>{k}:</span>{' '}
-                      <span style={{ color: runStates.hybrid.status === 'running' ? 'var(--color-rose)' : '#fff' }}>{String(v)}</span>
+              <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.05)', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginBottom: '2px' }}>Trùng lặp</div>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: previewSuite.duplicateRate > 10 ? 'var(--color-rose)' : '#fff' }}>{previewSuite.duplicateRate}%</div>
+              </div>
+              <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.05)', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginBottom: '2px' }}>Tổng số ca</div>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff' }}>{previewSuite.allData.length}</div>
+              </div>
+              <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.05)', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginBottom: '2px' }}>Thời gian</div>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff' }}>{previewSuite.execTime}ms</div>
+              </div>
+            </div>
+
+            {/* Why Recommended / Quality Summary */}
+            <div style={{ 
+              background: 'rgba(255, 255, 255, 0.02)', 
+              border: `1px solid ${previewSuite.key === 'hybrid' ? 'rgba(244,63,94,0.2)' : 'rgba(255, 255, 255, 0.05)'}`,
+              borderRadius: '8px', padding: '12px 14px', marginBottom: '18px', fontSize: '11.5px', lineHeight: '1.5'
+            }}>
+              <div style={{ fontWeight: 'bold', color: previewSuite.color, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                <Award size={14} />
+                Tại sao nên chọn kết quả này?
+              </div>
+              <div style={{ color: 'var(--text-secondary)' }}>
+                {previewSuite.key === 'hybrid' && "Mô hình lai kết hợp toàn vẹn sức mạnh di truyền GA tìm kiếm rộng và giải thuật Hill Climbing dò biên cục bộ sâu, tích hợp sẵn các payload kiểm thử an ninh. Phù hợp nhất cho môi trường sản xuất."}
+                {previewSuite.key === 'ga' && "Giải thuật GA sinh ngẫu nhiên lai ghép chéo thế hệ, tối ưu phân phối trường dữ liệu toàn diện và giảm trùng lặp. Phù hợp cho kiểm thử chức năng rộng."}
+                {previewSuite.key === 'hc' && "Giải thuật leo đồi tập trung dò quét các giá trị sát biên của kiểu dữ liệu. Tối ưu tìm kiếm lỗi tràn số hoặc độ dài vượt hạn định."}
+                {previewSuite.key === 'traditional' && "Phương pháp phân tích cận biên tĩnh tĩnh cơ bản. Đơn giản, cực nhanh nhưng bỏ sót các logic kết hợp đa biến và trùng lặp lớn."}
+              </div>
+            </div>
+
+            {/* Interactive Preview Table Section */}
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#fff' }}>Bản xem trước dữ liệu mẫu (10 ca tiêu biểu)</span>
+              </div>
+
+              {(() => {
+                const categorizedData = previewSuite.allData.map((row, idx) => ({
+                  row,
+                  idx,
+                  category: getRowCategory(row, schema)
+                }));
+
+                const filteredData = categorizedData.filter(item => {
+                  if (drawerFilterType === 'all') return true;
+                  return item.category === drawerFilterType;
+                });
+
+                const total = previewSuite.allData.length;
+                const happy = categorizedData.filter(i => i.category === 'happy').length;
+                const boundary = categorizedData.filter(i => i.category === 'boundary').length;
+                const security = categorizedData.filter(i => i.category === 'security').length;
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: '8px' }}>
+                    {/* Drawer filter tabs */}
+                    <div style={{ display: 'flex', gap: '2px', background: 'rgba(0, 0, 0, 0.2)', padding: '2px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <button 
+                        onClick={() => setDrawerFilterType('all')}
+                        style={{ 
+                          flex: 1, padding: '5px', border: 'none', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                          background: drawerFilterType === 'all' ? 'rgba(255,255,255,0.08)' : 'transparent',
+                          color: drawerFilterType === 'all' ? '#fff' : 'var(--text-muted)'
+                        }}
+                      >
+                        Tất cả ({total})
+                      </button>
+                      <button 
+                        onClick={() => setDrawerFilterType('happy')}
+                        style={{ 
+                          flex: 1, padding: '5px', border: 'none', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                          background: drawerFilterType === 'happy' ? 'rgba(45,212,191,0.08)' : 'transparent',
+                          color: drawerFilterType === 'happy' ? 'var(--color-teal)' : 'var(--text-muted)'
+                        }}
+                      >
+                        Positive ({happy})
+                      </button>
+                      <button 
+                        onClick={() => setDrawerFilterType('boundary')}
+                        style={{ 
+                          flex: 1, padding: '5px', border: 'none', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                          background: drawerFilterType === 'boundary' ? 'rgba(167,139,250,0.08)' : 'transparent',
+                          color: drawerFilterType === 'boundary' ? 'var(--color-violet)' : 'var(--text-muted)'
+                        }}
+                      >
+                        Biên ({boundary})
+                      </button>
+                      <button 
+                        onClick={() => setDrawerFilterType('security')}
+                        style={{ 
+                          flex: 1, padding: '5px', border: 'none', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                          background: drawerFilterType === 'security' ? 'rgba(244,63,94,0.08)' : 'transparent',
+                          color: drawerFilterType === 'security' ? 'var(--color-rose)' : 'var(--text-muted)'
+                        }}
+                      >
+                        An Ninh ({security})
+                      </button>
                     </div>
-                  ))
-                ) : (
-                  <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '30px' }}>Chờ chạy...</div>
-                )}
-              </div>
-              {/* Live logs console */}
-              <div style={{
-                background: '#020408', border: '1px solid rgba(255,255,255,0.02)',
-                borderRadius: '6px', padding: '8px', height: '90px', overflowY: 'auto',
-                fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-rose)',
-                boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)', textShadow: '0 0 2px var(--color-rose)'
-              }}>
-                {runStates.hybrid.logs.slice(-3).map((l, i) => <div key={i} style={{ marginBottom: '2px' }}>{l}</div>)}
-              </div>
-            </div>
 
-          </div>
-        </div>
-
-      {/* 3. KẾT QUẢ ĐỐI KHÁNG THUẬT TOÁN (SAU KHI CHẠY XONG CẢ 4 LUỒNG) */}
-      {isComplete && results && (
-        <div className="fade-in-up flex flex-col gap-lg">
-          
-          {/* A. Thẻ so sánh tóm tắt chỉ số */}
-          <div className="grid-3" style={{ gap: '16px' }}>
-            {results.map((res) => {
-              const isWinner = res.key === 'hybrid';
-              return (
-                <div 
-                  key={res.key} 
-                  className="glass-card"
-                  style={{
-                    border: isWinner ? '1.5px solid var(--color-rose)' : '1px solid rgba(255,255,255,0.06)',
-                    background: isWinner ? 'rgba(244, 63, 94, 0.04)' : 'rgba(15,23,42,0.55)',
-                    padding: '16px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    gap: '10px',
-                    position: 'relative',
-                    boxShadow: isWinner ? '0 0 15px rgba(244,63,94,0.1)' : 'none'
-                  }}
-                >
-                  {isWinner && (
-                    <span style={{
-                      position: 'absolute', top: '10px', right: '10px',
-                      background: 'rgba(244, 63, 94, 0.15)', color: 'var(--color-rose)',
-                      fontSize: '9.5px', padding: '3px 8px', borderRadius: '10px',
-                      border: '1px solid rgba(244,63,94,0.3)', fontWeight: 700
-                    }}>
-                      TỐI ƯU NHẤT
-                    </span>
-                  )}
-                  
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: res.color }} />
-                      <h4 style={{ fontSize: '14px', color: '#fff' }}>{res.name}</h4>
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{res.badge}</div>
-                  </div>
-
-                  {/* Vòng tròn phần trăm và thông số */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', margin: '8px 0' }}>
-                    <div style={{ position: 'relative', width: '60px', height: '60px', flexShrink: 0 }}>
-                      <svg width="60" height="60" viewBox="0 0 36 36">
-                        <path
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke="rgba(255,255,255,0.05)"
-                          strokeWidth="3.5"
-                        />
-                        <path
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke={res.color}
-                          strokeWidth="3.5"
-                          strokeDasharray={`${res.coverage}, 100`}
-                          strokeLinecap="round"
-                        />
-                        <text x="18" y="21.5" className="chart-text" fill="#fff" fontSize="9" fontWeight="bold" textAnchor="middle">
-                          {res.coverage}%
-                        </text>
-                      </svg>
-                      <div style={{ fontSize: '8px', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '-3px' }}>Độ phủ</div>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                      <div>Trùng lặp: <b style={{ color: res.duplicateRate > 15 ? 'var(--color-rose)' : '#fff' }}>{res.duplicateRate}%</b></div>
-                      <div>Lỗi biên: <b style={{ color: isWinner ? 'var(--color-rose)' : '#fff' }}>{res.edgeCases} ca</b></div>
-                      <div>Thời gian: <b style={{ color: '#fff' }}>{res.execTime} ms</b></div>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={() => handleApplySuite(res)}
-                    className="btn btn-secondary"
-                    style={{ fontSize: '11px', padding: '5px 8px', width: '100%', border: isWinner ? '1px solid rgba(244,63,94,0.3)' : '1px solid rgba(255,255,255,0.06)' }}
-                  >
-                    Sử dụng bộ này
-                    <ArrowRight size={12} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* B. Biểu đồ so sánh */}
-          <div className="grid-2" style={{ gap: '16px' }}>
-            {/* Grouped Bar Chart */}
-            <div className="glass-card" style={{ padding: '16px 20px', background: 'rgba(15,23,42,0.6)' }}>
-              <h3 style={{ fontSize: '14px', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                <BarChart2 size={16} style={{ color: 'var(--color-teal)' }} />
-                BIỂU ĐỒ ĐỐI KHÁNG TỔNG HỢP (SUITE QUALITY METRICS COMPARISON)
-              </h3>
-              <div style={{ width: '100%', height: '240px' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={results} margin={{ top: 10, right: 10, left: -25, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" />
-                    <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={10} tickLine={false} />
-                    <YAxis stroke="var(--text-muted)" fontSize={10} />
-                    <Tooltip 
-                      contentStyle={{ background: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', fontSize: '12px' }} 
-                    />
-                    <Bar dataKey="coverage" fill="#2dd4bf" name="Độ phủ (%)" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="duplicateRate" fill="#a78bfa" name="Trùng lặp (%)" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="edgeCases" fill="#f43f5e" name="Lỗi biên (ca)" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Line Chart showing progression curve */}
-            <div className="glass-card" style={{ padding: '16px 20px', background: 'rgba(15,23,42,0.6)' }}>
-              <h3 style={{ fontSize: '14px', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                <Zap size={16} style={{ color: 'var(--color-violet)' }} />
-                ĐƯỜNG CONG TIẾN HÓA ĐỘ BAO PHỦ THỰC TẾ (REAL-TIME EVOLUTIONARY PATH)
-              </h3>
-              <div style={{ width: '100%', height: '240px' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={coverageHistory.length > 0 ? coverageHistory : getProgressChartData()} margin={{ top: 10, right: 15, left: -25, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" />
-                    <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={10} tickLine={false} />
-                    <YAxis stroke="var(--text-muted)" fontSize={10} unit="%" />
-                    <Tooltip contentStyle={{ background: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', fontSize: '12px' }} />
-                    <Legend wrapperStyle={{ fontSize: '11px', marginTop: '5px' }} />
-                    <Line type="monotone" dataKey="Traditional Baseline" stroke="#64748b" strokeWidth={1.5} dot={false} />
-                    <Line type="monotone" dataKey="Hill Climbing (HC)" stroke="#a78bfa" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
-                    <Line type="monotone" dataKey="Genetic Algorithm (GA)" stroke="#2dd4bf" strokeWidth={1.8} dot={false} />
-                    <Line type="monotone" dataKey="Hybrid GA -> HC" stroke="#f43f5e" strokeWidth={2.5} activeDot={{ r: 5 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-
-          {/* C. Bản phân tích chuyên gia */}
-          <div className="glass-card" style={{ border: '1px solid rgba(45,212,191,0.2)', background: 'rgba(45,212,191,0.02)', padding: '16px 20px', borderRadius: '8px' }}>
-            <h4 style={{ fontSize: '13.5px', color: 'var(--color-teal)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-              <Award size={16} />
-              PHÂN TÍCH ĐÁNH GIÁ CHẤT LƯỢNG TỪ CHUYÊN GIA BẢO MẬT & QA (QA LEAD REPORT)
-            </h4>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
-              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-                Dựa trên kịch bản kiểm thử <b>{schemaName || 'Hiện tại'}</b> với <b>{schema.length}</b> trường dữ liệu, hệ thống đưa ra đánh giá thực nghiệm:
-                <ul style={{ paddingLeft: '18px', marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <li>
-                    <b>Thuật toán Truyền thống</b> ({results.find(r => r.key === 'traditional')?.coverage}%): Chỉ bao phủ các giá trị Happy path cơ bản hoặc biên thô tĩnh. Gặp lỗi trùng lặp cao và không thể phát hiện các lỗi kết hợp đa biến phức tạp.
-                  </li>
-                  <li>
-                    <b>Genetic Algorithm (GA)</b> ({results.find(r => r.key === 'ga')?.coverage}%): Tìm kiếm tốt trên toàn bộ không gian tham số. Giảm thiểu trùng lặp đáng kể nhờ hàm phạt (penalty), tuy nhiên chưa thể chạm sâu vào các giá trị biên hẹp cục bộ (như số sát cận biên hoặc payload cụ thể).
-                  </li>
-                  <li>
-                    <b>Hill Climbing (HC)</b> ({results.find(r => r.key === 'hc')?.coverage}%): Dò tìm biên cục bộ cực kì chuẩn xác cho từng trường riêng lẻ, tuy nhiên thiếu tầm nhìn toàn cục để phối hợp các liên kết điều kiện logic giữa các trường.
-                  </li>
-                  <li>
-                    <b>Hybrid GA -&gt; HC</b> ({results.find(r => r.key === 'hybrid')?.coverage}%): Giải pháp lai ghép đỉnh cao. GA giải quyết tìm kiếm rộng để đa dạng cấu trúc, sau đó HC tinh chỉnh sâu cận biên cực đoan và tiêm payload bảo mật (SQLi/XSS). Kết quả trùng lặp gần như bằng 0, độ bao phủ tuyệt đối.
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          {/* D. Interactive Sample Inspector & Tab Table */}
-          <div className="glass-card" style={{ padding: '16px' }}>
-            <h4 style={{ fontSize: '13.5px', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-              <ShieldAlert size={15} style={{ color: 'var(--color-rose)' }} />
-              Thanh Tra &amp; So Sánh Bộ Dữ Liệu Theo Loại (Generated Test Suite Inspector)
-            </h4>
-
-            {/* Inspect Tabs */}
-            <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
-              {results.map((res) => (
-                <button
-                  key={res.key}
-                  onClick={() => { setSelectedInspectTab(res.key); setInspectFilterType('all'); }}
-                  style={{
-                    padding: '6px 12px', borderRadius: '6px', fontSize: '12px',
-                    background: selectedInspectTab === res.key ? `${res.color}15` : 'transparent',
-                    border: `1px solid ${selectedInspectTab === res.key ? `${res.color}35` : 'transparent'}`,
-                    color: selectedInspectTab === res.key ? res.color : 'var(--text-secondary)',
-                    fontWeight: selectedInspectTab === res.key ? 'bold' : 'normal',
-                    transition: 'all 0.15s'
-                  }}
-                >
-                  {res.name} ({res.coverage}%)
-                </button>
-              ))}
-            </div>
-
-            {/* Table of samples with local filter category */}
-            {(() => {
-              const currentRes = results.find(r => r.key === selectedInspectTab);
-              if (!currentRes) return null;
-              
-              // Phân loại ca kiểm thử cho toàn bộ dataset của thuật toán đang thanh tra
-              const categorizedData = currentRes.allData.map((row, idx) => ({
-                row,
-                idx,
-                category: getRowCategory(row, schema)
-              }));
-
-              // Lọc dữ liệu theo tab loại được chọn
-              const filteredInspectData = categorizedData.filter(item => {
-                if (inspectFilterType === 'all') return true;
-                return item.category === inspectFilterType;
-              });
-
-              const totalInspect = currentRes.allData.length;
-              const happyInspect = categorizedData.filter(i => i.category === 'happy').length;
-              const boundaryInspect = categorizedData.filter(i => i.category === 'boundary').length;
-              const securityInspect = categorizedData.filter(i => i.category === 'security').length;
-
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  
-                  {/* Tabs bộ lọc loại ca test (Positive, Biên, An ninh) */}
-                  <div style={{ display: 'flex', gap: '4px', background: 'rgba(15, 23, 42, 0.4)', padding: '4px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <button 
-                      onClick={() => setInspectFilterType('all')}
-                      style={{ 
-                        flex: 1, padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                        background: inspectFilterType === 'all' ? 'rgba(255,255,255,0.08)' : 'transparent',
-                        color: inspectFilterType === 'all' ? '#fff' : 'var(--text-muted)'
-                      }}
-                    >
-                      Tất cả ({totalInspect})
-                    </button>
-                    <button 
-                      onClick={() => setInspectFilterType('happy')}
-                      style={{ 
-                        flex: 1, padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                        background: inspectFilterType === 'happy' ? 'rgba(45,212,191,0.08)' : 'transparent',
-                        color: inspectFilterType === 'happy' ? 'var(--color-teal)' : 'var(--text-muted)'
-                      }}
-                    >
-                      🟢 Positive ({happyInspect})
-                    </button>
-                    <button 
-                      onClick={() => setInspectFilterType('boundary')}
-                      style={{ 
-                        flex: 1, padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                        background: inspectFilterType === 'boundary' ? 'rgba(167,139,250,0.08)' : 'transparent',
-                        color: inspectFilterType === 'boundary' ? 'var(--color-violet)' : 'var(--text-muted)'
-                      }}
-                    >
-                      🟡 Rìa Biên ({boundaryInspect})
-                    </button>
-                    <button 
-                      onClick={() => setInspectFilterType('security')}
-                      style={{ 
-                        flex: 1, padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                        background: inspectFilterType === 'security' ? 'rgba(244,63,94,0.08)' : 'transparent',
-                        color: inspectFilterType === 'security' ? 'var(--color-rose)' : 'var(--text-muted)'
-                      }}
-                    >
-                      🔴 An Ninh ({securityInspect})
-                    </button>
-                  </div>
-
-                  <div style={{ overflowX: 'auto', background: 'rgba(0,0,0,0.15)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)', maxHeight: '380px' }}>
-                    {filteredInspectData.length === 0 ? (
-                      <div style={{ padding: '36px', color: 'var(--text-muted)', textAlign: 'center', fontSize: '12.5px' }}>
-                        Không có dữ liệu thuộc phân loại này được sinh ra từ giải thuật {currentRes.name}.
-                      </div>
-                    ) : (
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}>
-                            <th style={{ padding: '8px 10px', width: '50px' }}>STT</th>
-                            <th style={{ padding: '8px 10px', width: '100px' }}>Phân Loại</th>
-                            {schema.map(f => (
-                              <th key={f.name} style={{ padding: '8px 10px' }}>{f.name}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredInspectData.slice(0, 10).map(({ row, idx, category }) => (
-                            <tr 
-                              key={idx} 
-                              style={{ 
-                                borderBottom: '1px solid rgba(255,255,255,0.02)', 
-                                color: 'var(--text-primary)',
-                                background: category === 'security' ? 'rgba(244,63,94,0.02)' : category === 'boundary' ? 'rgba(167,139,250,0.02)' : 'none'
-                              }}
-                            >
-                              <td style={{ padding: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>#{idx + 1}</td>
-                              <td style={{ padding: '10px' }}>
-                                <span style={{
-                                  padding: '2px 6px', borderRadius: '4px', fontSize: '9px', fontWeight: 'bold',
-                                  background: category === 'security' ? 'rgba(244,63,94,0.15)' : category === 'boundary' ? 'rgba(167,139,250,0.15)' : 'rgba(45,212,191,0.15)',
-                                  color: category === 'security' ? 'var(--color-rose)' : category === 'boundary' ? 'var(--color-violet)' : 'var(--color-teal)'
-                                }}>
-                                  {category === 'security' ? 'AN NINH' : category === 'boundary' ? 'RÌA BIÊN' : 'POSITIVE'}
-                                </span>
-                              </td>
-                              {schema.map(f => {
-                                const val = row[f.name];
-                                const valStr = String(val !== undefined ? val : '—');
-                                const isStr = typeof val === 'string';
-                                const isMalicious = isStr && (val.includes("'") || val.includes("<script") || val.includes("<svg") || val.includes("--"));
-                                return (
-                                  <td key={f.name} style={{ padding: '10px', fontFamily: 'var(--font-mono)' }}>
-                                    {isMalicious ? (
-                                      <div className="tooltip-container" style={{ position: 'relative', display: 'inline-block', cursor: 'help' }}>
-                                        <span style={{ color: 'var(--color-rose)', background: 'rgba(244,63,94,0.1)', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
+                    {/* Table View */}
+                    <div style={{ overflow: 'auto', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)', flex: 1 }}>
+                      {filteredData.length === 0 ? (
+                        <div style={{ padding: '24px', color: 'var(--text-muted)', textAlign: 'center', fontSize: '11px' }}>
+                          Không có dữ liệu thuộc loại này.
+                        </div>
+                      ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}>
+                              <th style={{ padding: '6px 8px', width: '35px' }}>STT</th>
+                              <th style={{ padding: '6px 8px', width: '80px' }}>Phân Loại</th>
+                              {schema.map(f => (
+                                <th key={f.name} style={{ padding: '6px 8px' }}>{f.name}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredData.slice(0, 10).map(({ row, idx, category }) => (
+                              <tr 
+                                key={idx} 
+                                style={{ 
+                                  borderBottom: '1px solid rgba(255,255,255,0.02)', 
+                                  color: 'var(--text-primary)',
+                                  background: category === 'security' ? 'rgba(244,63,94,0.02)' : category === 'boundary' ? 'rgba(167,139,250,0.02)' : 'none'
+                                }}
+                              >
+                                <td style={{ padding: '8px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>#{idx + 1}</td>
+                                <td style={{ padding: '8px' }}>
+                                  <span style={{
+                                    padding: '1px 4px', borderRadius: '3px', fontSize: '8px', fontWeight: 'bold',
+                                    background: category === 'security' ? 'rgba(244,63,94,0.15)' : category === 'boundary' ? 'rgba(167,139,250,0.15)' : 'rgba(45,212,191,0.15)',
+                                    color: category === 'security' ? 'var(--color-rose)' : category === 'boundary' ? 'var(--color-violet)' : 'var(--color-teal)'
+                                  }}>
+                                    {category === 'security' ? 'AN NINH' : category === 'boundary' ? 'RÌA BIÊN' : 'POSITIVE'}
+                                  </span>
+                                </td>
+                                {schema.map(f => {
+                                  const val = row[f.name];
+                                  const valStr = String(val !== undefined ? val : '—');
+                                  const isStr = typeof val === 'string';
+                                  const isMalicious = isStr && (val.includes("'") || val.includes("<script") || val.includes("<svg") || val.includes("--"));
+                                  return (
+                                    <td key={f.name} style={{ padding: '8px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '120px' }}>
+                                      {isMalicious ? (
+                                        <span style={{ color: 'var(--color-rose)', background: 'rgba(244,63,94,0.1)', padding: '1px 4px', borderRadius: '3px', fontSize: '10px' }}>
                                           ⚠️ {valStr}
                                         </span>
-                                        <div className="tooltip-content" style={{
-                                          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-                                          marginBottom: '6px', padding: '8px 12px', background: 'rgba(15,23,42,0.95)',
-                                          border: '1px solid rgba(244,63,94,0.3)', borderRadius: '6px', color: '#fff',
-                                          fontSize: '11px', whiteSpace: 'normal', width: '220px', zIndex: 9999,
-                                          boxShadow: '0 4px 12px rgba(0,0,0,0.5)', pointerEvents: 'none',
-                                          opacity: 0, transition: 'opacity 0.2s', visibility: 'hidden'
-                                        }}>
-                                          {getSecurityPayloadExplanation(valStr)}
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      valStr
-                                    )}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
+                                      ) : (
+                                        valStr
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
                   </div>
+                );
+              })()}
+            </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap', gap: '10px' }}>
-                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                      Hiển thị <b>{filteredInspectData.slice(0, 10).length}</b> ca tiêu biểu trong tổng số <b>{filteredInspectData.length}</b> ca đã lọc của loại này (Tổng: {totalInspect}).
-                    </span>
-                    
-                    <button 
-                      onClick={() => handleApplySuite(currentRes)}
-                      className="btn btn-primary"
-                      style={{ background: currentRes.color, color: '#000', fontWeight: 'bold' }}
-                    >
-                      <CheckCircle2 size={14} />
-                      Áp dụng bộ [{currentRes.name}] và lưu vào CSDL máy chủ
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
+            {/* Drawer Footer CTA */}
+            <div style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '16px', display: 'flex', gap: '10px' }}>
+              <button 
+                onClick={() => setPreviewSuite(null)}
+                className="btn btn-secondary"
+                style={{ flex: 1, padding: '10px', fontSize: '12.5px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                Đóng
+              </button>
+              <button 
+                onClick={() => {
+                  setPreviewSuite(null);
+                  handleApplySuite(previewSuite);
+                }}
+                className="btn"
+                style={{ 
+                  flex: 2, padding: '10px', fontSize: '12.5px', cursor: 'pointer', fontWeight: 'bold',
+                  background: previewSuite.color, color: '#000', border: 'none', borderRadius: '6px',
+                  boxShadow: `0 0 15px ${previewSuite.color}40`, transition: 'all 0.2s'
+                }}
+              >
+                <CheckCircle2 size={14} style={{ marginRight: '6px', display: 'inline-block', verticalAlign: 'middle' }} />
+                Chọn bộ này làm kết quả cuối
+              </button>
+            </div>
+
           </div>
-
         </div>
       )}
 
@@ -1567,6 +2272,11 @@ export const OptimizationDashboard: React.FC = () => {
         }
         .tech-spinner {
           animation: tech-spin 2s linear infinite;
+        }
+
+        @keyframes drawer-slide-in {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
         }
       `}</style>
     </div>
