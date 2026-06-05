@@ -23,6 +23,13 @@ def levenshtein_distance(s1, s2):
     return previous_row[-1]
 
 
+# Helper: Chuyển đổi an toàn sang kiểu float để tránh lỗi NoneType/TypeError
+def safe_float(val, default=0.0):
+    try:
+        return float(val) if val is not None else default
+    except (ValueError, TypeError):
+        return default
+
 # Helper: Tính độ đa dạng tổng quát của một Test Case so với tập mẫu thử nghiệm
 def calculate_diversity_score(test_case, subset):
     if not subset:
@@ -274,7 +281,7 @@ class TestSuiteOptimizer:
                 elif field["type"] == "number":
                     try:
                         float(val)
-                    except ValueError:
+                    except (ValueError, TypeError):
                         is_valid = False
 
             if is_valid:
@@ -621,7 +628,7 @@ class TestSuiteOptimizer:
                             mutated_tc[name] = generate_random_field_value(field, "boundary")
                         else:
                             mutated_tc[name] = generate_random_field_value(field, "security")
-                    except ValueError:
+                    except (ValueError, TypeError):
                         mutated_tc[name] = generate_random_field_value(field, "valid")
 
                 elif field["type"] in ["email", "card", "phone"]:
@@ -833,7 +840,7 @@ class TestSuiteOptimizer:
                                 boundaries_checked.add(f"{name}_min_near")
                             if field.get("maxValue") is not None and num == field["maxValue"] - 1:
                                 boundaries_checked.add(f"{name}_max_near")
-                        except ValueError:
+                        except (ValueError, TypeError):
                             pass
                     else:
                         if field.get("minLength") is not None and len(val_str) == field["minLength"]:
@@ -889,7 +896,7 @@ class TestSuiteOptimizer:
         # Build category map for each field value
         def categorize_value(field, val):
             val_str = str(val)
-            if val_str == '':
+            if val is None or val_str == '' or val_str == 'None':
                 return 'empty'
             if val_str.startswith("' OR") or val_str.startswith("' or"):
                 return 'sqli'
@@ -909,7 +916,7 @@ class TestSuiteOptimizer:
                     if max_v is not None and num > max_v:
                         return 'invalid_high'
                     return 'valid'
-                except ValueError:
+                except (ValueError, TypeError):
                     return 'invalid'
             else:
                 min_l = field.get("minLength")
@@ -1004,10 +1011,10 @@ class TestSuiteOptimizer:
                     try:
                         num = float(val)
                         if field.get("minValue") is not None and num == field["minValue"]:
-                            if not any(abs(float(s.get(name, 0)) - num) < 0.001 for s in selected):
+                            if not any(abs(safe_float(s.get(name, 0)) - num) < 0.001 for s in selected):
                                 adds = True
                         if field.get("maxValue") is not None and num == field["maxValue"]:
-                            if not any(abs(float(s.get(name, 0)) - num) < 0.001 for s in selected):
+                            if not any(abs(safe_float(s.get(name, 0)) - num) < 0.001 for s in selected):
                                 adds = True
                     except (ValueError, TypeError):
                         pass
@@ -1094,7 +1101,7 @@ class TestSuiteOptimizer:
                             has_boundary = True
                         if field.get("maxValue") is not None and num == field["maxValue"]:
                             has_boundary = True
-                except ValueError:
+                except (ValueError, TypeError):
                     is_valid = False
 
             if is_valid and field["type"] not in ["number"]:
@@ -1141,7 +1148,7 @@ class TestSuiteOptimizer:
                                 boundaries_checked.add(f"{name}_min")
                             if field.get("maxValue") is not None and num == field["maxValue"]:
                                 boundaries_checked.add(f"{name}_max")
-                        except ValueError:
+                        except (ValueError, TypeError):
                             pass
                     else:
                         if field.get("minLength") is not None and len(val_str) == field["minLength"]:

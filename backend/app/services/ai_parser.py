@@ -241,7 +241,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
             print(">>> INFO: Phat hien Gemini API Key. Dang goi truc tiep Google Gemini REST API...")
             
             # Gọi trực tiếp qua API Endpoint chính thức của Google Gemini v1beta sử dụng JSON mode
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={active_key.strip()}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={active_key.strip()}"
             
             payload = {
                 "contents": [
@@ -285,7 +285,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
                     
                     # In log dữ liệu trả về từ Gemini REST API đẹp đẽ lên console của Backend
                     print(">>> INFO: Gemini REST API Response:\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
-                    log_ai_call(db, "/api/specifications", "Gemini", "gemini-1.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    log_ai_call(db, "/api/specifications", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
                     return enrich_result_with_expected_results(parsed_result)
             except urllib.error.HTTPError as http_err:
                 raise http_err
@@ -303,7 +303,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
                     
                     # In log dữ liệu trả về từ Gemini REST API đẹp đẽ lên console của Backend (chế độ Unverified SSL)
                     print(">>> INFO: Gemini REST API Response (Unverified SSL):\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
-                    log_ai_call(db, "/api/specifications", "Gemini", "gemini-1.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    log_ai_call(db, "/api/specifications", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
                     return enrich_result_with_expected_results(parsed_result)
         else:
             print(">>> INFO: Phat hien OpenAI API Key. Dang su dung GPT lam AI engine...")
@@ -331,7 +331,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
 
     except Exception as e:
         error_msg = str(e)
-        log_ai_call(db, "/api/specifications", "Gemini" if is_gemini else "OpenAI", "gemini-1.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nRaw text: {raw_text}", None, "FAILED", error_message=error_msg)
+        log_ai_call(db, "/api/specifications", "Gemini" if is_gemini else "OpenAI", "gemini-2.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nRaw text: {raw_text}", None, "FAILED", error_message=error_msg)
         
         if "429" in error_msg or "401" in error_msg or "400" in error_msg or "403" in error_msg or "503" in error_msg:
             raise ValueError(f"API_KEY_ERROR: {error_msg}")
@@ -854,7 +854,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
     try:
         if is_gemini:
             print(f">>> INFO: Calling Gemini API for seed regeneration (Method: {test_method})...")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={active_key.strip()}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={active_key.strip()}"
             
             payload = {
                 "contents": [
@@ -893,7 +893,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                     parsed_result = json.loads(text_content)
                     seeds = parsed_result.get("initialPopulation", [])
-                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-1.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
                     for s in seeds:
                         if "expectedResult" not in s:
                             s["expectedResult"] = check_record_expected_result(s, fields)
@@ -909,7 +909,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                     parsed_result = json.loads(text_content)
                     seeds = parsed_result.get("initialPopulation", [])
-                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-1.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
                     for s in seeds:
                         if "expectedResult" not in s:
                             s["expectedResult"] = check_record_expected_result(s, fields)
@@ -940,7 +940,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
 
     except Exception as e:
         error_msg = str(e)
-        log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini" if is_gemini else "OpenAI", "gemini-1.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
+        log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini" if is_gemini else "OpenAI", "gemini-2.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
         if "401" in error_msg or "403" in error_msg:
             raise ValueError(f"API_KEY_ERROR: {error_msg}")
             
@@ -1032,8 +1032,8 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
                     "responseMimeType": "application/json"
                 }
             }
-            # Sử dụng gemini-1.5-flash làm model an toàn ổn định
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={active_key}"
+            # Sử dụng gemini-2.5-flash làm model an toàn ổn định
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={active_key}"
             req = urllib.request.Request(url, data=json.dumps(req_data).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
             
             ssl_context = None
@@ -1050,7 +1050,7 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                     res = json.loads(text_content)
                     res["is_mock"] = False
-                    log_ai_call(db, "/api/evaluate-seeds", "Gemini", "gemini-1.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(res, ensure_ascii=False), "SUCCESS")
+                    log_ai_call(db, "/api/evaluate-seeds", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(res, ensure_ascii=False), "SUCCESS")
                     return res
             except urllib.error.HTTPError as http_err:
                 raise http_err
@@ -1072,7 +1072,7 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
             
     except Exception as e:
         error_msg = str(e)
-        log_ai_call(db, "/api/evaluate-seeds", "Gemini" if not is_openai else "OpenAI", "gemini-1.5-flash" if not is_openai else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
+        log_ai_call(db, "/api/evaluate-seeds", "Gemini" if not is_openai else "OpenAI", "gemini-2.5-flash" if not is_openai else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
         if "401" in error_msg or "403" in error_msg:
             raise ValueError(f"API_KEY_ERROR: {error_msg}")
             

@@ -297,9 +297,6 @@ function App() {
                   goBackLabel: 'Quay lại Bước 1: Chuẩn Bị Dữ Liệu',
                 }
               ]}
-              nextScreen="export"
-              nextLabel="Xuất Kết Quả"
-              nextIcon={<Download size={16} />}
             >
               <OptimizationDashboard />
             </PageLayout>

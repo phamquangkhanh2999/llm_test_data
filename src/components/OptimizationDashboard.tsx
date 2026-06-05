@@ -4,7 +4,7 @@ import { GeneticEngine, generateRandomValue } from '../algorithms/genetic';
 import { runHillClimbing } from '../algorithms/hillClimbing';
 import { 
   Play, Zap, Cpu, Award, Sparkles, 
-  Database, RefreshCw, BarChart2, ShieldAlert, CheckCircle2, ArrowRight, Eye
+  Database, RefreshCw, BarChart2, ShieldAlert, CheckCircle2, Eye
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -103,6 +103,7 @@ export const OptimizationDashboard: React.FC = () => {
   // --- TRẠNG THÁI HOẠT ĐỘNG SONG SONG ---
   const [isRunning, setIsRunning] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
   const [runStates, setRunStates] = useState<Record<string, AlgoRunState>>({
     traditional: { status: 'idle', progress: 0, bestTestCase: null, bestFitness: 0, coverage: 0, duplicateRate: 0, edgeCases: 0, execTime: 0, logs: [] },
     ga: { status: 'idle', progress: 0, bestTestCase: null, bestFitness: 0, coverage: 0, duplicateRate: 0, edgeCases: 0, execTime: 0, logs: [] },
@@ -687,7 +688,11 @@ export const OptimizationDashboard: React.FC = () => {
 
   // --- HÀM CHỌN BỘ KẾT QUẢ ĐỂ NẠP VÀO CSDL BACKEND ---
   const handleApplySuite = async (result: DashboardResult) => {
+    setIsApplying(true);
     toast.info(`Đang tiến hành chạy tối ưu chính thức [${result.name}] trên Máy chủ...`);
+    
+    // Đợi tối thiểu 1.5 giây để tăng trải nghiệm UX và cho phép user nhìn thấy loader
+    const delayPromise = new Promise(resolve => setTimeout(resolve, 1500));
     
     // Thử gọi API lưu trữ chạy tối ưu trên server SQLite
     try {
@@ -714,10 +719,13 @@ export const OptimizationDashboard: React.FC = () => {
         })
       });
 
+      await delayPromise;
+
       if (response.ok) {
         const res = await response.json();
         onEvolutionComplete(res.optimizedDataset, res.progressHistory, res.hcStats);
         toast.success(`Đã lưu thành công bộ test suite của [${result.name}] vào CSDL máy chủ!`);
+        setIsApplying(false);
         setActiveScreen('export');
         return;
       }
@@ -726,6 +734,7 @@ export const OptimizationDashboard: React.FC = () => {
     }
 
     // Fallback cục bộ nếu server ngoại tuyến
+    await delayPromise;
     const mockStats: PopulationStats[] = [];
     for (let i = 0; i <= 5; i++) {
       mockStats.push({
@@ -748,6 +757,7 @@ export const OptimizationDashboard: React.FC = () => {
     });
 
     toast.success(`Đã nạp tạm thời bộ test suite của [${result.name}] (Client offline mode)`);
+    setIsApplying(false);
     setActiveScreen('export');
   };
 
@@ -1507,19 +1517,22 @@ export const OptimizationDashboard: React.FC = () => {
                         </button>
                         
                         <button 
-                          onClick={() => handleApplySuite(res)}
+                          onClick={() => {
+                            setSelectedInspectTab(res.key);
+                            document.getElementById('final-confirmation-panel')?.scrollIntoView({ behavior: 'smooth' });
+                          }}
                           className="btn"
                           style={{ 
                             fontSize: '11px', padding: '8px 10px', width: '100%', 
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', 
-                            background: isWinner ? 'var(--color-rose)' : 'rgba(255,255,255,0.08)',
-                            color: isWinner ? '#000' : '#fff', border: 'none', cursor: 'pointer', borderRadius: '6px', fontWeight: 'bold',
-                            boxShadow: isWinner ? '0 0 10px rgba(244,63,94,0.3)' : 'none',
+                            background: selectedInspectTab === res.key ? res.color : 'rgba(255,255,255,0.08)',
+                            color: selectedInspectTab === res.key ? '#000' : '#fff', border: 'none', cursor: 'pointer', borderRadius: '6px', fontWeight: 'bold',
+                            boxShadow: selectedInspectTab === res.key ? `0 0 10px ${res.color}40` : 'none',
                             transition: 'all 0.2s'
                           }}
                         >
                           <CheckCircle2 size={12} />
-                          Chọn làm kết quả cuối
+                          {selectedInspectTab === res.key ? 'Đang chọn thanh tra' : 'Xem & Chọn bộ này'}
                         </button>
                       </div>
                     </div>
@@ -1675,14 +1688,17 @@ export const OptimizationDashboard: React.FC = () => {
                                 Xem mẫu
                               </button>
                               <button 
-                                onClick={() => handleApplySuite(r)}
+                                onClick={() => {
+                                  setSelectedInspectTab(r.key);
+                                  document.getElementById('final-confirmation-panel')?.scrollIntoView({ behavior: 'smooth' });
+                                }}
                                 style={{
                                   padding: '4px 8px', borderRadius: '4px', border: 'none',
-                                  background: r.key === 'hybrid' ? 'var(--color-rose)' : 'rgba(255,255,255,0.08)',
-                                  color: r.key === 'hybrid' ? '#000' : '#fff', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold'
+                                  background: selectedInspectTab === r.key ? r.color : 'rgba(255,255,255,0.08)',
+                                  color: selectedInspectTab === r.key ? '#000' : '#fff', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold'
                                 }}
                               >
-                                Áp dụng
+                                Xem &amp; Chọn
                               </button>
                             </div>
                           </td>
@@ -1941,13 +1957,124 @@ export const OptimizationDashboard: React.FC = () => {
                         <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
                           Hiển thị <b>{filteredInspectData.slice(0, 10).length}</b> ca tiêu biểu trong tổng số <b>{filteredInspectData.length}</b> ca đã lọc của loại này (Tổng: {totalInspect}).
                         </span>
-                        
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* ══════════ KHU VỰC XÁC NHẬN KẾT QUẢ CUỐI CÙNG ══════════ */}
+              <div 
+                id="final-confirmation-panel"
+                className="glass-card" 
+                style={{ 
+                  padding: '20px 24px', 
+                  background: 'linear-gradient(135deg, rgba(8, 13, 28, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%)', 
+                  border: `1.5px solid ${results.find(r => r.key === selectedInspectTab)?.color || 'var(--color-teal)'}`,
+                  borderRadius: '12px',
+                  boxShadow: `0 0 25px ${(results.find(r => r.key === selectedInspectTab)?.color || 'var(--color-teal)')}15`,
+                  marginTop: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '14.5px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                      <Award size={18} style={{ color: results.find(r => r.key === selectedInspectTab)?.color || 'var(--color-teal)' }} />
+                      XÁC NHẬN BỘ KẾT QUẢ TỐI ƯU CUỐI CÙNG (FINAL SELECTION)
+                    </h3>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', marginBottom: 0 }}>
+                      Đối chiếu chỉ số hiệu năng của các giải thuật và chọn bộ kết quả tối ưu nhất để lưu vào cơ sở dữ liệu.
+                    </p>
+                  </div>
+                  
+                  {/* Bộ lọc nhanh giải thuật */}
+                  <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.3)', padding: '4px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    {results.map((r) => (
+                      <button
+                        key={r.key}
+                        onClick={() => {
+                          setSelectedInspectTab(r.key);
+                          setInspectFilterType('all');
+                        }}
+                        style={{
+                          padding: '6px 12.5px',
+                          borderRadius: '6px',
+                          fontSize: '11.5px',
+                          cursor: 'pointer',
+                          background: selectedInspectTab === r.key ? r.color : 'transparent',
+                          color: selectedInspectTab === r.key ? '#000' : 'var(--text-secondary)',
+                          border: 'none',
+                          fontWeight: 'bold',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {r.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {(() => {
+                  const currentRes = results.find(r => r.key === selectedInspectTab);
+                  if (!currentRes) return null;
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+                        gap: '12px', 
+                        background: 'rgba(0,0,0,0.2)', 
+                        padding: '14px 16px', 
+                        borderRadius: '8px', 
+                        border: '1px solid rgba(255,255,255,0.04)' 
+                      }}>
+                        <div>
+                          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginBottom: '2px' }}>Độ bao phủ biên (Coverage)</div>
+                          <div style={{ fontSize: '18px', fontWeight: 'bold', color: currentRes.color }}>{currentRes.coverage}%</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginBottom: '2px' }}>Tỷ lệ trùng lặp (Duplicates)</div>
+                          <div style={{ fontSize: '18px', fontWeight: 'bold', color: currentRes.duplicateRate > 10 ? 'var(--color-rose)' : '#fff' }}>{currentRes.duplicateRate}%</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginBottom: '2px' }}>Số ca test sinh ra (Test Cases)</div>
+                          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>{currentRes.allData.length} ca</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginBottom: '2px' }}>Thời gian tính toán (Runtime)</div>
+                          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>{currentRes.execTime} ms</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                          💡 Khuyên dùng bộ <b>Hybrid AI Optimization</b> để đạt độ phủ cận biên và an ninh tốt nhất.
+                        </span>
                         <button 
                           onClick={() => handleApplySuite(currentRes)}
                           className="btn btn-primary"
-                          style={{ background: currentRes.color, color: '#000', fontWeight: 'bold', cursor: 'pointer' }}
+                          style={{ 
+                            background: currentRes.color, 
+                            color: '#000', 
+                            fontWeight: 'bold', 
+                            fontSize: '13.5px', 
+                            padding: '11px 22px', 
+                            cursor: 'pointer',
+                            borderRadius: '8px',
+                            border: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            boxShadow: `0 0 15px ${currentRes.color}40`,
+                            transition: 'all 0.2s'
+                          }}
                         >
-                          <CheckCircle2 size={14} style={{ marginRight: '6px' }} />
+                          <CheckCircle2 size={15} />
                           Áp dụng bộ [{currentRes.name}] và lưu vào CSDL máy chủ
                         </button>
                       </div>
@@ -2232,6 +2359,108 @@ export const OptimizationDashboard: React.FC = () => {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Glassmorphic Loading Overlay backdrop when applying to database */}
+      {isApplying && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(8, 13, 28, 0.9)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 99999,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#fff',
+          fontFamily: 'system-ui, sans-serif'
+        }}>
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.8)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '16px',
+            padding: '40px',
+            maxWidth: '520px',
+            width: '90%',
+            textAlign: 'center',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '24px'
+          }}>
+            {/* Animated outer ring spinner */}
+            <div style={{ position: 'relative', width: '80px', height: '80px' }}>
+              <div className="tech-spinner" style={{
+                position: 'absolute',
+                inset: 0,
+                border: '4px solid rgba(45, 212, 191, 0.1)',
+                borderTop: '4px solid var(--color-teal)',
+                borderRadius: '50%'
+              }} />
+              <div className="tech-spinner" style={{
+                position: 'absolute',
+                inset: '8px',
+                border: '4px solid rgba(167, 139, 250, 0.1)',
+                borderBottom: '4px solid var(--color-violet)',
+                borderRadius: '50%',
+                animationDirection: 'reverse',
+                animationDuration: '1.2s'
+              }} />
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Cpu size={28} className="text-teal" style={{ color: 'var(--color-teal)', animation: 'pulse-dot 2s infinite' }} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <h3 style={{ fontSize: '16.5px', fontWeight: 'bold', margin: 0, letterSpacing: '-0.01em', color: '#fff' }}>
+                Đang nạp bộ dữ liệu tối ưu lên Máy chủ...
+              </h3>
+              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+                Hệ thống đang thiết lập cấu hình giải thuật, tiêm payloads an ninh nâng cao và đồng bộ hóa với cơ sở dữ liệu máy chủ SQLite. Vui lòng giữ kết nối.
+              </p>
+            </div>
+
+            {/* Micro terminal progress simulation */}
+            <div style={{
+              width: '100%',
+              background: '#090d16',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              fontFamily: 'var(--font-mono), monospace',
+              fontSize: '11px',
+              textAlign: 'left',
+              color: 'var(--text-muted)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              boxSizing: 'border-box'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--color-teal)' }}>[1/3] Khởi động:</span>
+                <span style={{ color: '#fff' }}>Đã kết nối SQLite server</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--color-violet)' }}>[2/3] Xử lý:</span>
+                <span style={{ color: '#fff' }}>Tiêm payloads an ninh &amp; biên</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'var(--color-rose)' }}>[3/3] Hoàn tất:</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#2dd4bf' }}>
+                  <RefreshCw size={10} className="tech-spinner" /> Đồng bộ hóa...
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       )}

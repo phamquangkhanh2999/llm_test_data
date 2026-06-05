@@ -173,7 +173,7 @@ export const useAppStore = create<AppState>((set, get) => {
         if (res.is_mock) {
           toast.warning("Chưa gán API Key (Gemini/OpenAI) hợp lệ!\nHệ thống đã sinh dữ liệu mẫu bằng bộ phân tích giả lập (Mock Fallback).\nVui lòng cấu hình API Key ở góc trên bên phải màn hình để thực hiện phân tích bằng AI thật.");
         } else if (res.cached) {
-          toast.success("Nạp dữ liệu phân tích đặc tả thành công (Lấy từ bộ nhớ cache hệ thống)!");
+          toast.success("Nạp dữ liệu phân tích đặc tả thành công (Lấy từ bộ nhớ đệm hệ thống)!");
         } else {
           toast.success("Phân tích đặc tả nghiệp vụ bằng AI thành công!\nQuy tắc ràng buộc (JSON Rules) và tập dữ liệu hạt giống F0 đã được tạo lập tự động.");
         }

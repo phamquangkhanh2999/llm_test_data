@@ -5,7 +5,7 @@ import ssl
 
 ssl_context = ssl._create_unverified_context()
 
-url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=AIzaSyFakeKeyJustToSeeErrorFormat"
+url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyFakeKeyJustToSeeErrorFormat"
 req_data = {
     "contents": [{"role": "user", "parts": [{"text": "Hello"}]}]
 }

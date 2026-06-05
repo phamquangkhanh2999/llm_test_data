@@ -122,7 +122,7 @@ class AICallLog(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     endpoint = Column(String(100), nullable=False) # Endpoint gọi (e.g. "/api/specifications")
     provider = Column(String(50), nullable=False) # e.g. "Gemini", "OpenAI", "Mock"
-    model = Column(String(50), nullable=False) # e.g. "gemini-3.5-flash", "gpt-3.5-turbo", "mock"
+    model = Column(String(50), nullable=False) # e.g. "gemini-2.5-flash", "gpt-3.5-turbo", "mock"
     input_summary = Column(Text, nullable=True) # Tóm tắt dữ liệu/prompt gửi đi
     output_summary = Column(Text, nullable=True) # Tóm tắt dữ liệu/JSON trả về
     token_count_estimate = Column(Integer, nullable=True) # Ước lượng tokens (chars / 4)
