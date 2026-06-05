@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Upload, Database, CheckCircle2, FileJson, Activity } from 'lucide-react';
+import { Upload, Database, CheckCircle2, FileJson, Activity, ArrowRight } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import type { FieldConstraint } from '../algorithms/presets';
 import { toast } from '../store/useToastStore';
@@ -17,6 +17,7 @@ export const DataImport: React.FC = () => {
     parsedSchema,
     initialSeeds,
     markScreenCompleted,
+    setActiveScreen,
   } = useAppStore();
 
   // Parse CSV line (handles quoted values)
@@ -243,9 +244,26 @@ export const DataImport: React.FC = () => {
                 padding: '8px 16px', borderRadius: '8px', fontSize: '12px',
                 background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
                 color: 'var(--text-secondary)', cursor: 'pointer',
+                marginRight: '8px'
               }}
             >
               Đổi file khác
+            </button>
+            <button
+              onClick={() => {
+                markScreenCompleted('prepare');
+                setActiveScreen('optimize');
+              }}
+              style={{
+                padding: '8px 18px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                background: 'linear-gradient(135deg, #a78bfa, #8b5cf6)', border: '1px solid #8b5cf6',
+                color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '6px',
+                boxShadow: '0 4px 12px rgba(167, 139, 250, 0.3)'
+              }}
+            >
+              <span>Tiếp theo</span>
+              <ArrowRight size={13} />
             </button>
           </div>
         )}

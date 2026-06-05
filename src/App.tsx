@@ -1,14 +1,13 @@
 import React from 'react';
 import { SpecInput } from './components/SpecInput';
-import { Visualizer } from './components/Visualizer';
-import { ComparisonArena } from './components/ComparisonArena';
+import { OptimizationDashboard } from './components/OptimizationDashboard';
 import { HistoryManager } from './components/HistoryManager';
 import { DataImport } from './components/DataImport';
 import { PageLayout } from './components/PageLayout';
 import {
   Sparkles, Activity, Layers, Key,
   CheckCircle, Database, Download,
-  CheckCircle2, Zap, FlaskConical, Menu, X, Terminal,
+  CheckCircle2, Zap, Menu, X, Terminal,
 } from 'lucide-react';
 import { useAppStore } from './store/useAppStore';
 import { ToastContainer } from './components/ToastContainer';
@@ -73,7 +72,6 @@ function App() {
 
   // Tab state within steps
   const [prepareTab, setPrepareTab] = React.useState<string>('ai');
-  const [optimizeTab, setOptimizeTab] = React.useState<string>('run');
   const [isAILogsOpen, setIsAILogsOpen] = React.useState(false);
 
   const {
@@ -269,9 +267,6 @@ function App() {
               description="Tạo bộ dữ liệu hạt giống F0 và bảng ràng buộc (Schema) cho thuật toán. Chọn 1 trong 2 cách: để AI phân tích đặc tả nghiệp vụ, hoặc tải lên file dữ liệu có sẵn."
               hints={['AI phân tích đặc tả', 'hoặc Upload JSON/CSV', 'Tự sinh hạt giống F0', 'Chuẩn bị cho thuật toán']}
               accentColor="#3b82f6"
-              nextScreen="optimize"
-              nextLabel="Tối Ưu & So Sánh"
-              nextIcon={<Activity size={16} />}
             >
               <Tabs
                 tabs={[
@@ -291,8 +286,8 @@ function App() {
               stepId="optimize"
               title="Bước 2: Tối Ưu Hóa & So Sánh Thuật Toán"
               icon={<Zap size={24} />}
-              description="Chạy Genetic Algorithm + Hill Climbing để tiến hóa bộ test cases tối ưu — bao phủ biên miền, giá trị đặc biệt và rủi ro bảo mật. Hoặc so sánh đối kháng nhiều chiến lược trong tab Đấu Trường."
-              hints={['GA + Hill Climbing', 'Bao phủ biên & bảo mật', 'So sánh Random/GA/Hybrid', 'Nhiều thế hệ tiến hóa']}
+              description="Chạy đồng bộ các giải thuật tối ưu hóa di truyền GA phối hợp leo đồi HC và đối chiếu trực tuyến kết quả với thuật toán truyền thống BVA/Random."
+              hints={['Lai ghép GA -> HC', 'Bao phủ biên & bảo mật', 'So sánh đối kháng trực tiếp', 'Đồ thị tiến hóa di truyền']}
               accentColor="#a78bfa"
               prerequisites={[
                 {
@@ -306,15 +301,7 @@ function App() {
               nextLabel="Xuất Kết Quả"
               nextIcon={<Download size={16} />}
             >
-              <Tabs
-                tabs={[
-                  { id: 'run', label: 'Chạy GA + Hill Climbing', icon: <Zap size={15} />, color: '#a78bfa' },
-                  { id: 'arena', label: 'Đấu Trường So Sánh', icon: <FlaskConical size={15} />, color: '#f43f5e' },
-                ]}
-                activeTab={optimizeTab}
-                onChange={setOptimizeTab}
-              />
-              {optimizeTab === 'run' ? <Visualizer /> : <ComparisonArena />}
+              <OptimizationDashboard />
             </PageLayout>
           )}
 

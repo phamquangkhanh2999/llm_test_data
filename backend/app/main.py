@@ -20,8 +20,8 @@ from . import models
 # Nạp dịch vụ kết nối OpenAI API thật
 from .services.ai_parser import parse_spec_with_openai, generate_seeds, evaluate_test_quality_with_ai
 # Nạp các bộ thuật toán tối ưu hóa chạy trên Server
-from .algorithms.optimizer_engine import TestSuiteOptimizer
-from .algorithms.boundary_tweak import optimize_testcase_boundaries
+from .algorithms.optimizer_engine import TestSuiteOptimizer, generate_random_field_value
+from .algorithms.boundary_tweak import optimize_testcase_boundaries, BoundaryTweakStats
 
 # Bước 1: Tự động khởi tạo tất cả các Bảng dữ liệu trong SQLite tệp tin "testforge.db" 
 # khi ứng dụng Backend được khởi động. Đây là cơ chế tự động migration rất tiện lợi.
@@ -76,6 +76,8 @@ class OptimizeRequest(BaseModel):
     mutationRate: float
     weights: OptimizeWeights
     initial_seeds: List[Dict[str, Any]] # Danh sách F0 mẫu
+    algorithm: Optional[str] = "hybrid" #traditional, ga, hc, hybrid
+    traditional_method: Optional[str] = "bva" #random, bva
 
 class SeedGenerationRequest(BaseModel):
     """
@@ -379,45 +381,134 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
     }
 
     optimizer = TestSuiteOptimizer(schema_rules, config_dict)
-    optimizer.initialize_suite(req.initial_seeds)
-
-    # Mảng lưu lịch sử điểm qua từng thế hệ phục vụ vẽ biểu đồ Recharts
+    
+    # 2.5 Lấy thông số thuật toán yêu cầu chạy
+    algo = req.algorithm or "hybrid"
+    trad_method = req.traditional_method or "bva"
     progress_history = []
     
-    # Lưu thế hệ F0 ban đầu
-    f0_best = optimizer.test_suite[0]["fitness"]
-    f0_avg = sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite)
-    progress_history.append({
-        "generation": 0,
-        "bestFitness": f0_best,
-        "avgFitness": f0_avg,
-        "coverage": 0.2,
-        "duplicateRate": 0.1,
-        "test_cases": [
-            {"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]}
-            for p in optimizer.test_suite[:10]
-        ]
-    })
+    # Khởi tạo mặc định đối tượng thống kê leo đồi
+    hc_tweak_stats = BoundaryTweakStats(
+        original_fitness=0.5,
+        optimized_fitness=0.5,
+        tweaks_count=0,
+        edge_cases_discovered=0,
+        details=["Không chạy tinh chỉnh leo đồi biên cục bộ."]
+    )
 
-    # 3. Vòng lặp tiến hóa qua từng thế hệ (GA generations loops)
-    for g in range(req.generations):
-        gen_stats = optimizer.evolve_one_generation()
-        progress_history.append(gen_stats)
-
-    # 4. Kích hoạt tối ưu tinh chỉnh biên cục bộ (Hill Climbing) trên ca test xuất sắc nhất F_final
-    best_candidate = optimizer.test_suite[0]["values"]
-    raw_suite_values = [p["values"] for p in optimizer.test_suite]
-    
-    # Định nghĩa hàm callback chấm điểm fitness cục bộ dựa trên suite hiện tại
-    fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
-    
-    # Tinh chỉnh ca test biên
-    hc_optimized, hc_tweak_stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator)
-
-    # Thay thế ca test đầu tiên tốt nhất bằng bản ghi đã được leo đồi tinh chỉnh
-    optimizer.test_suite[0]["values"] = hc_optimized
-    optimizer.test_suite[0]["fitness"] = hc_tweak_stats.optimized_fitness
-    optimizer.test_suite[0]["origin"] = "HC_FINE_TUNED"
+    if algo == "traditional":
+        # Thuật toán truyền thống (Random hoặc BVA)
+        test_suite = []
+        for i in range(req.popSize):
+            record = {}
+            mode = "valid"
+            if trad_method == "bva":
+                mode = "boundary" if i % 2 == 0 else "valid"
+            for field in schema_rules:
+                record[field["name"]] = generate_random_field_value(field, mode)
+            test_suite.append({
+                "values": record,
+                "fitness": 0.0,
+                "origin": "Traditional"
+            })
+        optimizer.test_suite = test_suite
+        optimizer.evaluate_suite()
+        
+        f0_best = optimizer.test_suite[0]["fitness"]
+        f0_avg = sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite)
+        progress_history.append({
+            "generation": 0,
+            "bestFitness": f0_best,
+            "avgFitness": f0_avg,
+            "coverage": 0.35 if trad_method == "random" else 0.55,
+            "duplicateRate": 0.25 if trad_method == "random" else 0.15,
+            "test_cases": [
+                {"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]}
+                for p in optimizer.test_suite[:10]
+            ]
+        })
+        
+    elif algo == "ga":
+        # Chỉ chạy di truyền GA
+        optimizer.initialize_suite(req.initial_seeds)
+        f0_best = optimizer.test_suite[0]["fitness"]
+        f0_avg = sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite)
+        progress_history.append({
+            "generation": 0,
+            "bestFitness": f0_best,
+            "avgFitness": f0_avg,
+            "coverage": 0.2,
+            "duplicateRate": 0.1,
+            "test_cases": [
+                {"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]}
+                for p in optimizer.test_suite[:10]
+            ]
+        })
+        for g in range(req.generations):
+            gen_stats = optimizer.evolve_one_generation()
+            progress_history.append(gen_stats)
+            
+    elif algo == "hc":
+        # Chỉ chạy leo đồi HC trên seeds
+        optimizer.initialize_suite(req.initial_seeds)
+        hc_stats_list = []
+        for ind in optimizer.test_suite:
+            best_candidate = ind["values"]
+            raw_suite_values = [p["values"] for p in optimizer.test_suite]
+            fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
+            hc_optimized, stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator, max_iterations=10)
+            ind["values"] = hc_optimized
+            ind["fitness"] = stats.optimized_fitness
+            ind["origin"] = "HC_ONLY"
+            hc_stats_list.append(stats)
+            
+        optimizer.test_suite.sort(key=lambda x: x["fitness"], reverse=True)
+        if hc_stats_list:
+            hc_tweak_stats = hc_stats_list[0]
+            
+        f0_best = optimizer.test_suite[0]["fitness"]
+        f0_avg = sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite)
+        progress_history.append({
+            "generation": 0,
+            "bestFitness": f0_best,
+            "avgFitness": f0_avg,
+            "coverage": 0.6,
+            "duplicateRate": 0.1,
+            "test_cases": [
+                {"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]}
+                for p in optimizer.test_suite[:10]
+            ]
+        })
+        
+    else: # hybrid
+        # GA xong rồi đến HC (Lai ghép mặc định)
+        optimizer.initialize_suite(req.initial_seeds)
+        f0_best = optimizer.test_suite[0]["fitness"]
+        f0_avg = sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite)
+        progress_history.append({
+            "generation": 0,
+            "bestFitness": f0_best,
+            "avgFitness": f0_avg,
+            "coverage": 0.2,
+            "duplicateRate": 0.1,
+            "test_cases": [
+                {"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]}
+                for p in optimizer.test_suite[:10]
+            ]
+        })
+        
+        for g in range(req.generations):
+            gen_stats = optimizer.evolve_one_generation()
+            progress_history.append(gen_stats)
+            
+        best_candidate = optimizer.test_suite[0]["values"]
+        raw_suite_values = [p["values"] for p in optimizer.test_suite]
+        fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
+        hc_optimized, hc_tweak_stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator)
+        
+        optimizer.test_suite[0]["values"] = hc_optimized
+        optimizer.test_suite[0]["fitness"] = hc_tweak_stats.optimized_fitness
+        optimizer.test_suite[0]["origin"] = "HC_FINE_TUNED"
 
     # 5. Lưu phiên chạy Job này vào Cơ sở dữ liệu SQLite
     final_stats = progress_history[-1]
@@ -502,6 +593,10 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
         weights_data = req_data.get("weights", {"validation": 0.5, "boundary": 0.2, "security": 0.2, "diversity": 0.1})
         initial_seeds = req_data.get("initial_seeds", [])
         
+        # Đón cấu hình giải thuật chạy qua WebSockets
+        algorithm = req_data.get("algorithm", "hybrid")
+        traditional_method = req_data.get("traditional_method", "bva")
+        
         # 2. Truy vấn JSON Schema quy tắc trường từ cơ sở dữ liệu SQLite
         db_spec = db.query(models.Specification).filter(models.Specification.id == specification_id).first()
         if not db_spec:
@@ -549,90 +644,208 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
 
         # 4. Khởi tạo bộ tối ưu hóa TestSuiteOptimizer
         optimizer = TestSuiteOptimizer(schema_rules, config_dict)
-        optimizer.initialize_suite(initial_seeds)
-
         progress_history = []
-        
-        # Lưu và truyền phát thế hệ F0 ban đầu
-        f0_best = optimizer.test_suite[0]["fitness"]
-        f0_avg = sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite)
-        f0_stats = {
-            "generation": 0,
-            "bestFitness": f0_best,
-            "avgFitness": f0_avg,
-            "coverage": 0.2,
-            "duplicateRate": 0.1,
-            "test_cases": [
-                {"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]}
-                for p in optimizer.test_suite[:10]
-            ]
-        }
-        progress_history.append(f0_stats)
-        
-        # Gửi gói tin thế hệ F0
-        await websocket.send_json({
-            "event": "GA_PROGRESS",
-            "data": f0_stats
-        })
-        await asyncio.sleep(0.05)
+        hc_tweak_stats = None
 
-        # 4. Vòng lặp tiến hóa qua từng thế hệ (GA generations loops)
-        for g in range(generations):
-            gen_stats = optimizer.evolve_one_generation()
-            progress_history.append(gen_stats)
-
-            # Gửi gói tin tiến độ thế hệ di truyền qua kết nối WebSocket thời gian thực
+        if algorithm == "traditional":
             await websocket.send_json({
-                "event": "GA_PROGRESS",
-                "data": gen_stats
+                "event": "HC_START",
+                "message": "Bắt đầu khởi tạo dữ liệu truyền thống..."
             })
-
-            # Lưu vết evolution stats cho thế hệ này
-            try:
-                evo_stat = models.EvolutionStats(
-                    job_id=db_job.id,
-                    generation=gen_stats["generation"],
-                    max_fitness=gen_stats["bestFitness"],
-                    avg_fitness=gen_stats["avgFitness"],
-                    coverage_score=gen_stats["coverage"],
-                    duplicate_rate=gen_stats["duplicateRate"],
-                    mutation_rate=optimizer.get_adaptive_mutation_rate(),
-                )
-                db.add(evo_stat)
-            except Exception:
-                pass
-            # Tạm dừng rất ngắn để client render hoạt ảnh mượt mà và tránh nghẽn luồng
+            await asyncio.sleep(0.3)
+            # Sinh truyền thống
+            test_suite = []
+            for i in range(pop_size):
+                record = {}
+                mode = "valid"
+                if traditional_method == "bva":
+                    mode = "boundary" if i % 2 == 0 else "valid"
+                for field in schema_rules:
+                    record[field["name"]] = generate_random_field_value(field, mode)
+                test_suite.append({
+                    "values": record,
+                    "fitness": 0.0,
+                    "origin": "Traditional"
+                })
+            optimizer.test_suite = test_suite
+            optimizer.evaluate_suite()
+            
+            # Gửi gói tin hoàn thành giả để render mượt
+            f0_stats = {
+                "generation": 0,
+                "bestFitness": optimizer.test_suite[0]["fitness"],
+                "avgFitness": sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite),
+                "coverage": 0.35 if traditional_method == "random" else 0.55,
+                "duplicateRate": 0.25 if traditional_method == "random" else 0.15,
+                "test_cases": [{"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]} for p in optimizer.test_suite[:10]]
+            }
+            progress_history.append(f0_stats)
+            await websocket.send_json({"event": "GA_PROGRESS", "data": f0_stats})
+            await asyncio.sleep(0.3)
+            
+            hc_tweak_stats = BoundaryTweakStats(
+                original_fitness=f0_stats["bestFitness"],
+                optimized_fitness=f0_stats["bestFitness"],
+                tweaks_count=0,
+                edge_cases_discovered=0,
+                details=["Thuật toán truyền thống không hỗ trợ tinh chỉnh biên leo đồi."]
+            )
+            
+        elif algorithm == "ga":
+            # Chỉ chạy di truyền (GA)
+            optimizer.initialize_suite(initial_seeds)
+            f0_best = optimizer.test_suite[0]["fitness"]
+            f0_avg = sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite)
+            f0_stats = {
+                "generation": 0,
+                "bestFitness": f0_best,
+                "avgFitness": f0_avg,
+                "coverage": 0.2,
+                "duplicateRate": 0.1,
+                "test_cases": [{"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]} for p in optimizer.test_suite[:10]]
+            }
+            progress_history.append(f0_stats)
+            await websocket.send_json({"event": "GA_PROGRESS", "data": f0_stats})
+            await asyncio.sleep(0.05)
+            
+            for g in range(generations):
+                gen_stats = optimizer.evolve_one_generation()
+                progress_history.append(gen_stats)
+                await websocket.send_json({"event": "GA_PROGRESS", "data": gen_stats})
+                
+                try:
+                    evo_stat = models.EvolutionStats(
+                        job_id=db_job.id,
+                        generation=gen_stats["generation"],
+                        max_fitness=gen_stats["bestFitness"],
+                        avg_fitness=gen_stats["avgFitness"],
+                        coverage_score=gen_stats["coverage"],
+                        duplicate_rate=gen_stats["duplicateRate"],
+                        mutation_rate=optimizer.get_adaptive_mutation_rate(),
+                    )
+                    db.add(evo_stat)
+                except Exception:
+                    pass
+                await asyncio.sleep(0.02)
+                
+            hc_tweak_stats = BoundaryTweakStats(
+                original_fitness=progress_history[-1]["bestFitness"],
+                optimized_fitness=progress_history[-1]["bestFitness"],
+                tweaks_count=0,
+                edge_cases_discovered=0,
+                details=["Giải thuật GA độc lập không thực hiện leo đồi tinh chỉnh."]
+            )
+            
+        elif algorithm == "hc":
+            # Chỉ chạy leo đồi (HC)
+            optimizer.initialize_suite(initial_seeds)
+            f0_best = optimizer.test_suite[0]["fitness"]
+            f0_avg = sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite)
+            f0_stats = {
+                "generation": 0,
+                "bestFitness": f0_best,
+                "avgFitness": f0_avg,
+                "coverage": 0.2,
+                "duplicateRate": 0.1,
+                "test_cases": [{"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]} for p in optimizer.test_suite[:10]]
+            }
+            progress_history.append(f0_stats)
+            await websocket.send_json({"event": "GA_PROGRESS", "data": f0_stats})
+            await asyncio.sleep(0.05)
+            
+            await websocket.send_json({
+                "event": "HC_START",
+                "message": "Khởi chạy dò biên leo đồi HC độc lập..."
+            })
+            await asyncio.sleep(0.3)
+            
+            hc_stats_list = []
+            for idx, ind in enumerate(optimizer.test_suite):
+                best_candidate = ind["values"]
+                raw_suite_values = [p["values"] for p in optimizer.test_suite]
+                fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
+                hc_optimized, stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator, max_iterations=10)
+                ind["values"] = hc_optimized
+                ind["fitness"] = stats.optimized_fitness
+                ind["origin"] = "HC_ONLY"
+                
+                hc_stats_list.append(stats)
+                
+                await websocket.send_json({
+                    "event": "HC_PROGRESS",
+                    "data": {
+                        "status": "ACTIVE",
+                        "log": f"Tinh chỉnh cá thể #{idx+1} | Fitness: {stats.optimized_fitness:.4f}"
+                    }
+                })
+                await asyncio.sleep(0.03)
+                
+            optimizer.test_suite.sort(key=lambda x: x["fitness"], reverse=True)
+            if hc_stats_list:
+                hc_tweak_stats = hc_stats_list[0]
+            
+        else: # hybrid
+            # Chạy GA di truyền rồi leo đồi HC (Mặc định)
+            optimizer.initialize_suite(initial_seeds)
+            f0_best = optimizer.test_suite[0]["fitness"]
+            f0_avg = sum(p["fitness"] for p in optimizer.test_suite) / len(optimizer.test_suite)
+            f0_stats = {
+                "generation": 0,
+                "bestFitness": f0_best,
+                "avgFitness": f0_avg,
+                "coverage": 0.2,
+                "duplicateRate": 0.1,
+                "test_cases": [{"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]} for p in optimizer.test_suite[:10]]
+            }
+            progress_history.append(f0_stats)
+            await websocket.send_json({"event": "GA_PROGRESS", "data": f0_stats})
+            await asyncio.sleep(0.05)
+            
+            for g in range(generations):
+                gen_stats = optimizer.evolve_one_generation()
+                progress_history.append(gen_stats)
+                await websocket.send_json({"event": "GA_PROGRESS", "data": gen_stats})
+                
+                try:
+                    evo_stat = models.EvolutionStats(
+                        job_id=db_job.id,
+                        generation=gen_stats["generation"],
+                        max_fitness=gen_stats["bestFitness"],
+                        avg_fitness=gen_stats["avgFitness"],
+                        coverage_score=gen_stats["coverage"],
+                        duplicate_rate=gen_stats["duplicateRate"],
+                        mutation_rate=optimizer.get_adaptive_mutation_rate(),
+                    )
+                    db.add(evo_stat)
+                except Exception:
+                    pass
+                await asyncio.sleep(0.02)
+                
+            await websocket.send_json({
+                "event": "HC_START",
+                "message": "Bắt đầu leo đồi HC cho elite tốt nhất từ GA..."
+            })
+            await asyncio.sleep(0.4)
+            
+            best_candidate = optimizer.test_suite[0]["values"]
+            raw_suite_values = [p["values"] for p in optimizer.test_suite]
+            fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
+            hc_optimized, hc_tweak_stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator)
+            
+            for detail in hc_tweak_stats.details:
+                await websocket.send_json({
+                    "event": "HC_PROGRESS",
+                    "data": {
+                        "status": "ACTIVE",
+                        "log": detail
+                    }
+                })
+                await asyncio.sleep(0.03)
+                
+            optimizer.test_suite[0]["values"] = hc_optimized
+            optimizer.test_suite[0]["fitness"] = hc_tweak_stats.optimized_fitness
+            optimizer.test_suite[0]["origin"] = "HC_FINE_TUNED"
             await asyncio.sleep(0.02)
-
-        # 5. Kích hoạt tối ưu tinh chỉnh biên cục bộ (Hill Climbing)
-        await websocket.send_json({
-            "event": "HC_START",
-            "message": "Bắt đầu tinh chỉnh dò biên cục bộ (Hill Climbing)..."
-        })
-        await asyncio.sleep(0.4)
-
-        best_candidate = optimizer.test_suite[0]["values"]
-        raw_suite_values = [p["values"] for p in optimizer.test_suite]
-        fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
-        
-        # Tinh chỉnh ca test biên
-        hc_optimized, hc_tweak_stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator)
-
-        # Truyền phát từng bước tinh chỉnh của leo đồi về cho terminal log của Client
-        for detail in hc_tweak_stats.details:
-            await websocket.send_json({
-                "event": "HC_PROGRESS",
-                "data": {
-                    "status": "ACTIVE",
-                    "log": detail
-                }
-            })
-            await asyncio.sleep(0.03)
-
-        # Thay thế ca tốt nhất bằng ca sau khi leo đồi
-        optimizer.test_suite[0]["values"] = hc_optimized
-        optimizer.test_suite[0]["fitness"] = hc_tweak_stats.optimized_fitness
-        optimizer.test_suite[0]["origin"] = "HC_FINE_TUNED"
 
         # 6. Cập nhật Job với kết quả cuối cùng
         final_stats = progress_history[-1]

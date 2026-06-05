@@ -757,7 +757,7 @@ export class GeneticEngine {
   // COVERAGE CALCULATION (full population + pairwise)
   // ═══════════════════════════════════════════════
 
-  private computeDuplicateRate(): number {
+  computeDuplicateRate(): number {
     let dupCount = 0;
     const rawPop = this.population.map(p => p.values);
     for (let i = 0; i < rawPop.length; i++) {

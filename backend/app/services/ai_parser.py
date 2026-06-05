@@ -203,18 +203,26 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
         "      \"name\": \"tên_trường_viết_thường_không_dấu\",\n"
         "      \"type\": \"string\" | \"number\" | \"email\" | \"card\" | \"phone\",\n"
         "      \"required\": true | false,\n"
-        "      \"minLength\": 5, // tự động phân tích độ dài tối thiểu nếu là dạng chuỗi\n"
-        "      \"maxLength\": 20, // độ dài tối đa nếu là dạng chuỗi\n"
-        "      \"minValue\": 18, // giá trị nhỏ nhất nếu là số\n"
-        "      \"maxValue\": 100, // giá trị lớn nhất nếu là số\n"
-        "      \"regex\": \"pattern\", // biểu thức regex kiểm tra nếu đặc tả mô tả cấu trúc phức tạp\n"
-        "      \"allowedValues\": [\"VAL1\", \"VAL2\"], // mảng các giá trị được phép nếu dạng ENUM\n"
+        "      \"minLength\": 5,\n"
+        "      \"maxLength\": 20,\n"
+        "      \"minValue\": 18,\n"
+        "      \"maxValue\": 100,\n"
+        "      \"regex\": \"pattern\",\n"
+        "      \"allowedValues\": [\"VAL1\", \"VAL2\"],\n"
         "      \"description\": \"Giải thích ngắn gọn quy định của trường dữ liệu bằng Tiếng Việt\"\n"
         "    }\n"
         "  ],\n"
         "  \"initialPopulation\": [\n"
-        "    { \"tên_trường\": \"giá_trị_test_1\" },\n"
-        "    { \"tên_trường\": \"giá_trị_test_2\" }\n"
+        "    {\n"
+        "      \"tên_trường_1\": \"giá_trị_test_1\",\n"
+        "      \"method\": \"random\",\n"
+        "      \"scenario\": \"Kịch bản thành công (Happy path) với dữ liệu hợp lệ\"\n"
+        "    },\n"
+        "    {\n"
+        "      \"tên_trường_1\": \"giá_trị_test_2\",\n"
+        "      \"method\": \"bva\",\n"
+        "      \"scenario\": \"Kiểm tra biên dưới của trường tuổi\"\n"
+        "    }\n"
         "  ]\n"
         "}\n\n"
         
@@ -223,7 +231,8 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
         "- At least 3 valid cases (correct format, normal values).\n"
         "- At least 2 boundary cases (values matching exact minimum/maximum limits or string lengths).\n"
         "- At least 2 security attack injection payloads (such as SQL Injection e.g. \"' OR 1=1 --\" or XSS scripts e.g. \"<script>alert(1)</script>\") to verify robustness.\n"
-        "- At least 1 invalid case (out of bounds or broken formats)."
+        "- At least 1 invalid case (out of bounds or broken formats).\n"
+        "For each test case record in \"initialPopulation\", you MUST include the fields \"method\" (which method was used, e.g. \"random\", \"bva\", \"ep\", \"decision\") and \"scenario\" (a short explanation in Vietnamese explaining the exact test scenario, e.g. \"Kiểm tra SQL Injection\", \"Mật khẩu ngắn hơn độ dài tối thiểu\")."
     )
 
     try:
@@ -232,7 +241,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
             print(">>> INFO: Phat hien Gemini API Key. Dang goi truc tiep Google Gemini REST API...")
             
             # Gọi trực tiếp qua API Endpoint chính thức của Google Gemini v1beta sử dụng JSON mode
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={active_key.strip()}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={active_key.strip()}"
             
             payload = {
                 "contents": [
@@ -276,7 +285,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
                     
                     # In log dữ liệu trả về từ Gemini REST API đẹp đẽ lên console của Backend
                     print(">>> INFO: Gemini REST API Response:\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
-                    log_ai_call(db, "/api/specifications", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    log_ai_call(db, "/api/specifications", "Gemini", "gemini-1.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
                     return enrich_result_with_expected_results(parsed_result)
             except urllib.error.HTTPError as http_err:
                 raise http_err
@@ -294,7 +303,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
                     
                     # In log dữ liệu trả về từ Gemini REST API đẹp đẽ lên console của Backend (chế độ Unverified SSL)
                     print(">>> INFO: Gemini REST API Response (Unverified SSL):\n", json.dumps(parsed_result, indent=2, ensure_ascii=False))
-                    log_ai_call(db, "/api/specifications", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    log_ai_call(db, "/api/specifications", "Gemini", "gemini-1.5-flash", f"System: {system_instructions}\n\nRaw text: {raw_text}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
                     return enrich_result_with_expected_results(parsed_result)
         else:
             print(">>> INFO: Phat hien OpenAI API Key. Dang su dung GPT lam AI engine...")
@@ -322,7 +331,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
 
     except Exception as e:
         error_msg = str(e)
-        log_ai_call(db, "/api/specifications", "Gemini" if is_gemini else "OpenAI", "gemini-2.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nRaw text: {raw_text}", None, "FAILED", error_message=error_msg)
+        log_ai_call(db, "/api/specifications", "Gemini" if is_gemini else "OpenAI", "gemini-1.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nRaw text: {raw_text}", None, "FAILED", error_message=error_msg)
         
         if "429" in error_msg or "401" in error_msg or "400" in error_msg or "403" in error_msg or "503" in error_msg:
             raise ValueError(f"API_KEY_ERROR: {error_msg}")
@@ -513,8 +522,6 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
 
     # =========================================================================
     # [BVA - PHÂN TÍCH GIÁ TRỊ BIÊN] KHỞI TẠO BỘ TẬP DỮ LIỆU KIỂM THỬ BAN ĐẦU (SEEDS)
-    # Nguyên lý BVA: Tập trung sinh dữ liệu kiểm thử xung quanh các biên của miền giá trị.
-    # Nhắm vào các điểm nhạy cảm: Min, Max, cận trên, cận dưới, điểm vi phạm cận biên.
     # =========================================================================
     if test_method == "bva":
         field_targets = {}
@@ -523,69 +530,47 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
             ftype = f.get("type", "string")
             targets = []
             
-            # --- [BVA] Xác định độ lệch (offsets) so với điểm biên ---
-            # Dựa vào số lượng điểm biên (Boundary Count) được lựa chọn (2, 3, hoặc 5 điểm):
-            # - 2 điểm biên (BVA tiêu chuẩn): Kiểm tra giá trị biên chuẩn và giá trị vi phạm ngoài biên kề sát.
-            #   Ví dụ với Min: Min (hợp lệ) và Min - 1 (vô hiệu/lỗi).
-            # - 3 điểm biên (Robustness testing): Thêm giá trị kề trong biên (Min-1, Min, Min+1).
-            # - 5 điểm biên (Worst-case boundary analysis): Mở rộng phạm vi thêm 2 bước sai số để kiểm tra khả năng chịu tải.
             def get_bva_offsets(b_count, is_min=True):
                 if b_count == 2:
-                    # Biên dưới (Min): chọn điểm ngoài biên (Min-1) và tại biên (Min)
-                    # Biên trên (Max): chọn điểm tại biên (Max) và ngoài biên (Max+1)
                     return [-1, 0] if is_min else [0, 1]
                 elif b_count == 3:
-                    # Kiểm thử Robust: 3 điểm bao quát [Biên - 1, Biên, Biên + 1]
                     return [-1, 0, 1]
                 elif b_count == 5:
-                    # Kiểm thử Worst-case mở rộng: [Biên - 2, Biên - 1, Biên, Biên + 1, Biên + 2]
                     return [-2, -1, 0, 1, 2]
                 else:
                     half = b_count // 2
                     return list(range(-half, half + 1))
 
-            # --- [BVA] Áp dụng kỹ thuật biên cho kiểu dữ liệu số (Number) ---
             if ftype == "number":
                 min_v = f.get("minValue")
                 max_v = f.get("maxValue")
-                
-                # Tạo hạt giống kiểm thử xung quanh giá trị tối thiểu (minValue)
                 if min_v is not None:
                     for o in get_bva_offsets(boundary_count, is_min=True):
                         targets.append(min_v + o)
-                # Tạo hạt giống kiểm thử xung quanh giá trị tối đa (maxValue)
                 if max_v is not None:
                     for o in get_bva_offsets(boundary_count, is_min=False):
                         targets.append(max_v + o)
-            
-            # --- [BVA] Áp dụng kỹ thuật biên cho độ dài chuỗi (String/Email/Card/Phone) ---
             elif ftype in ["string", "email", "card", "phone"]:
                 min_l = f.get("minLength")
                 max_l = f.get("maxLength")
-                
-                # Tạo độ dài chuỗi xung quanh độ dài tối thiểu (minLength)
                 if min_l is not None:
                     for o in get_bva_offsets(boundary_count, is_min=True):
-                        # Độ dài chuỗi không được âm (max(0, ...))
                         targets.append(max(0, min_l + o))
-                # Tạo độ dài chuỗi xung quanh độ dài tối đa (maxLength)
                 if max_l is not None:
                     for o in get_bva_offsets(boundary_count, is_min=False):
-                        # Độ dài chuỗi không được âm (max(0, ...))
                         targets.append(max(0, max_l + o))
             
-            # Sắp xếp và loại bỏ trùng lặp để có danh sách mục tiêu kiểm thử biên chuẩn hóa
             if targets:
                 field_targets[name] = sorted(list(set(targets)))
             else:
                 field_targets[name] = []
 
-        # Generate test cases to cover these targets
         max_targets = max([len(t) for t in field_targets.values()] or [1])
         num_records = max(10, max_targets)
         
         for i in range(num_records):
             record = {}
+            scenarios = []
             for f in fields:
                 name = f["name"]
                 ftype = f.get("type", "string")
@@ -595,10 +580,18 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
                     target_val = targets[i % len(targets)]
                     if ftype == "number":
                         record[name] = target_val
-                    else: # string
+                        scenarios.append(f"{name}={target_val} (biên số)")
+                    else:
                         record[name] = get_default_value(f, length=target_val)
+                        scenarios.append(f"{name} độ dài={target_val} (biên chuỗi)")
                 else:
-                    record[name] = get_default_value(f, mode='boundary' if i % 2 == 0 else 'valid')
+                    mode = 'boundary' if i % 2 == 0 else 'valid'
+                    record[name] = get_default_value(f, mode=mode)
+                    if mode == 'boundary':
+                        scenarios.append(f"{name} ngẫu nhiên (biên)")
+            
+            record["method"] = "bva"
+            record["scenario"] = f"Phân tích biên BVA: " + ", ".join(scenarios[:3])
             population.append(record)
 
     # EP local generator
@@ -620,9 +613,11 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
                     targets.append(mid)
                 targets.append(min_v - 3)
                 targets.append(max_v + 3)
-            elif ftype == "string":
-                min_l = f.get("minLength", 3)
-                max_l = f.get("maxLength", 20)
+            elif ftype in ["string", "email", "card", "phone"]:
+                min_l = f.get("minLength", 3 if ftype == "string" else (16 if ftype == "card" else (10 if ftype == "phone" else 5)))
+                max_l = f.get("maxLength", 20 if ftype == "string" else (16 if ftype == "card" else (10 if ftype == "phone" else 50)))
+                if min_l is None: min_l = 3
+                if max_l is None: max_l = 20
                 step = (max_l - min_l) / max(1, partition_count)
                 for p in range(partition_count):
                     start = min_l + p * step
@@ -641,6 +636,7 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
         num_records = max(8, max_targets)
         for i in range(num_records):
             record = {}
+            scenarios = []
             for f in fields:
                 name = f["name"]
                 ftype = f.get("type", "string")
@@ -649,28 +645,50 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
                     target_val = targets[i % len(targets)]
                     if ftype == "number":
                         record[name] = target_val
+                        scenarios.append(f"{name}={target_val} (phân vùng số)")
                     else:
                         record[name] = get_default_value(f, length=target_val)
+                        scenarios.append(f"{name} độ dài={target_val} (phân vùng chuỗi)")
                 else:
-                    record[name] = get_default_value(f, mode='invalid' if i % 4 == 0 else 'valid')
+                    mode = 'invalid' if i % 4 == 0 else 'valid'
+                    record[name] = get_default_value(f, mode=mode)
+                    if mode == 'invalid':
+                        scenarios.append(f"{name} không hợp lệ")
+            
+            record["method"] = "ep"
+            record["scenario"] = f"Phân vùng tương đương EP: " + ", ".join(scenarios[:3])
             population.append(record)
 
     # Decision Table local generator
     elif test_method == "decision":
-        for i in range(10):
+        num_records = len(fields) + 3
+        for i in range(num_records):
             record = {}
+            scenario = ""
             for idx, f in enumerate(fields):
                 name = f["name"]
                 if i - 1 == idx:
                     record[name] = get_default_value(f, mode='invalid')
+                    scenario = f"Kiểm thử lỗi validation của trường: {name}"
                 elif i == 0:
                     record[name] = get_default_value(f, mode='valid')
-                elif i == 9:
+                    scenario = "Kịch bản thành công (Happy path) - Tất cả các trường hợp hợp lệ"
+                elif i == num_records - 1:
                     record[name] = get_default_value(f, mode='valid')
                     if f.get("type") in ["string", "email"]:
                         record[name] = "' OR '1'='1"
+                    scenario = "Kiểm tra an toàn hệ thống (SQL Injection / XSS injection)"
+                elif i == num_records - 2:
+                    record[name] = get_default_value(f, mode='invalid')
+                    scenario = "Kiểm thử biên lỗi kết hợp"
                 else:
                     record[name] = get_default_value(f, mode='valid')
+            
+            if not scenario:
+                scenario = "Phân tích bảng quyết định - Kiểm thử nghiệp vụ kết hợp"
+                
+            record["method"] = "decision"
+            record["scenario"] = scenario
             population.append(record)
 
     # Random/Hybrid
@@ -682,6 +700,16 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
             for f in fields:
                 name = f["name"]
                 record[name] = get_default_value(f, mode=mode)
+            
+            mode_desc = {
+                'valid': "Dữ liệu hợp lệ ngẫu nhiên",
+                'boundary': "Dữ liệu biên ngẫu nhiên",
+                'security': "Payload tấn công bảo mật",
+                'invalid': "Định dạng không hợp lệ"
+            }.get(mode, "Kiểm thử ngẫu nhiên")
+            
+            record["method"] = "random"
+            record["scenario"] = f"Ngẫu nhiên/Lai ghép: {mode_desc}"
             population.append(record)
 
     return population
@@ -737,7 +765,11 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             "Your response must be a single JSON object matching this structure:\n"
             "{\n"
             "  \"initialPopulation\": [\n"
-            "    { \"field_name\": value },\n"
+            "    {\n"
+            "      \"field_name_1\": value1,\n"
+            "      \"method\": \"bva\",\n"
+            "      \"scenario\": \"Kiểm tra biên dưới của trường A\"\n"
+            "    },\n"
             "    ...\n"
             "  ]\n"
             "}"
@@ -758,7 +790,11 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             "Your response must be a single JSON object matching this structure:\n"
             "{\n"
             "  \"initialPopulation\": [\n"
-            "    { \"field_name\": value },\n"
+            "    {\n"
+            "      \"field_name_1\": value1,\n"
+            "      \"method\": \"ep\",\n"
+            "      \"scenario\": \"Kiểm tra phân vùng 2 của trường B\"\n"
+            "    },\n"
             "    ...\n"
             "  ]\n"
             "}"
@@ -780,7 +816,11 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             "Your response must be a single JSON object matching this structure:\n"
             "{\n"
             "  \"initialPopulation\": [\n"
-            "    { \"field_name\": value },\n"
+            "    {\n"
+            "      \"field_name_1\": value1,\n"
+            "      \"method\": \"decision\",\n"
+            "      \"scenario\": \"Kiểm tra validation trường email trống\"\n"
+            "    },\n"
             "    ...\n"
             "  ]\n"
             "}"
@@ -801,7 +841,11 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             "Your response must be a single JSON object matching this structure:\n"
             "{\n"
             "  \"initialPopulation\": [\n"
-            "    { \"field_name\": value },\n"
+            "    {\n"
+            "      \"field_name_1\": value1,\n"
+            "      \"method\": \"random\",\n"
+            "      \"scenario\": \"Kịch bản kiểm thử ngẫu nhiên payload bảo mật\"\n"
+            "    },\n"
             "    ...\n"
             "  ]\n"
             "}"
@@ -810,7 +854,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
     try:
         if is_gemini:
             print(f">>> INFO: Calling Gemini API for seed regeneration (Method: {test_method})...")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={active_key.strip()}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={active_key.strip()}"
             
             payload = {
                 "contents": [
@@ -849,7 +893,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                     parsed_result = json.loads(text_content)
                     seeds = parsed_result.get("initialPopulation", [])
-                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-1.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
                     for s in seeds:
                         if "expectedResult" not in s:
                             s["expectedResult"] = check_record_expected_result(s, fields)
@@ -865,7 +909,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                     parsed_result = json.loads(text_content)
                     seeds = parsed_result.get("initialPopulation", [])
-                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-1.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
                     for s in seeds:
                         if "expectedResult" not in s:
                             s["expectedResult"] = check_record_expected_result(s, fields)
@@ -896,7 +940,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
 
     except Exception as e:
         error_msg = str(e)
-        log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini" if is_gemini else "OpenAI", "gemini-2.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
+        log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini" if is_gemini else "OpenAI", "gemini-1.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
         if "401" in error_msg or "403" in error_msg:
             raise ValueError(f"API_KEY_ERROR: {error_msg}")
             
@@ -988,8 +1032,8 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
                     "responseMimeType": "application/json"
                 }
             }
-            # Sử dụng gemini-3.5-flash theo cấu hình custom của dự án
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={active_key}"
+            # Sử dụng gemini-1.5-flash làm model an toàn ổn định
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={active_key}"
             req = urllib.request.Request(url, data=json.dumps(req_data).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
             
             ssl_context = None
@@ -1006,7 +1050,7 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
                     text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                     res = json.loads(text_content)
                     res["is_mock"] = False
-                    log_ai_call(db, "/api/evaluate-seeds", "Gemini", "gemini-3.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(res, ensure_ascii=False), "SUCCESS")
+                    log_ai_call(db, "/api/evaluate-seeds", "Gemini", "gemini-1.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(res, ensure_ascii=False), "SUCCESS")
                     return res
             except urllib.error.HTTPError as http_err:
                 raise http_err
@@ -1028,7 +1072,7 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
             
     except Exception as e:
         error_msg = str(e)
-        log_ai_call(db, "/api/evaluate-seeds", "Gemini" if not is_openai else "OpenAI", "gemini-3.5-flash" if not is_openai else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
+        log_ai_call(db, "/api/evaluate-seeds", "Gemini" if not is_openai else "OpenAI", "gemini-1.5-flash" if not is_openai else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
         if "401" in error_msg or "403" in error_msg:
             raise ValueError(f"API_KEY_ERROR: {error_msg}")
             

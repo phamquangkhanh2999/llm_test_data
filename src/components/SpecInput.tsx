@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PRESETS } from '../algorithms/presets';
 import type { FieldConstraint } from '../algorithms/presets';
-import { FileText, Plus, Trash2, Database, CheckCircle, BrainCircuit, Zap, FileJson, Sparkles } from 'lucide-react';
+import { FileText, Plus, Trash2, Database, CheckCircle, BrainCircuit, Zap, FileJson, Sparkles, ArrowRight } from 'lucide-react';
 import { generateRandomValue } from '../algorithms/genetic';
 import { useAppStore } from '../store/useAppStore';
 
@@ -29,7 +29,9 @@ export const SpecInput: React.FC = () => {
     setOptimizedDataset,
     handleClearSpecData,
     methodSeeds,
-    setMethodSeeds
+    setMethodSeeds,
+    setActiveScreen,
+    markScreenCompleted
   } = useAppStore();
 
   const hasApiKey = apiKey.trim().length > 10;
@@ -148,11 +150,11 @@ export const SpecInput: React.FC = () => {
       const seen = new Set<string>();
       const combinedSeeds: any[] = [];
       populations.flat().forEach((item) => {
-        const sortedObj = Object.keys(item).sort().reduce((acc, key) => {
-          acc[key] = item[key];
-          return acc;
-        }, {} as any);
-        const str = JSON.stringify(sortedObj);
+        const dataOnly = {} as any;
+        parsedSchema.forEach((f: any) => {
+          dataOnly[f.name] = item[f.name];
+        });
+        const str = JSON.stringify(dataOnly);
         if (!seen.has(str)) {
           seen.add(str);
           combinedSeeds.push(item);
@@ -265,15 +267,14 @@ export const SpecInput: React.FC = () => {
 
       const populations = results.map(r => r.population);
 
-      // Gộp và loại bỏ trùng lặp tuyệt đối để có tập F0 chuẩn hóa tối ưu nhất
       const seen = new Set<string>();
       const combinedSeeds: any[] = [];
       populations.flat().forEach((item) => {
-        const sortedObj = Object.keys(item).sort().reduce((acc, key) => {
-          acc[key] = item[key];
-          return acc;
-        }, {} as any);
-        const str = JSON.stringify(sortedObj);
+        const dataOnly = {} as any;
+        res.fields.forEach((f: any) => {
+          dataOnly[f.name] = item[f.name];
+        });
+        const str = JSON.stringify(dataOnly);
         if (!seen.has(str)) {
           seen.add(str);
           combinedSeeds.push(item);
@@ -852,6 +853,31 @@ export const SpecInput: React.FC = () => {
               </>
             )}
           </button>
+
+          {/* Nút Tiếp Theo: Tối Ưu & So Sánh */}
+          {parsedSchema.length > 0 && initialSeeds.length > 0 && (
+            <button
+              onClick={() => {
+                markScreenCompleted('prepare');
+                setActiveScreen('optimize');
+              }}
+              className="btn btn-primary"
+              style={{
+                padding: '9px 18px',
+                whiteSpace: 'nowrap',
+                background: 'linear-gradient(135deg, #a78bfa, #8b5cf6)',
+                borderColor: '#8b5cf6',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px',
+                boxShadow: '0 4px 14px rgba(167, 139, 250, 0.4)'
+              }}
+            >
+              <span>Tiếp theo: Tối Ưu & So Sánh</span>
+              <ArrowRight size={14} />
+            </button>
+          )}
         </div>
 
         {/* CẤU HÌNH PHƯƠNG PHÁP KIỂM THỬ KHỞI TẠO (F0 SEEDS) */}
@@ -1344,7 +1370,6 @@ export const SpecInput: React.FC = () => {
               {(() => {
                 const hasMethodSeeds = Object.values(methodSeeds).some(arr => arr && arr.length > 0);
                 if (!hasMethodSeeds && initialSeeds && initialSeeds.length > 0) {
-                  // Hiển thị bảng gộp duy nhất (Ví dụ: khi nạp từ Lịch sử hoặc Preset mà chưa kịp tái sinh)
                   return (
                     <div className="glass-card" style={{ padding: '16px', border: `1px solid rgba(255,255,255,0.06)`, background: 'rgba(255,255,255,0.01)' }}>
                       <h3 style={{ fontSize: '14.5px', color: 'var(--color-violet)', margin: '0 0 12px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1355,7 +1380,8 @@ export const SpecInput: React.FC = () => {
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                           <thead>
                             <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                              <th style={{ padding: '10px 16px', color: 'var(--text-muted)', width: '80px' }}>STT</th>
+                              <th style={{ padding: '10px 16px', color: 'var(--text-secondary)', width: '80px' }}>STT</th>
+                              <th style={{ padding: '10px 16px', color: 'var(--color-teal)', fontWeight: '600', width: '120px' }}>Phương pháp</th>
                               {parsedSchema.map((field) => (
                                 <th key={field.name} style={{ padding: '10px 16px', color: 'var(--color-teal)', fontWeight: '600' }}>
                                   <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
@@ -1363,6 +1389,11 @@ export const SpecInput: React.FC = () => {
                                   </div>
                                 </th>
                               ))}
+                              <th style={{ padding: '10px 16px', color: 'var(--color-yellow)', fontWeight: '600' }}>
+                                <div style={{ minWidth: '180px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                                  Mô tả kịch bản
+                                </div>
+                              </th>
                               <th style={{ padding: '10px 16px', color: 'var(--color-violet)', fontWeight: '600' }}>
                                 <div style={{ minWidth: '150px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
                                   Kết quả mong đợi
@@ -1381,8 +1412,28 @@ export const SpecInput: React.FC = () => {
                                 }}
                                 className="table-row-hover"
                               >
-                                <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>
+                                <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>
                                   <div style={{ minWidth: '80px' }}>F0 #{idx + 1}</div>
+                                </td>
+                                <td style={{ padding: '12px 16px' }}>
+                                  <span style={{
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    background: seed.method === 'bva' ? 'rgba(167, 139, 250, 0.15)' :
+                                                seed.method === 'ep' ? 'rgba(59, 130, 246, 0.15)' :
+                                                seed.method === 'decision' ? 'rgba(244, 63, 94, 0.15)' :
+                                                'rgba(45, 212, 191, 0.15)',
+                                    color: seed.method === 'bva' ? 'var(--color-violet)' :
+                                           seed.method === 'ep' ? '#60a5fa' :
+                                           seed.method === 'decision' ? 'var(--color-rose)' :
+                                           'var(--color-teal)',
+                                    fontWeight: '600'
+                                  }}>
+                                    {seed.method === 'bva' ? 'BVA' :
+                                     seed.method === 'ep' ? 'EP' :
+                                     seed.method === 'decision' ? 'Logic' : 'Hybrid'}
+                                  </span>
                                 </td>
                                 {parsedSchema.map((field) => {
                                   const value = seed[field.name];
@@ -1418,6 +1469,20 @@ export const SpecInput: React.FC = () => {
                                     </td>
                                   );
                                 })}
+                                <td style={{ padding: '12px 16px', verticalAlign: 'top', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
+                                  <div
+                                    style={{
+                                      minWidth: '180px',
+                                      maxWidth: '300px',
+                                      maxHeight: '80px',
+                                      overflowY: 'auto',
+                                      wordBreak: 'break-word',
+                                      whiteSpace: 'normal'
+                                    }}
+                                  >
+                                    {seed.scenario || '-'}
+                                  </div>
+                                </td>
                                 <td style={{ padding: '12px 16px', verticalAlign: 'top' }}>
                                   <div
                                     style={{
@@ -1476,7 +1541,7 @@ export const SpecInput: React.FC = () => {
                               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                                 <thead>
                                   <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                                    <th style={{ padding: '8px 12px', color: 'var(--text-muted)', width: '70px' }}>STT</th>
+                                    <th style={{ padding: '8px 12px', color: 'var(--text-secondary)', width: '70px' }}>STT</th>
                                     {parsedSchema.map((field) => (
                                       <th key={field.name} style={{ padding: '8px 12px', color: 'var(--color-teal)', fontWeight: '600' }}>
                                         <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
@@ -1484,6 +1549,11 @@ export const SpecInput: React.FC = () => {
                                         </div>
                                       </th>
                                     ))}
+                                    <th style={{ padding: '8px 12px', color: 'var(--color-yellow)', fontWeight: '600' }}>
+                                      <div style={{ minWidth: '180px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                                        Mô tả kịch bản
+                                      </div>
+                                    </th>
                                     <th style={{ padding: '8px 12px', color: 'var(--color-violet)', fontWeight: '600' }}>
                                       <div style={{ minWidth: '150px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
                                         Kết quả mong đợi
@@ -1502,7 +1572,7 @@ export const SpecInput: React.FC = () => {
                                       }}
                                       className="table-row-hover"
                                     >
-                                      <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
+                                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>
                                         <div style={{ minWidth: '70px' }}>F0 #{idx + 1}</div>
                                       </td>
                                       {parsedSchema.map((field) => {
@@ -1539,6 +1609,20 @@ export const SpecInput: React.FC = () => {
                                           </td>
                                         );
                                       })}
+                                      <td style={{ padding: '10px 12px', verticalAlign: 'top', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                        <div
+                                          style={{
+                                            minWidth: '180px',
+                                            maxWidth: '300px',
+                                            maxHeight: '80px',
+                                            overflowY: 'auto',
+                                            wordBreak: 'break-word',
+                                            whiteSpace: 'normal'
+                                          }}
+                                        >
+                                          {seed.scenario || '-'}
+                                        </div>
+                                      </td>
                                       <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
                                         <div
                                           style={{
