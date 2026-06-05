@@ -44,6 +44,13 @@ def calculate_diversity_score(test_case, subset):
 
 
 # Helper: Tự động sinh giá trị ngẫu nhiên theo quy định trường dữ liệu
+# =========================================================================
+# [BƯỚC 2: PHÂN TÍCH THUẬT TOÁN - PHƯƠNG PHÁP TRUYỀN THỐNG (TRADITIONAL BASELINE)]
+# Luồng 1 (Traditional) trong giao diện Dashboard Bước 2.
+# Sử dụng phương pháp sinh giá trị ngẫu nhiên (Random) hoặc Phân tích giá trị biên tĩnh (BVA) 
+# dựa trên định nghĩa cứng của schema (ví dụ: minValue, maxValue, minLength, maxLength) 
+# mà không qua quá trình học máy hay tối ưu hóa tiến hóa.
+# =========================================================================
 def generate_random_field_value(field, mode="valid"):
     special_chars = ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "_", "+", "=", "[", "]", "{", "}", ";", ":", "'", '"', "<", ">", "/", "?", "\\", "|", "`", "~"]
     security_payloads = [
@@ -145,6 +152,17 @@ def generate_random_field_value(field, mode="valid"):
         return str_val
 
 
+# =========================================================================
+# [BƯỚC 2: PHÂN TÍCH THUẬT TOÁN - GIẢI THUẬT DI TRUYỀN (GENETIC ALGORITHM - GA)]
+# Luồng 2 (GA) và pha 1 của Luồng 4 (Hybrid) trong giao diện Dashboard Bước 2.
+# GA thực hiện tìm kiếm toàn cục (global search) qua các thế hệ tiến hóa:
+#   1. Khởi tạo quần thể (initialize_suite) từ hạt giống hoặc ngẫu nhiên.
+#   2. Đánh giá độ thích nghi (evaluate_testcase_quality) dựa trên Validation, Biên, Bảo mật, Đa dạng.
+#   3. Lựa chọn cá thể bố mẹ (select_parent) bằng Tournament Selection & Crowding Distance.
+#   4. Lai ghép (mix_testcases) bằng Uniform Crossover thích nghi.
+#   5. Đột biến (tweak_values) bằng đột biến Gauss (số), Enum-aware (danh mục) thích nghi.
+#   6. Phát hiện trì trệ (stagnation) và tái tạo quần thể để tránh cực trị cục bộ.
+# =========================================================================
 class TestSuiteOptimizer:
     """
     BỘ TỐI ƯU HÓA TEST SUITE (Genetic Algorithm Engine in Python).

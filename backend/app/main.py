@@ -396,6 +396,14 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
         details=["Không chạy tinh chỉnh leo đồi biên cục bộ."]
     )
 
+    # =========================================================================
+    # [BƯỚC 2: PHÂN TÍCH THUẬT TOÁN - ĐIỀU PHỐI LUỒNG CHẠY REST API]
+    # Phân nhánh xử lý theo tham số giải thuật (algorithm / algo) được truyền từ Client:
+    #   - Luồng 1 (traditional): Sinh dữ liệu ngẫu nhiên hoặc BVA tĩnh.
+    #   - Luồng 2 (ga): Giải thuật di truyền GA qua các thế hệ tiến hóa toàn cục.
+    #   - Luồng 3 (hc): Giải thuật leo đồi HC độc lập dò tìm cực trị cục bộ.
+    #   - Luồng 4 (hybrid): Lai ghép GA + HC (chạy GA tìm vùng tốt rồi leo đồi tinh chỉnh).
+    # =========================================================================
     if algo == "traditional":
         # Thuật toán truyền thống (Random hoặc BVA)
         test_suite = []
@@ -647,6 +655,14 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
         progress_history = []
         hc_tweak_stats = None
 
+        # =========================================================================
+        # [BƯỚC 2: PHÂN TÍCH THUẬT TOÁN - ĐIỀU PHỐI LUỒNG CHẠY WEBSOCKET SONG SONG]
+        # Phát trực tiếp tiến trình tối ưu theo thời gian thực về Client:
+        #   - Luồng 1 (traditional): Phản hồi nhanh tập test baseline truyền thống.
+        #   - Luồng 2 (ga): Gửi gói tin tiến trình GA qua từng thế hệ tiến hóa.
+        #   - Luồng 3 (hc): Gửi log dò biên leo đồi độc lập cho từng cá thể.
+        #   - Luồng 4 (hybrid): Chạy di truyền GA trước rồi gửi chi tiết các bước leo đồi HC của elite.
+        # =========================================================================
         if algorithm == "traditional":
             await websocket.send_json({
                 "event": "HC_START",

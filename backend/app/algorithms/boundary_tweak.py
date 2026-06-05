@@ -28,6 +28,17 @@ class BoundaryTweakStats:
         }
 
 
+# =========================================================================
+# [BƯỚC 2: PHÂN TÍCH THUẬT TOÁN - THUẬT TOÁN LEO ĐỒI (HILL CLIMBING - HC)]
+# Luồng 3 (HC) và pha 2 của Luồng 4 (Hybrid) trong giao diện Dashboard Bước 2.
+# HC thực hiện tìm kiếm cục bộ (local search) để tinh chỉnh các giá trị biên:
+#   1. Phát sinh tập lân cận (Neighborhood) bằng cách cộng/trừ sai số nhỏ, lớn, Gauss, 
+#      và ép đúng về các biên (BVA) như minValue, maxValue, minLength, maxLength.
+#   2. Tìm kiếm cấm (Tabu Search) thông qua danh sách tabu_list để tránh quay lại các giá trị cũ.
+#   3. Mô phỏng luyện kim (Simulated Annealing - SA) chấp nhận các bước đi xấu hơn với xác suất giảm dần 
+#      để thoát khỏi các cực trị cục bộ.
+#   4. Khởi động lại ngẫu nhiên (Random Restarts) từ nhiều điểm xuất phát khác nhau để tìm biên tốt nhất.
+# =========================================================================
 def optimize_testcase_boundaries(test_case, schema, fitness_evaluator, max_iterations=15):
     """
     BỘ TINH CHỈNH BIÊN CỤC BỘ NÂNG CẤP (Hill Climbing local search).
