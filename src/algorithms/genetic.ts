@@ -24,8 +24,13 @@ export interface GeneticConfig {
   };
 }
 
-// Helper: Levenshtein distance for string diversity
 function stringDistance(s1: string, s2: string): number {
+  s1 = s1.substring(0, 25);
+  s2 = s2.substring(0, 25);
+  if (s1 === s2) return 0;
+  if (s1.length === 0) return s2.length;
+  if (s2.length === 0) return s1.length;
+
   const track = Array(s2.length + 1).fill(null).map(() => Array(s1.length + 1).fill(null));
   for (let i = 0; i <= s1.length; i += 1) track[0][i] = i;
   for (let j = 0; j <= s2.length; j += 1) track[j][0] = j;

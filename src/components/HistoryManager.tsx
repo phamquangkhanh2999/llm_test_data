@@ -36,7 +36,8 @@ export const HistoryManager: React.FC = () => {
     handleLoadPastRun: onLoadPastRun,
     handleClearHistory: onClearHistory,
     schemaName,
-    parsedSchema
+    parsedSchema,
+    selectedSuiteName
   } = useAppStore();
   // Trạng thái (state) hiển thị thông báo đã sao chép chuỗi JSON vào bộ nhớ đệm
   const [copied, setCopied] = useState(false);
@@ -612,6 +613,24 @@ ${values};
           <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff', letterSpacing: '0.03em' }}>TRUNG TÂM XUẤT DỮ LIỆU &amp; LỊCH SỬ</h2>
         </div>
 
+        {selectedSuiteName && (
+          <div style={{
+            background: 'rgba(45, 212, 191, 0.08)',
+            border: '1px solid rgba(45, 212, 191, 0.25)',
+            borderRadius: '6px',
+            padding: '8px 12px',
+            fontSize: '12px',
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginTop: '4px'
+          }}>
+            <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--color-teal)', boxShadow: '0 0 6px var(--color-teal)' }} />
+            <span>Đang cấu hình kịch bản của bộ: <strong style={{ color: 'var(--color-teal)' }}>{selectedSuiteName}</strong></span>
+          </div>
+        )}
+
         <p style={{ color: 'var(--text-secondary)', fontSize: '13px', lineHeight: '1.5' }}>
           Tải xuống trực tiếp tập ca kiểm thử tối ưu hóa đã sinh dưới định dạng CSV/Excel hoặc JSON để đưa trực tiếp vào các công cụ tự động hóa như Selenium, Playwright, Postman.
         </p>
@@ -1001,6 +1020,12 @@ ${values};
                 </span>
               )}
             </div>
+
+            {selectedSuiteName && (
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', marginBottom: '8px', paddingLeft: '28px' }}>
+                Đang xem bộ test sinh bởi: <strong style={{ color: 'var(--color-violet)' }}>{selectedSuiteName}</strong>
+              </div>
+            )}
 
             {optimizedDataset.length > 0 ? (
               <div className="flex flex-col gap-md" style={{ flex: 1 }}>

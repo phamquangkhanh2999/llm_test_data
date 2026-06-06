@@ -5,6 +5,8 @@ import math
 
 # Helper: Tính khoảng cách Levenshtein giữa 2 chuỗi để đo lường tính đa dạng (Diversity)
 def levenshtein_distance(s1, s2):
+    s1 = s1[:30]
+    s2 = s2[:30]
     if len(s1) < len(s2):
         return levenshtein_distance(s2, s1)
     if len(s2) == 0:
@@ -30,6 +32,24 @@ def safe_float(val, default=0.0):
     except (ValueError, TypeError):
         return default
 
+def fast_distance(v1, v2):
+    if v1 == v2:
+        return 0.0
+    len1 = len(v1)
+    len2 = len(v2)
+    max_len = max(len1, len2, 1)
+    if len1 <= 12 and len2 <= 12:
+        return levenshtein_distance(v1, v2) / max_len
+    
+    # Fast prefix matching approximation for longer strings to avoid O(N^2) edit distance
+    common_prefix = 0
+    for i in range(min(len1, len2, 4)):
+        if v1[i] == v2[i]:
+            common_prefix += 1
+        else:
+            break
+    return 1.0 - (common_prefix * 0.15)
+
 # Helper: Tính độ đa dạng tổng quát của một Test Case so với tập mẫu thử nghiệm
 def calculate_diversity_score(test_case, subset):
     if not subset:
@@ -42,9 +62,7 @@ def calculate_diversity_score(test_case, subset):
         for k in keys:
             v1 = str(test_case[k])
             v2 = str(other.get(k, ""))
-            if v1 != v2:
-                max_len = max(len(v1), len(v2), 1)
-                diffs += levenshtein_distance(v1, v2) / max_len
+            diffs += fast_distance(v1, v2)
         total_dist += diffs / len(keys)
 
     return min(total_dist / len(subset), 1.0)
@@ -553,9 +571,7 @@ class TestSuiteOptimizer:
             for k in keys:
                 v1 = str(ind_values.get(k, ""))
                 v2 = str(other_values.get(k, ""))
-                if v1 != v2:
-                    max_len = max(len(v1), len(v2), 1)
-                    dist += levenshtein_distance(v1, v2) / max_len
+                dist += fast_distance(v1, v2)
             distances.append(dist / len(keys) if keys else 0)
 
         if not distances:

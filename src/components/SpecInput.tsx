@@ -4,6 +4,7 @@ import type { FieldConstraint } from '../algorithms/presets';
 import { FileText, Plus, Trash2, Database, CheckCircle, BrainCircuit, Zap, FileJson, Sparkles, ArrowRight } from 'lucide-react';
 import { generateRandomValue } from '../algorithms/genetic';
 import { useAppStore } from '../store/useAppStore';
+import { LoadingSpinner } from './LoadingSpinner';
 
 export const SpecInput: React.FC = () => {
   const {
@@ -2140,6 +2141,53 @@ export const SpecInput: React.FC = () => {
         </div>
       )}
 
+      {/* Overlay for Tái Sinh F0 */}
+      {isRegenerating && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(8, 13, 28, 0.9)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 99999,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#fff',
+          fontFamily: 'system-ui, sans-serif'
+        }}>
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.8)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '16px',
+            padding: '40px',
+            maxWidth: '540px',
+            width: '90%',
+            textAlign: 'center',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '24px'
+          }}>
+            <LoadingSpinner
+              icon={<Zap size={32} style={{ color: 'var(--color-teal)' }} />}
+              outerColor="var(--color-teal)"
+              innerColor="var(--color-rose)"
+            />
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, letterSpacing: '-0.01em', color: '#fff' }}>
+                Đang Tái Sinh Quần Thể F0...
+              </h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+                Hệ thống đang sinh lại tập hợp các ca kiểm thử mầm dựa trên các phương pháp thiết kế đã chọn ({selectedMethods.join(', ')}).
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Glassmorphic Loading Overlay backdrop when AI is parsing specification */}
       {isParsing && (
         <div style={{
@@ -2169,34 +2217,11 @@ export const SpecInput: React.FC = () => {
             alignItems: 'center',
             gap: '24px'
           }}>
-            {/* Animated outer ring spinner */}
-            <div style={{ position: 'relative', width: '80px', height: '80px' }}>
-              <div className="tech-spinner" style={{
-                position: 'absolute',
-                inset: 0,
-                border: '4px solid rgba(45, 212, 191, 0.1)',
-                borderTop: '4px solid var(--color-teal)',
-                borderRadius: '50%'
-              }} />
-              <div className="tech-spinner" style={{
-                position: 'absolute',
-                inset: '8px',
-                border: '4px solid rgba(59, 130, 246, 0.1)',
-                borderBottom: '4px solid #3b82f6',
-                borderRadius: '50%',
-                animationDirection: 'reverse',
-                animationDuration: '1.2s'
-              }} />
-              <div style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Sparkles size={28} className="text-teal" style={{ color: 'var(--color-teal)', animation: 'pulse-dot 2s infinite' }} />
-              </div>
-            </div>
+            <LoadingSpinner
+              icon="sparkles"
+              outerColor="var(--color-teal)"
+              innerColor="#3b82f6"
+            />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <h3 style={{ fontSize: '17px', fontWeight: 'bold', margin: 0, letterSpacing: '-0.01em', color: '#fff' }}>

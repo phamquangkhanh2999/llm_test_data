@@ -259,7 +259,7 @@ function App() {
         <div style={{ padding: '20px 24px', flex: 1, width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
           {/* ══════════ BƯỚC 1: CHUẨN BỊ DỮ LIỆU ══════════ */}
-          {activeScreen === 'prepare' && (
+          <div style={{ display: activeScreen === 'prepare' ? 'block' : 'none' }}>
             <PageLayout
               stepId="prepare"
               title="Bước 1: Chuẩn Bị Dữ Liệu Đầu Vào"
@@ -278,10 +278,10 @@ function App() {
               />
               {prepareTab === 'ai' ? <SpecInput /> : <DataImport />}
             </PageLayout>
-          )}
+          </div>
 
           {/* ══════════ BƯỚC 2: TỐI ƯU & SO SÁNH ══════════ */}
-          {activeScreen === 'optimize' && (
+          <div style={{ display: activeScreen === 'optimize' ? 'block' : 'none' }}>
             <PageLayout
               stepId="optimize"
               title="Bước 2: Tối Ưu Hóa & So Sánh Thuật Toán"
@@ -300,15 +300,15 @@ function App() {
             >
               <OptimizationDashboard />
             </PageLayout>
-          )}
+          </div>
 
           {/* ══════════ BƯỚC 3: XUẤT KẾT QUẢ ══════════ */}
-          {activeScreen === 'export' && (
+          <div style={{ display: activeScreen === 'export' ? 'block' : 'none' }}>
             <PageLayout
               stepId="export"
               title="Bước 3: Xem Lại & Xuất Kết Quả"
               icon={<Download size={24} />}
-              description="Xem lại bộ test cases tối ưu, tối giản loại bỏ ca dư thừa, và xuất ra nhiều định dạng: CSV, JSON, SQL, Postman, Playwright, Cypress — sẵn sàng đưa vào hệ thống automation."
+              description=""
               hints={['Tối giản bộ test', 'Xuất CSV / JSON / SQL', 'Playwright / Cypress / Postman', 'Mô phỏng API validation']}
               accentColor="#2dd4bf"
               prerequisites={[
@@ -322,7 +322,7 @@ function App() {
             >
               <HistoryManager />
             </PageLayout>
-          )}
+          </div>
 
         </div>
 

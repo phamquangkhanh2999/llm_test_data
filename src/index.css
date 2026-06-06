@@ -396,18 +396,30 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-title); font-weight: 600; lette
    ACCESSIBILITY: PREFERS-REDUCED-MOTION
    ========================================== */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *:not(.force-animate),
+  *:not(.force-animate)::before,
+  *:not(.force-animate)::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
 
-  .glow-teal,
-  .glow-yellow,
-  .glow-violet {
+  .glow-teal:not(.force-animate),
+  .glow-yellow:not(.force-animate),
+  .glow-violet:not(.force-animate) {
     animation: none !important;
   }
 }
+
+/* ==========================================
+   TECH SPINNER ANIMATIONS
+   ========================================== */
+.tech-spinner {
+  animation: spin 1.8s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+

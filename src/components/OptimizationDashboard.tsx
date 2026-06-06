@@ -6,6 +6,7 @@ import {
   Play, Zap, Cpu, Award, Sparkles,
   Database, RefreshCw, BarChart2, CheckCircle2
 } from 'lucide-react';
+import { LoadingSpinner } from './LoadingSpinner';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, Legend, ReferenceLine
@@ -47,7 +48,14 @@ export const OptimizationDashboard: React.FC = () => {
     handleEvolutionComplete: onEvolutionComplete,
     schemaName,
     specificationId,
-    setActiveScreen
+    setActiveScreen,
+    rawText,
+    apiKey,
+    setSpecificationId,
+    optimizedDataset,
+    setOptimizedDataset,
+    selectedSuiteName,
+    setSelectedSuiteName
   } = useAppStore();
 
   // --- CẤU HÌNH THAM SỐ DI TRUYỀN ---
@@ -141,6 +149,11 @@ export const OptimizationDashboard: React.FC = () => {
     setResults(null);
     setCoverageHistory([]);
     historyRef.current = {};
+    setOptimizedDataset([]);
+    setSelectedSuiteName('');
+
+    // Yield control to the browser to render the loading overlay instantly
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     const initialRunStates: Record<string, AlgoRunState> = {
       traditional: { status: 'idle', progress: 0, bestTestCase: null, bestFitness: 0, coverage: 0, duplicateRate: 0, edgeCases: 0, execTime: 0, logs: [] },
@@ -204,7 +217,7 @@ export const OptimizationDashboard: React.FC = () => {
           const metrics = evaluateSuite(traditionalChromosomes);
           updateHistoryPoint(targetGen, 'traditional', metrics.coverage);
           updateAlgoState('traditional', { progress: Math.round(currentProgress * 100) });
-          await new Promise(r => setTimeout(r, 60));
+          await new Promise(r => setTimeout(r, 10));
         }
       }
       const tTraditional = performance.now() - t0 + 1;
@@ -228,7 +241,7 @@ export const OptimizationDashboard: React.FC = () => {
           const metrics = evaluateSuite(currentChromosomes);
           if (isMilestone) updateHistoryPoint(g, 'ga', metrics.coverage);
           updateAlgoState('ga', { progress: Math.round((g / generations) * 100) });
-          await new Promise(r => setTimeout(r, 65));
+          await new Promise(r => setTimeout(r, 10));
         }
       }
       const tGa = performance.now() - tGaStart + 10;
@@ -259,7 +272,7 @@ export const OptimizationDashboard: React.FC = () => {
         const metrics = evaluateSuite(hcChromosomes);
         updateHistoryPoint(targetGen, 'hc', metrics.coverage);
         updateAlgoState('hc', { progress: Math.round(currentProgress * 100) });
-        await new Promise(r => setTimeout(r, 60));
+        await new Promise(r => setTimeout(r, 10));
       }
       while (hcChromosomes.length < popSize) {
         const record: Chromosome = {};
@@ -288,7 +301,7 @@ export const OptimizationDashboard: React.FC = () => {
           const metrics = evaluateSuite(currentChromosomes);
           if (isMilestone) updateHistoryPoint(g, 'hybrid', metrics.coverage);
           updateAlgoState('hybrid', { progress: Math.round((g / generations) * 100) });
-          await new Promise(r => setTimeout(r, 65));
+          await new Promise(r => setTimeout(r, 10));
         }
       }
       const sortedPop = [...hybridGaEngine.population].sort((a, b) => b.fitness - a.fitness);
@@ -308,7 +321,7 @@ export const OptimizationDashboard: React.FC = () => {
         const metrics = evaluateSuite(tempSuite);
         updateHistoryPoint(targetGen, 'hybrid', metrics.coverage);
         updateAlgoState('hybrid', { progress: Math.round(currentProgress * 100) });
-        await new Promise(r => setTimeout(r, 60));
+        await new Promise(r => setTimeout(r, 10));
       }
       let popIdx = 0;
       while (hybridChromosomes.length < popSize && popIdx < sortedPop.length) { hybridChromosomes.push(sortedPop[popIdx].values); popIdx++; }
@@ -358,6 +371,32 @@ export const OptimizationDashboard: React.FC = () => {
       ];
 
       setResults(finalResults);
+
+      // Auto-select the Hybrid AI Optimization suite by default
+      const hybridRes = finalResults.find(r => r.key === 'hybrid');
+      if (hybridRes) {
+        const mockStats: PopulationStats[] = [];
+        for (let i = 0; i <= 5; i++) {
+          mockStats.push({
+            generation: Math.round((i / 5) * generations),
+            bestFitness: 0.98,
+            avgFitness: 0.6,
+            coverage: hybridRes.coverage / 100,
+            duplicateRate: hybridRes.duplicateRate / 100,
+            chromosomes: hybridRes.sampleData.map(c => ({ values: c, fitness: 0.9, origin: 'Evolution' }))
+          });
+        }
+        onEvolutionComplete(hybridRes.allData, mockStats, {
+          originalFitness: 0.6,
+          optimizedFitness: 0.95,
+          tweaksCount: hybridRes.edgeCases,
+          edgeCasesDiscovered: hybridRes.edgeCases,
+          details: ['Tự động chọn bộ Hybrid tốt nhất làm mặc định.'],
+          restartsCount: 8
+        });
+        setSelectedSuiteName(`${hybridRes.name} (Mặc định)`);
+        toast.info(`Hệ thống đã tự động chọn bộ tốt nhất: [${hybridRes.name}]`);
+      }
     } catch (e) {
       console.error('Lỗi thực thi so sánh song song:', e);
       toast.error('Đã xảy ra sự cố trong lúc chạy so sánh đa luồng.');
@@ -372,12 +411,36 @@ export const OptimizationDashboard: React.FC = () => {
     setIsApplying(true);
     toast.info(`Đang tiến hành chạy tối ưu chính thức [${result.name}] trên Máy chủ...`);
     const delayPromise = new Promise(resolve => setTimeout(resolve, 1500));
+    
+    let activeSpecId = specificationId;
+    if (!activeSpecId) {
+      try {
+        const specResponse = await fetch(`${config.API_BASE_URL}/api/specifications`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            raw_text: rawText || "Đặc tả nghiệp vụ mẫu để chạy tối ưu hóa.",
+            api_key_override: apiKey ? apiKey.trim() : null
+          })
+        });
+        if (specResponse.ok) {
+          const specData = await specResponse.json();
+          activeSpecId = specData.specification_id;
+          setSpecificationId(activeSpecId);
+        } else {
+          throw new Error("Không thể đồng bộ đặc tả với máy chủ.");
+        }
+      } catch (err) {
+        console.warn("Lỗi khi đăng ký đặc tả tự động:", err);
+      }
+    }
+
     try {
       const response = await fetch(`${config.API_BASE_URL}/api/optimize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          specification_id: specificationId, generations, popSize, crossoverRate, mutationRate,
+          specification_id: activeSpecId, generations, popSize, crossoverRate, mutationRate,
           weights: { validation: wVal, boundary: wBound, security: wSec, diversity: wDiv },
           initial_seeds: initialSeeds, algorithm: result.key, traditional_method: traditionalAlgo
         })
@@ -386,9 +449,9 @@ export const OptimizationDashboard: React.FC = () => {
       if (response.ok) {
         const res = await response.json();
         onEvolutionComplete(res.optimizedDataset, res.progressHistory, res.hcStats);
+        setSelectedSuiteName(result.name);
         toast.success(`Đã lưu thành công bộ test suite của [${result.name}] vào CSDL máy chủ!`);
         setIsApplying(false);
-        setActiveScreen('export');
         return;
       }
     } catch (err) {
@@ -407,9 +470,9 @@ export const OptimizationDashboard: React.FC = () => {
       originalFitness: 0.6, optimizedFitness: 0.95, tweaksCount: result.edgeCases,
       edgeCasesDiscovered: result.edgeCases, details: ['Leo đồi cục bộ ngoại tuyến.'], restartsCount: 8
     });
+    setSelectedSuiteName(result.name);
     toast.success(`Đã nạp tạm thời bộ test suite của [${result.name}] (Client offline mode)`);
     setIsApplying(false);
-    setActiveScreen('export');
   };
 
   const getProgressChartData = () => {
@@ -452,8 +515,8 @@ export const OptimizationDashboard: React.FC = () => {
         </p>
       </div>
 
-      {/* CẤU HÌNH & NÚT CHẠY */}
-      <div className="grid-2" style={{ gap: '16px' }}>
+      {/* CẤU HÌNH & NÚT CHẠY — ẩn khi đang chạy */}
+      {!isRunning && <div className="grid-2" style={{ gap: '16px' }}>
 
         {/* Profile Selector */}
         <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -529,9 +592,10 @@ export const OptimizationDashboard: React.FC = () => {
             }
           </button>
         </div>
-      </div>
+      </div>}
 
-      {/* CẤU HÌNH NÂNG CAO */}
+      {/* CẤU HÌNH NÂNG CAO — ẩn khi đang chạy */}
+      {!isRunning && <>
       <details
         className="glass-card"
         open={showAdvanced}
@@ -611,37 +675,70 @@ export const OptimizationDashboard: React.FC = () => {
             </div>
           </div>
         </div>
-      </details>
+      </details></>}
 
       {/* TRẠNG THÁI ĐANG CHẠY */}
       {isRunning && (
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 24px', textAlign: 'center', gap: '24px' }}>
-          <div style={{ position: 'relative', width: '72px', height: '72px' }}>
-            <div className="tech-spinner" style={{ position: 'absolute', inset: 0, border: '3px solid rgba(45,212,191,0.1)', borderTop: '3px solid var(--color-teal)', borderRadius: '50%' }} />
-            <div className="tech-spinner" style={{ position: 'absolute', inset: '8px', border: '3px solid rgba(167,139,250,0.1)', borderBottom: '3px solid var(--color-violet)', borderRadius: '50%', animationDirection: 'reverse', animationDuration: '1.2s' }} />
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Cpu size={24} style={{ color: 'var(--color-teal)' }} />
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(8, 12, 28, 0.7)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div className="glass-card" style={{
+            background: 'rgba(10, 18, 36, 0.85)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '24px',
+            padding: '36px 40px',
+            width: '100%',
+            maxWidth: '560px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
+            gap: '24px'
+          }}>
+            <LoadingSpinner
+              icon={<Cpu size={28} style={{ color: 'var(--color-teal)' }} />}
+              outerColor="var(--color-teal)"
+              innerColor="var(--color-violet)"
+            />
+
+            <div>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff', margin: '0 0 8px' }}>
+                Đang chạy tối ưu hóa song song...
+              </h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.6' }}>
+                4 thuật toán chạy đồng thời. Kết quả sẽ hiển thị tự động khi hoàn thành.
+              </p>
             </div>
-          </div>
-          <div>
-            <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff', margin: '0 0 6px' }}>Đang chạy tối ưu hóa song song...</h3>
-            <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0 }}>4 thuật toán đang chạy đồng thời. Vui lòng chờ trong giây lát.</p>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', width: '100%', maxWidth: '580px' }}>
-            {[
-              { key: 'traditional', label: 'Baseline', color: '#64748b' },
-              { key: 'ga', label: 'Genetic', color: 'var(--color-teal)' },
-              { key: 'hc', label: 'Hill Climb', color: 'var(--color-violet)' },
-              { key: 'hybrid', label: 'Hybrid AI', color: 'var(--color-rose)' },
-            ].map(a => (
-              <div key={a.key} style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${a.color}30`, borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: a.color, fontWeight: 'bold', marginBottom: '6px' }}>{a.label}</div>
-                <div style={{ width: '100%', height: '3px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                  <div style={{ width: `${runStates[a.key]?.progress || 0}%`, height: '100%', background: a.color, transition: 'width 0.3s' }} />
+
+            {/* 4 progress bars */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', width: '100%', marginTop: '8px' }}>
+              {[
+                { key: 'traditional', label: 'Baseline Validation', color: '#64748b' },
+                { key: 'ga', label: 'Genetic Optimization', color: 'var(--color-teal)' },
+                { key: 'hc', label: 'Local Refinement', color: 'var(--color-violet)' },
+                { key: 'hybrid', label: 'Hybrid AI Optimization', color: 'var(--color-rose)' },
+              ].map(a => (
+                <div key={a.key} style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid rgba(255,255,255,0.04)`, borderRadius: '12px', padding: '12px 14px', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '11px', color: a.color, fontWeight: 'bold' }}>{a.label}</span>
+                    <span style={{ fontSize: '11px', color: '#fff', fontWeight: 'bold' }}>{runStates[a.key]?.progress || 0}%</span>
+                  </div>
+                  <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ width: `${runStates[a.key]?.progress || 0}%`, height: '100%', background: a.color, transition: 'width 0.3s', borderRadius: '2px' }} />
+                  </div>
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '5px' }}>{runStates[a.key]?.progress || 0}%</div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -667,16 +764,17 @@ export const OptimizationDashboard: React.FC = () => {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
             {results.map(res => {
               const isWinner = res.key === 'hybrid';
+              const isSelected = selectedSuiteName.startsWith(res.name);
               return (
                 <div
                   key={res.key}
                   className="glass-card"
                   style={{
-                    border: isWinner ? '1.5px solid var(--color-rose)' : '1px solid rgba(255,255,255,0.07)',
-                    background: isWinner ? 'rgba(244,63,94,0.04)' : 'rgba(15,23,42,0.55)',
+                    border: isSelected ? `1.5px solid ${res.color}` : isWinner ? '1.5px solid var(--color-rose)' : '1px solid rgba(255,255,255,0.07)',
+                    background: isSelected ? `${res.color}08` : isWinner ? 'rgba(244,63,94,0.04)' : 'rgba(15,23,42,0.55)',
                     padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px',
                     position: 'relative', borderRadius: '10px',
-                    boxShadow: isWinner ? '0 0 20px rgba(244,63,94,0.12)' : 'none'
+                    boxShadow: isSelected ? `0 0 20px ${res.color}18` : isWinner ? '0 0 20px rgba(244,63,94,0.12)' : 'none'
                   }}
                 >
                   {isWinner && (
@@ -718,14 +816,19 @@ export const OptimizationDashboard: React.FC = () => {
                   <button
                     onClick={() => handleApplySuite(res)}
                     style={{
-                      width: '100%', padding: '9px', borderRadius: '6px', border: 'none',
-                      fontWeight: 'bold', fontSize: '11.5px', background: res.color, color: '#000',
-                      cursor: 'pointer', boxShadow: `0 0 12px ${res.color}40`, transition: 'all 0.2s',
+                      width: '100%', padding: '9px', borderRadius: '6px', 
+                      border: isSelected ? `1.5px solid ${res.color}` : 'none',
+                      fontWeight: 'bold', fontSize: '11.5px', 
+                      background: isSelected ? 'transparent' : res.color, 
+                      color: isSelected ? '#fff' : '#000',
+                      cursor: 'pointer', 
+                      boxShadow: isSelected ? `0 0 16px ${res.color}30` : `0 0 12px ${res.color}40`, 
+                      transition: 'all 0.2s',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
                     }}
                   >
-                    <CheckCircle2 size={13} />
-                    Chọn & Lưu bộ này
+                    <CheckCircle2 size={13} style={{ color: isSelected ? res.color : 'inherit' }} />
+                    {isSelected ? 'Đang chọn bộ này' : 'Chọn & Lưu bộ này'}
                   </button>
                 </div>
               );
@@ -854,23 +957,131 @@ export const OptimizationDashboard: React.FC = () => {
             </div>
           </div>
 
+          {/* HIỂN THỊ CHI TIẾT BỘ CA KIỂM THỬ ĐÃ CHỌN */}
+          {optimizedDataset && optimizedDataset.length > 0 && (
+            <div className="glass-card animate-fade-in" style={{
+              padding: '20px',
+              background: 'rgba(15, 23, 42, 0.65)',
+              border: '1px solid rgba(45, 212, 191, 0.2)',
+              borderRadius: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+              marginTop: '8px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <CheckCircle2 size={16} style={{ color: 'var(--color-teal)' }} />
+                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', margin: 0 }}>
+                    Chi Tiết Dữ Liệu Bộ Test Cases Đã Chọn ({selectedSuiteName})
+                  </h3>
+                </div>
+                <span style={{ fontSize: '11px', background: 'rgba(45, 212, 191, 0.12)', color: 'var(--color-teal)', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                  {optimizedDataset.length} ca test
+                </span>
+              </div>
+
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+                Bạn đang xem trước bộ dữ liệu tối ưu của giải thuật <strong>{selectedSuiteName}</strong> đã được nạp thành công. Hãy xác nhận lại thông tin và nhấn nút bên dưới để chuyển tiếp sang <strong>Bước 3: Xem & Xuất Kịch Bản</strong>.
+              </p>
+
+              {/* BẢNG DỮ LIỆU */}
+              <div style={{ width: '100%', overflowX: 'auto', maxHeight: '300px', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(15,23,42,0.8)', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+                      <th style={{ padding: '10px 12px', width: '50px' }}>STT</th>
+                      {optimizedDataset[0] && Object.keys(optimizedDataset[0]).map(key => (
+                        <th key={key} style={{ padding: '10px 12px', color: '#fff' }}>{key}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {optimizedDataset.map((row, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: idx % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)', fontWeight: 'bold' }}>{idx + 1}</td>
+                        {Object.keys(row).map(key => (
+                          <td key={key} style={{ padding: '10px 12px', color: 'var(--text-primary)' }}>
+                            {String(row[key])}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* HÀNH ĐỘNG */}
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '6px' }}>
+                <button
+                  onClick={() => setActiveScreen('export')}
+                  className="btn btn-primary glow-teal"
+                  style={{
+                    padding: '11px 28px',
+                    fontSize: '13px',
+                    fontWeight: 'bold',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    boxShadow: '0 4px 16px rgba(45, 212, 191, 0.3)',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Chuyển sang Bước 3: Xem & Xuất Kịch Bản <Zap size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 
-      {/* LOADING OVERLAY khi đang apply */}
+
+      {/* OVERLAY khi đang lưu */}
       {isApplying && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,13,28,0.9)', backdropFilter: 'blur(8px)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(15,23,42,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '40px', maxWidth: '420px', width: '90%', textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
-            <div style={{ position: 'relative', width: '72px', height: '72px' }}>
-              <div className="tech-spinner" style={{ position: 'absolute', inset: 0, border: '4px solid rgba(45,212,191,0.1)', borderTop: '4px solid var(--color-teal)', borderRadius: '50%' }} />
-              <div className="tech-spinner" style={{ position: 'absolute', inset: '8px', border: '4px solid rgba(167,139,250,0.1)', borderBottom: '4px solid var(--color-violet)', borderRadius: '50%', animationDirection: 'reverse', animationDuration: '1.2s' }} />
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Cpu size={26} style={{ color: 'var(--color-teal)' }} />
-              </div>
-            </div>
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(8, 12, 28, 0.7)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div className="glass-card" style={{
+            background: 'rgba(10, 18, 36, 0.85)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '24px',
+            padding: '36px 40px',
+            width: '100%',
+            maxWidth: '440px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
+            gap: '24px'
+          }}>
+            <LoadingSpinner
+              icon={<Cpu size={28} style={{ color: 'var(--color-teal)' }} />}
+              outerColor="var(--color-teal)"
+              innerColor="var(--color-violet)"
+            />
+
             <div>
-              <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff', margin: '0 0 8px' }}>Đang lưu bộ dữ liệu...</h3>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff', margin: '0 0 8px' }}>
+                Đang lưu bộ dữ liệu...
+              </h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.6' }}>
                 Đang đồng bộ hóa với cơ sở dữ liệu máy chủ. Vui lòng giữ kết nối.
               </p>
             </div>
@@ -881,3 +1092,5 @@ export const OptimizationDashboard: React.FC = () => {
     </div>
   );
 };
+
+

@@ -46,8 +46,10 @@ interface AppState {
   selectedMethods: ('random' | 'bva' | 'ep' | 'decision')[];
   boundaryCount: number;
   partitionCount: number;
+  selectedSuiteName: string;
 
   // Actions
+  setSelectedSuiteName: (name: string) => void;
   setRawText: (text: string) => void;
   setParsedSchema: (schema: FieldConstraint[] | ((prev: FieldConstraint[]) => FieldConstraint[])) => void;
   setInitialSeeds: (seeds: Chromosome[] | ((prev: Chromosome[]) => Chromosome[])) => void;
@@ -121,6 +123,7 @@ export const useAppStore = create<AppState>((set, get) => {
     selectedMethods: ['random'],
     boundaryCount: 3,
     partitionCount: 3,
+    selectedSuiteName: '',
 
     // Simple Setters
     setRawText: (text) => set({ rawText: text }),
@@ -140,6 +143,7 @@ export const useAppStore = create<AppState>((set, get) => {
       set({ apiKey: key });
     },
     setOptimizedDataset: (dataset) => set({ optimizedDataset: dataset }),
+    setSelectedSuiteName: (name) => set({ selectedSuiteName: name }),
     setActiveScreen: (screen) => set({ activeScreen: screen }),
     setActiveSection: (section) => set({ activeSection: section }),
     markScreenCompleted: (screen) => set((state) => ({
