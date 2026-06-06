@@ -146,9 +146,9 @@ function App() {
           <div style={{ padding: '6px 12px 6px', fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
             Quy Trình 3 Bước
           </div>
-          {nav('prepare',  '1 · Chuẩn Bị Dữ Liệu',  <Database size={16} />,    '#3b82f6')}
-          {nav('optimize', '2 · Tối Ưu & So Sánh',  <Activity size={16} />,    '#a78bfa')}
-          {nav('export',   '3 · Xuất Kết Quả',       <Download size={16} />,    '#2dd4bf')}
+          {nav('prepare', '1 · Chuẩn Bị Dữ Liệu', <Database size={16} />, '#3b82f6')}
+          {nav('optimize', '2 · Tối Ưu & So Sánh', <Activity size={16} />, '#a78bfa')}
+          {nav('export', '3 · Xuất Kết Quả', <Download size={16} />, '#2dd4bf')}
         </nav>
 
         {/* Footer hint */}
@@ -264,7 +264,7 @@ function App() {
               stepId="prepare"
               title="Bước 1: Chuẩn Bị Dữ Liệu Đầu Vào"
               icon={<Database size={24} />}
-              description="Tạo bộ dữ liệu hạt giống F0 và bảng ràng buộc (Schema) cho thuật toán. Chọn 1 trong 2 cách: để AI phân tích đặc tả nghiệp vụ, hoặc tải lên file dữ liệu có sẵn."
+              description=""
               hints={['AI phân tích đặc tả', 'hoặc Upload JSON/CSV', 'Tự sinh hạt giống F0', 'Chuẩn bị cho thuật toán']}
               accentColor="#3b82f6"
             >

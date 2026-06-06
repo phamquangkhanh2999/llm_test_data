@@ -2,9 +2,32 @@ import React, { useState } from 'react';
 import type { Chromosome } from '../algorithms/genetic';
 import { GeneticEngine } from '../algorithms/genetic';
 import type { FieldConstraint } from '../algorithms/presets';
-import { Download, FileSpreadsheet, FileJson, History, Database, AlertCircle, Trash2, Clock, ShieldAlert, Zap, Terminal, Code, Shrink, FileCode } from 'lucide-react';
+import { Download, FileSpreadsheet, FileJson, History, Database, AlertCircle, Trash2, Clock, ShieldAlert, Zap, Terminal, Code, Shrink, FileCode, Copy, X, Check } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
+
+const highlightSyntax = (content: string, language: string): string => {
+  let escaped = content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  if (language === 'typescript' || language === 'javascript') {
+    escaped = escaped.replace(/\b(import|from|const|let|var|function|return|async|await|test|describe|it|expect|cy|page|forEach|typeof|undefined)\b/g, '<span style="color: #f43f5e; font-weight: bold;">$1</span>');
+    escaped = escaped.replace(/(['"`])(.*?)\1/g, '<span style="color: #2dd4bf;">$1$2$1</span>');
+    escaped = escaped.replace(/(\/\/.*)/g, '<span style="color: #475569; font-style: italic;">$1</span>');
+    escaped = escaped.replace(/(\/\*\*[\s\S]*?\*\/)/g, '<span style="color: #475569; font-style: italic;">$1</span>');
+  } else if (language === 'sql') {
+    escaped = escaped.replace(/\b(CREATE TABLE|IF NOT EXISTS|INTEGER|PRIMARY KEY|AUTOINCREMENT|TEXT|INSERT INTO|VALUES|NULL|SELECT|UNION)\b/g, '<span style="color: #a78bfa; font-weight: bold;">$1</span>');
+    escaped = escaped.replace(/(['])(.*?)\1/g, '<span style="color: #2dd4bf;">$1$2$1</span>');
+    escaped = escaped.replace(/(--.*)/g, '<span style="color: #475569; font-style: italic;">$1</span>');
+  } else if (language === 'json') {
+    escaped = escaped.replace(/(".*?")(\s*:)/g, '<span style="color: #a78bfa;">$1</span>$2');
+    escaped = escaped.replace(/(:\s*)(".*?")/g, '$1<span style="color: #2dd4bf;">$2</span>');
+    escaped = escaped.replace(/(:\s*)(\b\d+\b|true|false|null)/g, '$1<span style="color: #facc15;">$2</span>');
+  }
+  return escaped;
+};
 
 export const HistoryManager: React.FC = () => {
   const {
@@ -17,6 +40,15 @@ export const HistoryManager: React.FC = () => {
   } = useAppStore();
   // Trạng thái (state) hiển thị thông báo đã sao chép chuỗi JSON vào bộ nhớ đệm
   const [copied, setCopied] = useState(false);
+  // Trạng thái xem trước mã nguồn chia đôi màn hình
+  const [previewCode, setPreviewCode] = useState<{
+    title: string;
+    filename: string;
+    content: string;
+    language: string;
+  } | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
+
   // Trạng thái lọc loại ca kiểm thử trong bảng xem trước
   const [filterType, setFilterType] = useState<'all' | 'happy' | 'boundary' | 'security'>('all');
   // Số lượng bản ghi hiển thị trong bảng (có thể expand thêm)
@@ -123,13 +155,15 @@ export const HistoryManager: React.FC = () => {
   // --- HÀM XUẤT FILE JSON ---
   const handleExportJSON = () => {
     if (optimizedDataset.length === 0) return;
-    
+    const safeSchemaName = schemaName.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const jsonContent = JSON.stringify(optimizedDataset, null, 2);
-    downloadFile(
-      jsonContent, 
-      `${schemaName.toLowerCase().replace(/ /g, '_')}_dataset.json`, 
-      'application/json'
-    );
+    
+    setPreviewCode({
+      title: 'JSON Dataset Preview',
+      filename: `${safeSchemaName}_dataset.json`,
+      content: jsonContent,
+      language: 'json'
+    });
   };
 
   // --- HÀM SAO CHÉP NHANH CHUỖI JSON ---
@@ -189,7 +223,12 @@ test.describe('${schemaName} Automation Form Tests', () => {
   });
 });
 `;
-    downloadFile(scriptContent, `${safeSchemaName}_playwright.spec.ts`, 'application/typescript');
+    setPreviewCode({
+      title: 'Playwright Script Preview',
+      filename: `${safeSchemaName}_playwright.spec.ts`,
+      content: scriptContent,
+      language: 'typescript'
+    });
   };
 
   // --- HÀM XUẤT SCRIPT CYPRESS (.spec.js) ---
@@ -233,7 +272,12 @@ describe('${schemaName} Automation Form Tests', () => {
   });
 });
 `;
-    downloadFile(scriptContent, `${safeSchemaName}_cypress.spec.js`, 'application/javascript');
+    setPreviewCode({
+      title: 'Cypress Script Preview',
+      filename: `${safeSchemaName}_cypress.spec.js`,
+      content: scriptContent,
+      language: 'javascript'
+    });
   };
 
   // --- HÀM XUẤT SQL INSERT ---
@@ -268,7 +312,12 @@ ${fields.map(f => `  ${f} TEXT`).join(',\n')}
 INSERT INTO ${tableName} (${columns}) VALUES
 ${values};
 `;
-    downloadFile(sqlContent, `${safeSchemaName}_insert.sql`, 'text/sql');
+    setPreviewCode({
+      title: 'SQL Insertion Script Preview',
+      filename: `${safeSchemaName}_insert.sql`,
+      content: sqlContent,
+      language: 'sql'
+    });
   };
 
   // --- HÀM XUẤT POSTMAN COLLECTION ---
@@ -291,7 +340,12 @@ ${values};
       item: items,
     };
 
-    downloadFile(JSON.stringify(collection, null, 2), `${safeSchemaName}_postman.json`, 'application/json');
+    setPreviewCode({
+      title: 'Postman Collection Preview',
+      filename: `${safeSchemaName}_postman.json`,
+      content: JSON.stringify(collection, null, 2),
+      language: 'json'
+    });
   };
 
   // --- HÀM CHẠY HÀNG LOẠT (BATCH RUN ALL) ---
@@ -824,208 +878,320 @@ ${values};
         </div>
       </div>
  
-      {/* CỘT BÊN PHẢI: BẢNG XEM TRƯỚC BẢN GHI DỮ LIỆU CHI TIẾT */}
-      <div className="glass-card flex flex-col gap-md violet-border" style={{ background: 'rgba(15, 23, 42, 0.4)' }}>
-        <div className="flex justify-between align-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
-          <div className="flex align-center gap-sm">
-            <Database className="text-violet" size={22} style={{ color: 'var(--color-violet)' }} />
-            <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff', letterSpacing: '0.03em' }}>XEM TRƯỚC BỘ CA KIỂM THỬ</h2>
-          </div>
-          {optimizedDataset.length > 0 && (
-            <span style={{ fontSize: '11px', background: 'rgba(167,139,250,0.1)', color: 'var(--color-violet)', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
-              Tổng cộng: {optimizedDataset.length} ca test
-            </span>
-          )}
-        </div>
-
-        {optimizedDataset.length > 0 ? (
-          <div className="flex flex-col gap-md" style={{ flex: 1 }}>
-            
-            {/* THANH BỘ LỌC THÔNG MINH (QA CATEGORY FILTERS) */}
-            <div className="flex gap-xs" style={{ flexWrap: 'wrap', background: 'rgba(15, 23, 42, 0.4)', padding: '4px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <button 
-                onClick={() => setFilterType('all')}
-                style={{ 
-                  flex: 1, minWidth: '80px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                  background: filterType === 'all' ? 'rgba(255,255,255,0.08)' : 'transparent',
-                  color: filterType === 'all' ? '#fff' : 'var(--text-muted)'
-                }}
-              >
-                Tất cả ({totalCount})
-              </button>
-              <button 
-                onClick={() => setFilterType('happy')}
-                style={{ 
-                  flex: 1, minWidth: '95px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                  background: filterType === 'happy' ? 'rgba(45,212,191,0.08)' : 'transparent',
-                  color: filterType === 'happy' ? 'var(--color-teal)' : 'var(--text-muted)'
-                }}
-              >
-                🟢 Positive ({happyCount})
-              </button>
-              <button 
-                onClick={() => setFilterType('boundary')}
-                style={{ 
-                  flex: 1, minWidth: '95px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                  background: filterType === 'boundary' ? 'rgba(167,139,250,0.08)' : 'transparent',
-                  color: filterType === 'boundary' ? 'var(--color-violet)' : 'var(--text-muted)'
-                }}
-              >
-                🟡 Rìa Biên ({boundaryCount})
-              </button>
-              <button 
-                onClick={() => setFilterType('security')}
-                style={{ 
-                  flex: 1, minWidth: '95px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                  background: filterType === 'security' ? 'rgba(244,63,94,0.08)' : 'transparent',
-                  color: filterType === 'security' ? 'var(--color-rose)' : 'var(--text-muted)'
-                }}
-              >
-                🔴 An Ninh ({securityCount})
-              </button>
-            </div>
-
-            {/* BẢNG DỮ LIỆU HIỂN THỊ SAU KHI LỌC */}
-            <div style={{ flex: 1, width: '100%', overflowX: 'auto', maxHeight: '310px', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' }}>
-              {filteredDataset.length === 0 ? (
-                <div style={{ padding: '48px', color: 'var(--text-muted)', textAlign: 'center', fontSize: '13px' }}>
-                  Không tìm thấy ca kiểm thử nào khớp với bộ lọc này.
+      {/* CỘT BÊN PHẢI: BẢNG XEM TRƯỚC BẢN GHI DỮ LIỆU CHI TIẾT HOẶC XEM TRƯỚC CODE */}
+      <div className="glass-card flex flex-col gap-md violet-border" style={{ background: 'rgba(15, 23, 42, 0.4)', minHeight: '520px' }}>
+        {previewCode ? (
+          <div className="flex flex-col gap-md" style={{ flex: 1, minHeight: '520px' }}>
+            <div className="flex justify-between align-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+              <div className="flex align-center gap-sm">
+                <Code className="text-violet" size={22} style={{ color: 'var(--color-violet)' }} />
+                <div>
+                  <h2 style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', margin: 0 }}>{previewCode.title}</h2>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{previewCode.filename}</span>
                 </div>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ background: 'rgba(15,23,42,0.8)', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
-                      <th style={{ padding: '10px 12px', width: '80px', minWidth: '100px' }}>
-                        <div style={{ minWidth: '100px' }}>Phân Loại</div>
-                      </th>
-                      {Object.keys(optimizedDataset[0]).map(k => (
-                        <th key={k} style={{ padding: '10px 12px' }}>
-                          <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{k}</div>
-                        </th>
-                      ))}
-                      <th style={{ padding: '10px 12px', width: '90px', minWidth: '90px', textAlign: 'center' }}>
-                        <div style={{ minWidth: '90px' }}>Hành Động</div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredDataset.slice(0, displayLimit).map(({ row, idx, category }) => {
-                      return (
-                        <tr 
-                          key={idx} 
-                          style={{ 
-                            borderBottom: '1px solid rgba(255,255,255,0.04)',
-                            background: category === 'security' ? 'rgba(244,63,94,0.03)' : category === 'boundary' ? 'rgba(167,139,250,0.03)' : 'none'
-                          }}
-                        >
-                          {/* Render badge phân loại */}
-                          <td style={{ padding: '10px 12px', minWidth: '100px', verticalAlign: 'top' }}>
-                            <span 
-                              style={{ 
-                                padding: '2px 6px', 
-                                borderRadius: '4px', 
-                                fontSize: '9.5px', 
-                                fontWeight: 'bold',
-                                background: category === 'security' ? 'rgba(244,63,94,0.15)' : category === 'boundary' ? 'rgba(167,139,250,0.15)' : 'rgba(45,212,191,0.15)',
-                                color: category === 'security' ? 'var(--color-rose)' : category === 'boundary' ? 'var(--color-violet)' : 'var(--color-teal)'
-                              }}
-                            >
-                              {category === 'security' ? 'AN NINH' : category === 'boundary' ? 'RÌA BIÊN' : 'POSITIVE'}
-                            </span>
-                          </td>
-                          {Object.keys(row).map(k => {
-                            const valStr = String(row[k]);
-                            const isSpecial = valStr.includes("'") || valStr.includes("<script") || valStr === "" || valStr === "0";
-                            return (
-                              <td 
-                                key={k} 
-                                title={valStr} // Tooltip khi hover xem đầy đủ payload
-                                style={{ 
-                                  padding: '10px 12px', 
-                                  verticalAlign: 'top'
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontFamily: 'var(--font-mono)',
-                                    color: category === 'security' && (valStr.includes("'") || valStr.includes("<script") || valStr.includes("--")) ? 'var(--color-rose)' : 'inherit',
-                                    fontWeight: isSpecial ? 'bold' : 'normal',
-                                    minWidth: '120px',
-                                    maxWidth: '280px',
-                                    maxHeight: '80px',
-                                    overflowY: 'auto',
-                                    wordBreak: 'break-word',
-                                    whiteSpace: 'normal',
-                                    paddingRight: '4px'
-                                  }}
-                                >
-                                  {valStr === '' ? <i style={{ color: 'var(--text-muted)' }}>(Chuỗi rỗng / Empty)</i> : valStr}
-                                </div>
-                              </td>
-                            );
-                          })}
-                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                            <button 
-                              onClick={() => handleSimulateAPI(row, idx)}
-                              className="btn btn-secondary"
-                              style={{ 
-                                padding: '4px 8px', 
-                                fontSize: '10.5px', 
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                border: '1px solid',
-                                borderColor: selectedRecordIdx === idx ? 'var(--color-teal)' : 'rgba(255,255,255,0.08)',
-                                color: selectedRecordIdx === idx ? 'var(--color-teal)' : 'var(--text-secondary)',
-                                background: selectedRecordIdx === idx ? 'rgba(45,212,191,0.08)' : 'rgba(255,255,255,0.01)',
-                                cursor: 'pointer',
-                                borderRadius: '4px',
-                                transition: 'all 0.2s',
-                                fontWeight: '600'
-                              }}
-                            >
-                              <Zap size={10} /> Test API
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+              </div>
               
-              {/* NÚT XEM THÊM / THU GỌN */}
-              {filteredDataset.length > displayLimit ? (
-                <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(15,23,42,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'center', gap: '10px' }}>
-                  <button
-                    onClick={() => setDisplayLimit(prev => prev + 30)}
-                    style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.2)', borderRadius: '6px', color: 'var(--color-teal)', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    ↓ Xem thêm {Math.min(30, filteredDataset.length - displayLimit)} ca ({filteredDataset.length - displayLimit} còn lại)
-                  </button>
-                </div>
-              ) : filteredDataset.length > 30 ? (
-                <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(15,23,42,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                  <button
-                    onClick={() => setDisplayLimit(30)}
-                    style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: 'var(--text-muted)', cursor: 'pointer' }}
-                  >
-                    ↑ Thu gọn
-                  </button>
-                </div>
-              ) : null}
+              <div className="flex align-center gap-xs">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(previewCode.content).then(() => {
+                      setCodeCopied(true);
+                      toast.success('Đã sao chép mã nguồn!');
+                      setTimeout(() => setCodeCopied(false), 2000);
+                    });
+                  }}
+                  className="btn btn-secondary flex align-center gap-xs"
+                  style={{ padding: '6px 10px', fontSize: '12px' }}
+                >
+                  {codeCopied ? <Check size={14} className="text-teal" /> : <Copy size={14} />}
+                  {codeCopied ? 'Đã sao chép' : 'Sao chép'}
+                </button>
+                
+                <button
+                  onClick={() => {
+                    let mime = 'application/json';
+                    if (previewCode.language === 'typescript') mime = 'application/typescript';
+                    if (previewCode.language === 'javascript') mime = 'application/javascript';
+                    if (previewCode.language === 'sql') mime = 'text/sql';
+                    downloadFile(previewCode.content, previewCode.filename, mime);
+                    toast.success(`Đã tải xuống ${previewCode.filename}`);
+                  }}
+                  className="btn btn-primary flex align-center gap-xs"
+                  style={{ 
+                    padding: '6px 12px', 
+                    fontSize: '12px',
+                    background: 'linear-gradient(135deg, var(--color-teal) 0%, #0d9488 100%)', 
+                    border: 'none', 
+                    color: '#fff', 
+                    fontWeight: 'bold'
+                  }}
+                >
+                  <Download size={14} /> Tải về
+                </button>
+
+                <button
+                  onClick={() => setPreviewCode(null)}
+                  className="btn btn-secondary"
+                  style={{ padding: '6px', minWidth: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="Quay lại danh sách ca test"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* IDE split screen layout */}
+            <div style={{ 
+              display: 'flex', 
+              fontFamily: 'var(--font-mono)', 
+              fontSize: '12px', 
+              background: '#040711', 
+              borderRadius: '8px', 
+              border: '1px solid rgba(255,255,255,0.05)', 
+              overflow: 'hidden', 
+              flex: 1,
+              maxHeight: '420px',
+              position: 'relative'
+            }}>
+              {/* Line numbers gutter */}
+              <div style={{ 
+                color: 'rgba(255,255,255,0.2)', 
+                textAlign: 'right', 
+                padding: '12px 8px', 
+                background: '#020307',
+                borderRight: '1px solid rgba(255,255,255,0.05)', 
+                userSelect: 'none',
+                minWidth: '40px'
+              }}>
+                {previewCode.content.split('\n').map((_, i) => (
+                  <div key={i} style={{ height: '20px', lineHeight: '20px' }}>{i + 1}</div>
+                ))}
+              </div>
+              
+              {/* Code window */}
+              <pre style={{ 
+                margin: 0, 
+                padding: '12px', 
+                color: '#e2e8f0', 
+                whiteSpace: 'pre', 
+                overflow: 'auto', 
+                flex: 1,
+                lineHeight: '20px'
+              }}>
+                <code dangerouslySetInnerHTML={{ __html: highlightSyntax(previewCode.content, previewCode.language) }} />
+              </pre>
             </div>
             
-            {/* LƯU Ý BẢO MẬT DƯỚI ĐÁY */}
+            {/* LƯU Ý AN TOÀN */}
             <div className="flex align-center gap-sm" style={{ padding: '8px 12px', background: 'rgba(244,63,94,0.04)', border: '1px solid rgba(244,63,94,0.1)', borderRadius: '6px', fontSize: '11px', color: 'var(--color-rose)', marginTop: 'auto' }}>
               <ShieldAlert size={14} style={{ flexShrink: 0 }} />
-              <span><b>Lưu ý an toàn:</b> Các chuỗi XSS/SQLi tấn công được sinh ra nhằm mục đích dò quét an ninh phần mềm. Đã mã hóa HTML khi render, tránh dán trực tiếp vào DB sản xuất của bạn.</span>
+              <span><b>Lưu ý an toàn:</b> Script kiểm thử sinh ra chỉ chứa dữ liệu giả lập. Hãy xác minh kỹ lưỡng trước khi đưa vào môi trường kiểm thử thực tế.</span>
             </div>
           </div>
         ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.05)', borderRadius: 'var(--radius-sm)', background: 'rgba(255,255,255,0.01)', padding: '80px 0', color: 'var(--text-muted)' }}>
-            Chưa có tập dữ liệu tối ưu hóa nào được sinh ra.
-          </div>
+          <>
+            <div className="flex justify-between align-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+              <div className="flex align-center gap-sm">
+                <Database className="text-violet" size={22} style={{ color: 'var(--color-violet)' }} />
+                <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff', letterSpacing: '0.03em' }}>XEM TRƯỚC BỘ CA KIỂM THỬ</h2>
+              </div>
+              {optimizedDataset.length > 0 && (
+                <span style={{ fontSize: '11px', background: 'rgba(167,139,250,0.1)', color: 'var(--color-violet)', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                  Tổng cộng: {optimizedDataset.length} ca test
+                </span>
+              )}
+            </div>
+
+            {optimizedDataset.length > 0 ? (
+              <div className="flex flex-col gap-md" style={{ flex: 1 }}>
+                
+                {/* THANH BỘ LỌC THÔNG MINH (QA CATEGORY FILTERS) */}
+                <div className="flex gap-xs" style={{ flexWrap: 'wrap', background: 'rgba(15, 23, 42, 0.4)', padding: '4px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <button 
+                    onClick={() => setFilterType('all')}
+                    style={{ 
+                      flex: 1, minWidth: '80px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                      background: filterType === 'all' ? 'rgba(255,255,255,0.08)' : 'transparent',
+                      color: filterType === 'all' ? '#fff' : 'var(--text-muted)'
+                    }}
+                  >
+                    Tất cả ({totalCount})
+                  </button>
+                  <button 
+                    onClick={() => setFilterType('happy')}
+                    style={{ 
+                      flex: 1, minWidth: '95px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                      background: filterType === 'happy' ? 'rgba(45,212,191,0.08)' : 'transparent',
+                      color: filterType === 'happy' ? 'var(--color-teal)' : 'var(--text-muted)'
+                    }}
+                  >
+                    🟢 Positive ({happyCount})
+                  </button>
+                  <button 
+                    onClick={() => setFilterType('boundary')}
+                    style={{ 
+                      flex: 1, minWidth: '95px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                      background: filterType === 'boundary' ? 'rgba(167,139,250,0.08)' : 'transparent',
+                      color: filterType === 'boundary' ? 'var(--color-violet)' : 'var(--text-muted)'
+                    }}
+                  >
+                    🟡 Rìa Biên ({boundaryCount})
+                  </button>
+                  <button 
+                    onClick={() => setFilterType('security')}
+                    style={{ 
+                      flex: 1, minWidth: '95px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
+                      background: filterType === 'security' ? 'rgba(244,63,94,0.08)' : 'transparent',
+                      color: filterType === 'security' ? 'var(--color-rose)' : 'var(--text-muted)'
+                    }}
+                  >
+                    🔴 An Ninh ({securityCount})
+                  </button>
+                </div>
+
+                {/* BẢNG DỮ LIỆU HIỂN THỊ SAU KHI LỌC */}
+                <div style={{ flex: 1, width: '100%', overflowX: 'auto', maxHeight: '310px', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                  {filteredDataset.length === 0 ? (
+                    <div style={{ padding: '48px', color: 'var(--text-muted)', textAlign: 'center', fontSize: '13px' }}>
+                      Không tìm thấy ca kiểm thử nào khớp với bộ lọc này.
+                    </div>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ background: 'rgba(15,23,42,0.8)', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+                          <th style={{ padding: '10px 12px', width: '80px', minWidth: '100px' }}>
+                            <div style={{ minWidth: '100px' }}>Phân Loại</div>
+                          </th>
+                          {Object.keys(optimizedDataset[0]).map(k => (
+                            <th key={k} style={{ padding: '10px 12px' }}>
+                              <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{k}</div>
+                            </th>
+                          ))}
+                          <th style={{ padding: '10px 12px', width: '90px', minWidth: '90px', textAlign: 'center' }}>
+                            <div style={{ minWidth: '90px' }}>Hành Động</div>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredDataset.slice(0, displayLimit).map(({ row, idx, category }) => {
+                          return (
+                            <tr 
+                              key={idx} 
+                              style={{ 
+                                borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                background: category === 'security' ? 'rgba(244,63,94,0.03)' : category === 'boundary' ? 'rgba(167,139,250,0.03)' : 'none'
+                              }}
+                            >
+                              {/* Render badge phân loại */}
+                              <td style={{ padding: '10px 12px', minWidth: '100px', verticalAlign: 'top' }}>
+                                <span 
+                                  style={{ 
+                                    padding: '2px 6px', 
+                                    borderRadius: '4px', 
+                                    fontSize: '9.5px', 
+                                    fontWeight: 'bold',
+                                    background: category === 'security' ? 'rgba(244,63,94,0.15)' : category === 'boundary' ? 'rgba(167,139,250,0.15)' : 'rgba(45,212,191,0.15)',
+                                    color: category === 'security' ? 'var(--color-rose)' : category === 'boundary' ? 'var(--color-violet)' : 'var(--color-teal)'
+                                  }}
+                                >
+                                  {category === 'security' ? 'AN NINH' : category === 'boundary' ? 'RÌA BIÊN' : 'POSITIVE'}
+                                </span>
+                              </td>
+                              {Object.keys(row).map(k => {
+                                const valStr = String(row[k]);
+                                const isSpecial = valStr.includes("'") || valStr.includes("<script") || valStr === "" || valStr === "0";
+                                return (
+                                  <td 
+                                    key={k} 
+                                    title={valStr} // Tooltip khi hover xem đầy đủ payload
+                                    style={{ 
+                                      padding: '10px 12px', 
+                                      verticalAlign: 'top'
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        fontFamily: 'var(--font-mono)',
+                                        color: category === 'security' && (valStr.includes("'") || valStr.includes("<script") || valStr.includes("--")) ? 'var(--color-rose)' : 'inherit',
+                                        fontWeight: isSpecial ? 'bold' : 'normal',
+                                        minWidth: '120px',
+                                        maxWidth: '280px',
+                                        maxHeight: '80px',
+                                        overflowY: 'auto',
+                                        wordBreak: 'break-word',
+                                        whiteSpace: 'normal',
+                                        paddingRight: '4px'
+                                      }}
+                                    >
+                                      {valStr === '' ? <i style={{ color: 'var(--text-muted)' }}>(Chuỗi rỗng / Empty)</i> : valStr}
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                              <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                <button 
+                                  onClick={() => handleSimulateAPI(row, idx)}
+                                  className="btn btn-secondary"
+                                  style={{ 
+                                    padding: '4px 8px', 
+                                    fontSize: '10.5px', 
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    border: '1px solid',
+                                    borderColor: selectedRecordIdx === idx ? 'var(--color-teal)' : 'rgba(255,255,255,0.08)',
+                                    color: selectedRecordIdx === idx ? 'var(--color-teal)' : 'var(--text-secondary)',
+                                    background: selectedRecordIdx === idx ? 'rgba(45,212,191,0.08)' : 'rgba(255,255,255,0.01)',
+                                    cursor: 'pointer',
+                                    borderRadius: '4px',
+                                    transition: 'all 0.2s',
+                                    fontWeight: '600'
+                                  }}
+                                >
+                                  <Zap size={10} /> Test API
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                  
+                  {/* NÚT XEM THÊM / THU GỌN */}
+                  {filteredDataset.length > displayLimit ? (
+                    <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(15,23,42,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'center', gap: '10px' }}>
+                      <button
+                        onClick={() => setDisplayLimit(prev => prev + 30)}
+                        style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.2)', borderRadius: '6px', color: 'var(--color-teal)', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        ↓ Xem thêm {Math.min(30, filteredDataset.length - displayLimit)} ca ({filteredDataset.length - displayLimit} còn lại)
+                      </button>
+                    </div>
+                  ) : filteredDataset.length > 30 ? (
+                    <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(15,23,42,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                      <button
+                        onClick={() => setDisplayLimit(30)}
+                        style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: 'var(--text-muted)', cursor: 'pointer' }}
+                      >
+                        ↑ Thu gọn
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                
+                {/* LƯU Ý BẢO MẬT DƯỚI ĐÁY */}
+                <div className="flex align-center gap-sm" style={{ padding: '8px 12px', background: 'rgba(244,63,94,0.04)', border: '1px solid rgba(244,63,94,0.1)', borderRadius: '6px', fontSize: '11px', color: 'var(--color-rose)', marginTop: 'auto' }}>
+                  <ShieldAlert size={14} style={{ flexShrink: 0 }} />
+                  <span><b>Lưu ý an toàn:</b> Các chuỗi XSS/SQLi tấn công được sinh ra nhằm mục đích dò quét an ninh phần mềm. Đã mã hóa HTML khi render, tránh dán trực tiếp vào DB sản xuất của bạn.</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.05)', borderRadius: 'var(--radius-sm)', background: 'rgba(255,255,255,0.01)', padding: '80px 0', color: 'var(--text-muted)' }}>
+                Chưa có tập dữ liệu tối ưu hóa nào được sinh ra.
+              </div>
+            )}
+          </>
         )}
       </div>
       </div> {/* CLOSE grid-2 */}

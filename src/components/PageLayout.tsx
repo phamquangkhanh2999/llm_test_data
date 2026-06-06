@@ -15,9 +15,9 @@ export interface WorkflowStep {
 }
 
 export const WORKFLOW_STEPS: WorkflowStep[] = [
-  { id: 'prepare',  label: 'Chuẩn Bị Dữ Liệu',  shortLabel: 'Dữ Liệu',   color: '#3b82f6' },
-  { id: 'optimize', label: 'Tối Ưu & So Sánh',  shortLabel: 'Tối Ưu',    color: '#a78bfa' },
-  { id: 'export',   label: 'Xuất Kết Quả',       shortLabel: 'Xuất File', color: '#2dd4bf' },
+  { id: 'prepare', label: 'Chuẩn Bị Dữ Liệu', shortLabel: 'Dữ Liệu', color: '#3b82f6' },
+  { id: 'optimize', label: 'Tối Ưu & So Sánh', shortLabel: 'Tối Ưu', color: '#a78bfa' },
+  { id: 'export', label: 'Xuất Kết Quả', shortLabel: 'Xuất File', color: '#2dd4bf' },
 ];
 
 // ─── Prerequisite definition ───────────────────────────────────────────────────
@@ -35,10 +35,10 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
     optimizedDataset, historyRuns, setActiveScreen,
   } = useAppStore();
 
-  const hasSchema   = parsedSchema.length > 0;
-  const hasSeeds    = initialSeeds.length > 0;
+  const hasSchema = parsedSchema.length > 0;
+  const hasSeeds = initialSeeds.length > 0;
   const hasOptimized = optimizedDataset.length > 0;
-  const hasHistory  = historyRuns.length > 0;
+  const hasHistory = historyRuns.length > 0;
 
   // Each node in the data pipeline
   const nodes: {
@@ -46,45 +46,45 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
     value: string | null; sublabel: string;
     color: string; done: boolean; screen: string;
   }[] = [
-    {
-      id: 'source',
-      icon: hasSeeds && parsedSchema.length > 0 ? <Upload size={14} /> : <Sparkles size={14} />,
-      label: 'Nguồn dữ liệu',
-      value: hasSchema ? schemaName || 'Đặc tả' : null,
-      sublabel: hasSchema
-        ? `${parsedSchema.length} trường · ${initialSeeds.length} bản ghi F0`
-        : 'Chưa có — cần Phân Tích AI hoặc Upload file',
-      color: '#3b82f6',
-      done: hasSchema && hasSeeds,
-      screen: 'prepare',
-    },
-    {
-      id: 'optimizer',
-      icon: <Zap size={14} />,
-      label: 'Tối ưu hóa (GA + HC)',
-      value: hasOptimized ? `${optimizedDataset.length} test cases` : null,
-      sublabel: hasOptimized
-        ? `Sinh từ ${initialSeeds.length} hạt giống · GA + Hill Climbing`
-        : hasSeeds
-          ? 'Sẵn sàng chạy — bấm ▶ ở màn hình Tối Ưu'
-          : 'Chờ nguồn dữ liệu từ bước trên',
-      color: '#a78bfa',
-      done: hasOptimized,
-      screen: 'optimize',
-    },
-    {
-      id: 'history',
-      icon: <Archive size={14} />,
-      label: 'Kết quả lưu trữ',
-      value: hasHistory ? `${historyRuns.length} phiên` : null,
-      sublabel: hasHistory
-        ? `Phiên gần nhất: ${historyRuns[0]?.schemaName ?? '—'}`
-        : 'Chưa có — chạy thuật toán ít nhất 1 lần',
-      color: '#2dd4bf',
-      done: hasHistory,
-      screen: 'export',
-    },
-  ];
+      {
+        id: 'source',
+        icon: hasSeeds && parsedSchema.length > 0 ? <Upload size={14} /> : <Sparkles size={14} />,
+        label: 'Nguồn dữ liệu',
+        value: hasSchema ? schemaName || 'Đặc tả' : null,
+        sublabel: hasSchema
+          ? `${parsedSchema.length} trường · ${initialSeeds.length} bản ghi F0`
+          : 'Chưa có — cần Phân Tích AI hoặc Upload file',
+        color: '#3b82f6',
+        done: hasSchema && hasSeeds,
+        screen: 'prepare',
+      },
+      {
+        id: 'optimizer',
+        icon: <Zap size={14} />,
+        label: 'Tối ưu hóa (GA + HC)',
+        value: hasOptimized ? `${optimizedDataset.length} test cases` : null,
+        sublabel: hasOptimized
+          ? `Sinh từ ${initialSeeds.length} hạt giống · GA + Hill Climbing`
+          : hasSeeds
+            ? 'Sẵn sàng chạy — bấm ▶ ở màn hình Tối Ưu'
+            : 'Chờ nguồn dữ liệu từ bước trên',
+        color: '#a78bfa',
+        done: hasOptimized,
+        screen: 'optimize',
+      },
+      {
+        id: 'history',
+        icon: <Archive size={14} />,
+        label: 'Kết quả lưu trữ',
+        value: hasHistory ? `${historyRuns.length} phiên` : null,
+        sublabel: hasHistory
+          ? `Phiên gần nhất: ${historyRuns[0]?.schemaName ?? '—'}`
+          : 'Chưa có — chạy thuật toán ít nhất 1 lần',
+        color: '#2dd4bf',
+        done: hasHistory,
+        screen: 'export',
+      },
+    ];
 
   return (
     <div style={{
@@ -315,9 +315,9 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
       )}
 
       {/* ── DATA FLOW PANEL ── */}
-      {!hideFlowPanel && stepId && (
+      {/* {!hideFlowPanel && stepId && (
         <DataFlowPanel currentScreen={stepId} />
-      )}
+      )} */}
 
       {/* ── PAGE HEADER ── */}
       <div style={{

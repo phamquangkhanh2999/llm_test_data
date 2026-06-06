@@ -31,14 +31,20 @@ export const SpecInput: React.FC = () => {
     methodSeeds,
     setMethodSeeds,
     setActiveScreen,
-    markScreenCompleted
+    markScreenCompleted,
+    selectedPresetId,
+    setSelectedPresetId,
+    selectedMethods,
+    setSelectedMethods,
+    boundaryCount,
+    setBoundaryCount,
+    partitionCount,
+    setPartitionCount
   } = useAppStore();
 
   const hasApiKey = apiKey.trim().length > 10;
 
   // --- CÁC HOOK HOẠT ĐỘNG PHẠM VI NỘI BỘ COMPONENT ---
-  // Theo dõi ID của mẫu preset đang được lựa chọn (Mặc định: trống)
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('');
   // State quản lý tên trường mới khi người dùng tự gõ thêm thủ công
   const [newFieldName, setNewFieldName] = useState('');
   // State quản lý kiểu dữ liệu của trường tự thêm (Mặc định: String)
@@ -59,6 +65,134 @@ export const SpecInput: React.FC = () => {
   const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
   const [showSchemaDetails, setShowSchemaDetails] = useState(false);
 
+  // --- CẢI TIẾN DRAG-AND-DROP & HIGHLIGHTING ---
+  const [isDragging, setIsDragging] = useState(false);
+  const highlightRef = React.useRef<HTMLDivElement>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const handleScroll = () => {
+    if (textareaRef.current && highlightRef.current) {
+      highlightRef.current.scrollTop = textareaRef.current.scrollTop;
+      highlightRef.current.scrollLeft = textareaRef.current.scrollLeft;
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+
+    if (file.name.endsWith('.txt')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setRawText(event.target.result as string);
+          setSelectedPresetId('');
+          handleClearSpecData();
+          setIsConnected(false);
+          setProcessingStep(0);
+        }
+      };
+      reader.readAsText(file);
+    } else if (file.name.endsWith('.docx')) {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const arrayBuffer = event.target?.result as ArrayBuffer;
+        try {
+          const mammoth = await loadMammoth();
+          const result = await mammoth.extractRawText({ arrayBuffer });
+          setRawText(result.value);
+          setSelectedPresetId('');
+          handleClearSpecData();
+          setIsConnected(false);
+          setProcessingStep(0);
+        } catch (error) {
+          console.error("Lỗi parse file Word:", error);
+          alert("Lỗi: Không thể phân tích file Word. Hãy chắc chắn máy bạn đang kết nối internet để tải thư viện Mammoth JS.");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      alert("Định dạng file không hỗ trợ. Vui lòng chỉ kéo thả tệp .txt hoặc .docx.");
+    }
+  };
+
+  const loadMammoth = (): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).mammoth) {
+        resolve((window as any).mammoth);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js';
+      script.onload = () => {
+        resolve((window as any).mammoth);
+      };
+      script.onerror = (err) => {
+        reject(err);
+      };
+      document.head.appendChild(script);
+    });
+  };
+
+  const getHighlightedText = (text: string) => {
+    if (!text) return <span style={{ color: 'var(--text-muted)', opacity: 0.6 }}>Nhập mô tả nghiệp vụ cho dữ liệu cần sinh tại đây... (Hoặc kéo thả file .txt, .docx vào đây)</span>;
+
+    let escapedText = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const tokens: { id: string; replacement: string }[] = [];
+    let tokenCounter = 0;
+
+    const keywords = {
+      types: [/email/gi, /phone/gi, /card/gi, /number/gi, /username/gi, /mật khẩu/gi, /password/gi, /tuổi/gi, /số điện thoại/gi, /số thẻ/gi],
+      boundaries: [/tối thiểu/gi, /tối đa/gi, /min/gi, /max/gi, /độ dài/gi, /minLength/gi, /maxLength/gi, /minValue/gi, /maxValue/gi, /regex/gi, /allowedValues/gi, /giới hạn/gi, /khoảng/gi, /chữ số/gi, /ký tự/gi],
+      security: [/bắt buộc/gi, /required/gi, /sql injection/gi, /sqli/gi, /xss/gi, /script/gi, /tấn công/gi, /bảo mật/gi, /payload/gi, /khai thác/gi, /không được trống/gi]
+    };
+
+    const replaceWithToken = (regex: RegExp, className: string) => {
+      escapedText = escapedText.replace(regex, (match) => {
+        const id = `___TOKEN_${tokenCounter++}___`;
+        const color = className === 'highlight-type' ? 'var(--color-teal)' :
+          className === 'highlight-boundary' ? 'var(--color-violet)' : 'var(--color-rose)';
+        const styleString = `color: ${color}; font-weight: bold; text-shadow: 0 0 3px ${color}50;`;
+        tokens.push({
+          id,
+          replacement: `<span style="${styleString}">${match}</span>`
+        });
+        return id;
+      });
+    };
+
+    keywords.security.forEach(regex => replaceWithToken(regex, 'highlight-security'));
+    keywords.boundaries.forEach(regex => replaceWithToken(regex, 'highlight-boundary'));
+    keywords.types.forEach(regex => replaceWithToken(regex, 'highlight-type'));
+
+    let finalHtml = escapedText;
+    tokens.forEach(token => {
+      finalHtml = finalHtml.replaceAll(token.id, token.replacement);
+    });
+
+    if (finalHtml.endsWith('\n')) {
+      finalHtml += ' ';
+    }
+
+    return <div dangerouslySetInnerHTML={{ __html: finalHtml }} />;
+  };
+
   const downloadHistoryJson = (item: any) => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(item, null, 2));
     const downloadAnchorNode = document.createElement('a');
@@ -71,11 +205,6 @@ export const SpecInput: React.FC = () => {
 
   // --- CẤU HÌNH PHƯƠNG PHÁP KIỂM THỬ KHỞI TẠO (F0 SEEDS) ---
   // Chọn các thuật toán sinh dữ liệu ban đầu (Hỗ trợ chọn nhiều phương pháp đồng thời)
-  const [selectedMethods, setSelectedMethods] = useState<('random' | 'bva' | 'ep' | 'decision')[]>(['random']);
-  // Cấu hình số lượng điểm biên (dành riêng cho phương pháp BVA: 2, 3 hoặc 5 điểm)
-  const [boundaryCount, setBoundaryCount] = useState<number>(3);
-  // Cấu hình số lượng phân vùng tương đương (dành riêng cho phương pháp EP)
-  const [partitionCount, setPartitionCount] = useState<number>(3);
   const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
 
   const toggleMethod = (method: 'random' | 'bva' | 'ep' | 'decision') => {
@@ -604,25 +733,90 @@ export const SpecInput: React.FC = () => {
 
 
           {/* Vùng nhập đặc tả nghiệp vụ tự do */}
-          <textarea
-            value={rawText}
-            onChange={(e) => {
-              setRawText(e.target.value);
-              setSelectedPresetId('');
-              handleClearSpecData();
-              setMethodSeeds({
-                random: [],
-                bva: [],
-                ep: [],
-                decision: []
-              });
-              setIsConnected(false);
-              setProcessingStep(0);
-            }}
-            className="input-field"
-            style={{ minHeight: '200px', resize: 'vertical', fontFamily: 'inherit', fontSize: '14px', lineHeight: '1.6' }}
-            placeholder="Nhập mô tả nghiệp vụ cho dữ liệu cần sinh tại đây..."
-          />
+          <div
+            style={{ position: 'relative', width: '100%', minHeight: '200px' }}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {isDragging && (
+              <div style={{
+                position: 'absolute', inset: 0, zIndex: 10,
+                background: 'rgba(8, 13, 28, 0.95)', border: '2px dashed var(--color-teal)',
+                borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', gap: '12px',
+                animation: 'pulse-dot 2s infinite'
+              }}>
+                <Plus size={36} style={{ color: 'var(--color-teal)' }} />
+                <span style={{ color: 'var(--color-teal)', fontWeight: 'bold', fontSize: '14px' }}>
+                  Thả file đặc tả vào đây (.txt, .docx)
+                </span>
+              </div>
+            )}
+
+            <div
+              ref={highlightRef}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                padding: '9px 13px',
+                margin: 0,
+                border: '1px solid transparent',
+                borderRadius: 'var(--radius-sm)',
+                fontFamily: 'inherit',
+                fontSize: '14px',
+                lineHeight: '1.6',
+                color: 'var(--text-secondary)',
+                backgroundColor: 'rgba(15,23,42,0.6)',
+                whiteSpace: 'pre-wrap',
+                wordWrap: 'break-word',
+                overflow: 'hidden',
+                pointerEvents: 'none',
+                zIndex: 1,
+              }}
+            >
+              {getHighlightedText(rawText)}
+            </div>
+
+            <textarea
+              ref={textareaRef}
+              value={rawText}
+              onChange={(e) => {
+                setRawText(e.target.value);
+                setSelectedPresetId('');
+                handleClearSpecData();
+                setMethodSeeds({
+                  random: [],
+                  bva: [],
+                  ep: [],
+                  decision: []
+                });
+                setIsConnected(false);
+                setProcessingStep(0);
+              }}
+              onScroll={handleScroll}
+              className="input-field"
+              style={{
+                minHeight: '200px',
+                resize: 'vertical',
+                fontFamily: 'inherit',
+                fontSize: '14px',
+                lineHeight: '1.6',
+                background: 'transparent',
+                color: 'transparent',
+                caretColor: '#fff',
+                position: 'relative',
+                zIndex: 2,
+                whiteSpace: 'pre-wrap',
+                wordWrap: 'break-word',
+                outline: 'none',
+              }}
+              placeholder=""
+            />
+          </div>
 
           {/* GEMINI API STATUS INDICATOR */}
           <div style={{
@@ -1296,7 +1490,7 @@ export const SpecInput: React.FC = () => {
             </div>
 
             {/* Bảng giải thích chiến lược kiểm thử */}
-            <div style={{
+            {/* <div style={{
               background: 'rgba(15, 23, 42, 0.4)',
               padding: '16px',
               borderRadius: '8px',
@@ -1326,7 +1520,7 @@ export const SpecInput: React.FC = () => {
                   </p>
                 </div>
               </div>
-            </div>
+            </div> */}
 
             {(isParsing || isRegenerating) ? (
               <div style={{
@@ -2029,13 +2223,13 @@ export const SpecInput: React.FC = () => {
               {PROCESSING_STEPS.slice(0, PROCESSING_STEPS.length - 1).map((step, idx) => {
                 const isPast = idx < processingStep;
                 const isCurrent = idx === processingStep;
-                
+
                 return (
-                  <div 
-                    key={idx} 
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
                       gap: '10px',
                       opacity: isPast || isCurrent ? 1 : 0.35,
                       transition: 'all 0.3s ease'

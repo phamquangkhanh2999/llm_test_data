@@ -42,6 +42,10 @@ interface AppState {
   isFetchingHistory: boolean;
   parseError: string | null;
   methodSeeds: Record<string, any[]>;
+  selectedPresetId: string;
+  selectedMethods: ('random' | 'bva' | 'ep' | 'decision')[];
+  boundaryCount: number;
+  partitionCount: number;
 
   // Actions
   setRawText: (text: string) => void;
@@ -56,6 +60,10 @@ interface AppState {
   markScreenCompleted: (screen: string) => void;
   setActiveScreen: (screen: string) => void;
   setIsParsing: (isParsing: boolean) => void;
+  setSelectedPresetId: (id: string) => void;
+  setSelectedMethods: (methods: ('random' | 'bva' | 'ep' | 'decision')[] | ((prev: ('random' | 'bva' | 'ep' | 'decision')[]) => ('random' | 'bva' | 'ep' | 'decision')[])) => void;
+  setBoundaryCount: (count: number) => void;
+  setPartitionCount: (count: number) => void;
 
   // Complex Actions
   handleParseSpec: () => Promise<void>;
@@ -109,6 +117,10 @@ export const useAppStore = create<AppState>((set, get) => {
       ep: [],
       decision: []
     },
+    selectedPresetId: '',
+    selectedMethods: ['random'],
+    boundaryCount: 3,
+    partitionCount: 3,
 
     // Simple Setters
     setRawText: (text) => set({ rawText: text }),
@@ -136,6 +148,12 @@ export const useAppStore = create<AppState>((set, get) => {
         : [...state.completedScreens, screen]
     })),
     setIsParsing: (isParsing) => set({ isParsing }),
+    setSelectedPresetId: (id) => set({ selectedPresetId: id }),
+    setSelectedMethods: (methods) => set((state) => ({
+      selectedMethods: typeof methods === 'function' ? methods(state.selectedMethods) : methods
+    })),
+    setBoundaryCount: (count) => set({ boundaryCount: count }),
+    setPartitionCount: (count) => set({ partitionCount: count }),
 
     // Complex Actions
     handleParseSpec: async () => {
@@ -194,6 +212,7 @@ export const useAppStore = create<AppState>((set, get) => {
         schemaName: preset.title.split(' (')[0],
         specificationId: '',
         optimizedDataset: [],
+        selectedPresetId: preset.id,
         methodSeeds: {
           random: [],
           bva: [],
@@ -318,6 +337,7 @@ export const useAppStore = create<AppState>((set, get) => {
         schemaName: historyItem.raw_text.substring(0, 25) + (historyItem.raw_text.length > 25 ? '...' : ''),
         specificationId: historyItem.id,
         optimizedDataset: [],
+        selectedPresetId: '',
         methodSeeds: {
           random: [],
           bva: [],
@@ -337,6 +357,10 @@ export const useAppStore = create<AppState>((set, get) => {
         optimizedDataset: [],
         evaluationResult: null,
         parseError: null,
+        selectedPresetId: '',
+        selectedMethods: ['random'],
+        boundaryCount: 3,
+        partitionCount: 3,
         methodSeeds: {
           random: [],
           bva: [],
