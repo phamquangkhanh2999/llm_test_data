@@ -672,16 +672,19 @@ ${values};
                   top: '100%', 
                   left: 0, 
                   width: '100%', 
-                  zIndex: 100, 
+                  zIndex: 200, 
                   marginTop: '8px', 
                   padding: '12px', 
-                  background: 'rgba(10,16,36,0.95)', 
-                  border: '1px solid rgba(45, 212, 191, 0.3)',
-                  boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                  background: 'rgba(10,16,36,0.98)', 
+                  border: '1px solid rgba(45, 212, 191, 0.4)',
+                  boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
                   borderRadius: '10px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '10px'
+                  gap: '10px',
+                  maxHeight: '400px',
+                  overflowY: 'auto',
+                  scrollbarWidth: 'thin'
                 }}
               >
                 {/* NHÓM 1: DỮ LIỆU THÔ */}
