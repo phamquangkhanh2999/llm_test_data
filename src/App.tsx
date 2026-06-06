@@ -161,7 +161,7 @@ function App() {
       </aside>
 
       {/* ══════════════ MAIN CONTENT ══════════════ */}
-      <main style={{ marginLeft: mobile ? '0' : '240px', flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-space)' }}>
+      <main style={{ marginLeft: mobile ? '0' : '240px', flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-space)', minWidth: 0 }}>
 
         {/* HEADER */}
         <header style={{
@@ -256,7 +256,7 @@ function App() {
         </header>
 
         {/* SCREENS */}
-        <div style={{ padding: '20px 24px', flex: 1, width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ padding: '20px 24px', flex: 1, width: '100%', display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
 
           {/* ══════════ BƯỚC 1: CHUẨN BỊ DỮ LIỆU ══════════ */}
           <div style={{ display: activeScreen === 'prepare' ? 'block' : 'none' }}>

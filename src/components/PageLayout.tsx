@@ -412,6 +412,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
         opacity: !allPrereqsMet ? 0.4 : 1,
         pointerEvents: !allPrereqsMet ? 'none' : 'auto',
         transition: 'opacity 0.3s',
+        minWidth: 0,
       }}>
         {children}
       </div>
