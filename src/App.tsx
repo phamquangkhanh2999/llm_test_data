@@ -41,7 +41,7 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon, activeColor, active, don
     <span style={{ flexShrink: 0 }}>{icon}</span>
     <span style={{ flex: 1 }}>{label}</span>
     {done && !active && (
-      <CheckCircle2 size={14} style={{ color: '#2dd4bf', flexShrink: 0, opacity: 0.8 }} />
+      <CheckCircle2 size={14} style={{ color: 'var(--color-teal)', flexShrink: 0, opacity: 0.8 }} />
     )}
     {active && (
       <span style={{
@@ -111,7 +111,7 @@ function App() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.5)',
+            background: 'rgba(0,0,0,0.3)',
             zIndex: 999,
             backdropFilter: 'blur(2px)',
           }}
@@ -121,8 +121,8 @@ function App() {
       {/* ══════════════ SIDEBAR ══════════════ */}
       <aside style={{
         width: '240px',
-        background: 'rgba(8, 13, 28, 0.98)',
-        borderRight: '1px solid rgba(255,255,255,0.06)',
+        background: 'var(--bg-deep)',
+        borderRight: '1px solid var(--border-subtle)',
         padding: '20px 0',
         display: 'flex', flexDirection: 'column',
         position: 'fixed', top: 0, bottom: 0,
@@ -133,7 +133,7 @@ function App() {
       }}>
         {/* Logo */}
         <div style={{ padding: '0 18px', marginBottom: '22px' }}>
-          <h1 style={{ fontSize: '19px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', margin: 0 }}>
+          <h1 style={{ fontSize: '19px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', margin: 0 }}>
             <Layers size={26} style={{ color: 'var(--color-teal)' }} />
             TESTFORGE
           </h1>
@@ -147,14 +147,14 @@ function App() {
             Quy Trình 3 Bước
           </div>
           {nav('prepare', '1 · Chuẩn Bị Dữ Liệu', <Database size={16} />, '#3b82f6')}
-          {nav('optimize', '2 · Tối Ưu & So Sánh', <Activity size={16} />, '#a78bfa')}
-          {nav('export', '3 · Xuất Kết Quả', <Download size={16} />, '#2dd4bf')}
+          {nav('optimize', '2 · Tối Ưu & So Sánh', <Activity size={16} />, '#7C3AED')}
+          {nav('export', '3 · Xuất Kết Quả', <Download size={16} />, '#0D9488')}
         </nav>
 
         {/* Footer hint */}
-        <div style={{ padding: '12px 16px 0', borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: '8px' }}>
+        <div style={{ padding: '12px 16px 0', borderTop: '1px solid var(--border-subtle)', marginTop: '8px' }}>
           <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            <CheckCircle2 size={11} style={{ display: 'inline', marginRight: '4px', color: '#2dd4bf' }} />
+            <CheckCircle2 size={11} style={{ display: 'inline', marginRight: '4px', color: 'var(--color-teal)' }} />
             {completedScreens.length} / 3 bước hoàn thành
           </div>
         </div>
@@ -166,8 +166,8 @@ function App() {
         {/* HEADER */}
         <header style={{
           padding: '10px 24px',
-          background: 'rgba(8, 13, 28, 0.95)',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          background: 'var(--bg-card)',
+          borderBottom: '1px solid var(--border-subtle)',
           position: 'sticky', top: 0, zIndex: 90,
           backdropFilter: 'blur(16px)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
@@ -178,12 +178,12 @@ function App() {
               onClick={toggleSidebar}
               aria-label={sidebarOpen ? 'Đóng menu' : 'Mở menu'}
               style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(0,0,0,0.05)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: '8px',
                 padding: '8px',
                 cursor: 'pointer',
-                color: '#fff',
+                color: 'var(--text-primary)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -195,14 +195,14 @@ function App() {
           )}
 
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center', fontSize: '12px', color: 'var(--text-secondary)', overflow: 'hidden', flexWrap: mobile ? 'wrap' : 'nowrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingRight: '16px', borderRight: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingRight: '16px', borderRight: '1px solid var(--border-subtle)' }}>
               <Sparkles size={13} style={{ color: 'var(--color-teal)', flexShrink: 0 }} />
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Kịch bản: <b style={{ color: '#fff' }}>{schemaName || '—'}</b></span>
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Kịch bản: <b style={{ color: 'var(--text-primary)' }}>{schemaName || '—'}</b></span>
             </div>
             {!mobile && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Activity size={13} style={{ color: 'var(--color-violet)' }} />
-                <span>Ràng buộc: <b style={{ color: '#fff' }}>{parsedSchema.length}</b></span>
+                <span>Ràng buộc: <b style={{ color: 'var(--text-primary)' }}>{parsedSchema.length}</b></span>
               </div>
             )}
           </div>
@@ -212,20 +212,20 @@ function App() {
             <button
               onClick={() => setIsAILogsOpen(true)}
               style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(0,0,0,0.05)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: '8px',
                 padding: '7px 12px',
                 cursor: 'pointer',
-                color: '#fff',
+                color: 'var(--text-primary)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
                 fontSize: '12px',
                 transition: 'all 0.16s'
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.05)')}
             >
               <Terminal size={14} style={{ color: 'var(--color-teal)' }} />
               <span>Nhật Ký AI</span>
@@ -233,11 +233,11 @@ function App() {
 
             {/* API Key */}
             <div style={{
-              background: apiKey.trim().length > 10 ? 'rgba(45, 212, 191, 0.06)' : 'rgba(0,0,0,0.22)',
+              background: apiKey.trim().length > 10 ? 'rgba(13, 148, 136, 0.06)' : 'rgba(0,0,0,0.03)',
               padding: '7px 12px',
               borderRadius: '8px',
               border: '1px solid',
-              borderColor: apiKey.trim().length > 10 ? 'rgba(45, 212, 191, 0.3)' : 'rgba(255,255,255,0.07)',
+              borderColor: apiKey.trim().length > 10 ? 'rgba(13, 148, 136, 0.3)' : 'var(--border-subtle)',
               display: 'flex', alignItems: 'center', gap: '10px',
               minWidth: mobile ? 'auto' : '260px',
               maxWidth: mobile ? '160px' : undefined,
@@ -271,7 +271,7 @@ function App() {
               <Tabs
                 tabs={[
                   { id: 'ai', label: 'Phân Tích Bằng AI', icon: <Sparkles size={15} />, color: '#3b82f6' },
-                  { id: 'upload', label: 'Tải Lên File (JSON/CSV)', icon: <Database size={15} />, color: '#facc15' },
+                  { id: 'upload', label: 'Tải Lên File (JSON/CSV)', icon: <Database size={15} />, color: '#D97706' },
                 ]}
                 activeTab={prepareTab}
                 onChange={setPrepareTab}
@@ -288,7 +288,7 @@ function App() {
               icon={<Zap size={24} />}
               description="Chạy đồng bộ các giải thuật tối ưu hóa di truyền GA phối hợp leo đồi HC và đối chiếu trực tuyến kết quả với thuật toán truyền thống BVA/Random."
               hints={['Lai ghép GA -> HC', 'Bao phủ biên & bảo mật', 'So sánh đối kháng trực tiếp', 'Đồ thị tiến hóa di truyền']}
-              accentColor="#a78bfa"
+              accentColor="#7C3AED"
               prerequisites={[
                 {
                   met: hasInputData,
@@ -310,7 +310,7 @@ function App() {
               icon={<Download size={24} />}
               description=""
               hints={['Tối giản bộ test', 'Xuất CSV / JSON / SQL', 'Playwright / Cypress / Postman', 'Mô phỏng API validation']}
-              accentColor="#2dd4bf"
+              accentColor="#0D9488"
               prerequisites={[
                 {
                   met: hasHistory || hasOptimizedResult,
@@ -326,7 +326,7 @@ function App() {
 
         </div>
 
-        <footer style={{ padding: '14px 28px', fontSize: '11px', color: 'var(--text-muted)', borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'right' }}>
+        <footer style={{ padding: '14px 28px', fontSize: '11px', color: 'var(--text-muted)', borderTop: '1px solid var(--border-subtle)', textAlign: 'right' }}>
           © 2026 Hyperion TestForge — Quy trình 3 bước
         </footer>
       </main>

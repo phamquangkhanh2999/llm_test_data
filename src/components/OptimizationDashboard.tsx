@@ -354,19 +354,19 @@ export const OptimizationDashboard: React.FC = () => {
           name: 'Genetic Optimization', key: 'ga',
           coverage: gaRes.metrics.coverage, duplicateRate: gaRes.metrics.duplicateRate, edgeCases: gaRes.metrics.edgeCases,
           execTime: Math.round(gaRes.time), badge: 'Tối ưu hóa toàn cục',
-          color: '#2dd4bf', sampleData: gaRes.chromosomes.slice(0, 10), allData: gaRes.chromosomes
+          color: '#0D9488', sampleData: gaRes.chromosomes.slice(0, 10), allData: gaRes.chromosomes
         },
         {
           name: 'Local Refinement', key: 'hc',
           coverage: hcRes.metrics.coverage, duplicateRate: hcRes.metrics.duplicateRate, edgeCases: hcRes.metrics.edgeCases,
           execTime: Math.round(hcRes.time), badge: 'Dò biên cục bộ',
-          color: '#a78bfa', sampleData: hcRes.chromosomes.slice(0, 10), allData: hcRes.chromosomes
+          color: '#7C3AED', sampleData: hcRes.chromosomes.slice(0, 10), allData: hcRes.chromosomes
         },
         {
           name: 'Hybrid AI Optimization', key: 'hybrid',
           coverage: hyRes.metrics.coverage, duplicateRate: hyRes.metrics.duplicateRate, edgeCases: hyRes.metrics.edgeCases,
           execTime: Math.round(hyRes.time), badge: 'Tối ưu hóa phức hợp',
-          color: '#f43f5e', sampleData: hyRes.chromosomes.slice(0, 10), allData: hyRes.chromosomes
+          color: '#E11D48', sampleData: hyRes.chromosomes.slice(0, 10), allData: hyRes.chromosomes
         }
       ];
 
@@ -505,8 +505,8 @@ export const OptimizationDashboard: React.FC = () => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
 
       {/* TIÊU ĐỀ */}
-      <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '12px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+      <div style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
           <Sparkles size={20} style={{ color: 'var(--color-teal)' }} />
           Tối Ưu Hóa & So Sánh Thuật Toán
         </h2>
@@ -520,7 +520,7 @@ export const OptimizationDashboard: React.FC = () => {
 
         {/* Profile Selector */}
         <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+          <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <Sparkles size={14} style={{ color: 'var(--color-violet)' }} />
             Chế Độ Tối Ưu Hóa
           </h3>
@@ -537,14 +537,14 @@ export const OptimizationDashboard: React.FC = () => {
                 style={{
                   width: '100%', padding: '10px 14px', borderRadius: '8px', textAlign: 'left',
                   cursor: isRunning ? 'default' : 'pointer', transition: 'all 0.2s',
-                  background: optProfile === p.id ? 'rgba(45,212,191,0.05)' : 'rgba(0,0,0,0.15)',
-                  border: `1.5px solid ${optProfile === p.id ? p.activeColor : 'rgba(255,255,255,0.06)'}`,
+                  background: optProfile === p.id ? 'rgba(13, 148, 136, 0.08)' : 'rgba(0,0,0,0.03)',
+                  border: `1.5px solid ${optProfile === p.id ? p.activeColor : 'var(--border-subtle)'}`,
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   boxShadow: optProfile === p.id ? `0 0 10px ${p.activeColor}20` : 'none'
                 }}
               >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontWeight: 'bold', fontSize: '12.5px', color: optProfile === p.id ? '#fff' : 'var(--text-primary)' }}>{p.label}</span>
+                  <span style={{ fontWeight: 'bold', fontSize: '12.5px', color: 'var(--text-primary)' }}>{p.label}</span>
                   <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{p.desc}</span>
                 </div>
                 <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 'bold', whiteSpace: 'nowrap', marginLeft: '8px' }}>{p.meta}</span>
@@ -556,7 +556,7 @@ export const OptimizationDashboard: React.FC = () => {
         {/* Expected Results + Run */}
         <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', justifyContent: 'space-between' }}>
           <div>
-            <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 12px' }}>
+            <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 12px' }}>
               <Award size={15} style={{ color: 'var(--color-teal)' }} />
               Kết Quả Dự Kiến
             </h3>
@@ -571,7 +571,7 @@ export const OptimizationDashboard: React.FC = () => {
                     { label: 'Trùng lặp', val: exp.dups, color: 'var(--color-violet)' },
                     { label: 'Thời gian', val: exp.time, color: 'var(--color-rose)' },
                   ].map(m => (
-                    <div key={m.label} style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                    <div key={m.label} style={{ background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                       <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>{m.label}</div>
                       <div style={{ fontSize: '16px', fontWeight: 'bold', color: m.color }}>{m.val}</div>
                     </div>
@@ -600,7 +600,7 @@ export const OptimizationDashboard: React.FC = () => {
         className="glass-card"
         open={showAdvanced}
         onToggle={(e: any) => setShowAdvanced(e.target.open)}
-        style={{ border: '1px solid rgba(255,255,255,0.04)', borderRadius: '8px', background: 'rgba(15,23,42,0.3)', padding: '10px 14px' }}
+        style={{ border: '1px solid var(--border-subtle)', borderRadius: '8px', background: 'var(--bg-card)', padding: '10px 14px' }}
       >
         <summary style={{ cursor: 'pointer', outline: 'none', listStyle: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
@@ -610,10 +610,10 @@ export const OptimizationDashboard: React.FC = () => {
           <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{showAdvanced ? 'Thu gọn ▲' : 'Mở rộng ▼'}</span>
         </summary>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginTop: '14px', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginTop: '14px', borderTop: '1px solid var(--border-subtle)', paddingTop: '14px' }}>
           {/* GA params */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Cpu size={13} style={{ color: 'var(--color-teal)' }} />Tham số Di truyền
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -628,7 +628,7 @@ export const OptimizationDashboard: React.FC = () => {
                   <input type="number" step={f.step} value={f.val}
                     onChange={e => f.set(f.step === 1 ? Math.max(f.min, parseInt(e.target.value) || 0) : Math.min(1, Math.max(f.min, parseFloat(e.target.value) || 0)))}
                     className="input-field"
-                    style={{ padding: '5px 8px', fontSize: '11.5px', marginTop: '2px', width: '100%', boxSizing: 'border-box' as const }}
+                    style={{ padding: '5px 8px', fontSize: '11.5px', marginTop: '2px', width: '100%', boxSizing: 'border-box' as const, background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-subtle)' }}
                     disabled={isRunning} />
                 </div>
               ))}
@@ -637,7 +637,7 @@ export const OptimizationDashboard: React.FC = () => {
 
           {/* Weights */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <BarChart2 size={13} style={{ color: 'var(--color-violet)' }} />Trọng số Đánh giá
             </div>
             {[
@@ -656,7 +656,7 @@ export const OptimizationDashboard: React.FC = () => {
 
           {/* Baseline */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Database size={13} style={{ color: 'var(--color-yellow)' }} />Thuật toán Đối trọng
             </div>
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -664,9 +664,9 @@ export const OptimizationDashboard: React.FC = () => {
                 <button key={algo} onClick={() => setTraditionalAlgo(algo)} disabled={isRunning}
                   style={{
                     flex: 1, padding: '6px 8px', borderRadius: '6px', fontSize: '10.5px', cursor: 'pointer',
-                    background: traditionalAlgo === algo ? 'rgba(250,204,21,0.08)' : 'rgba(255,255,255,0.02)',
-                    border: `1px solid ${traditionalAlgo === algo ? 'var(--color-yellow)' : 'rgba(255,255,255,0.06)'}`,
-                    color: traditionalAlgo === algo ? 'var(--color-yellow)' : 'var(--text-secondary)',
+                    background: traditionalAlgo === algo ? 'rgba(13, 148, 136, 0.1)' : 'rgba(0,0,0,0.02)',
+                    border: `1px solid ${traditionalAlgo === algo ? 'var(--color-teal)' : 'var(--border-subtle)'}`,
+                    color: traditionalAlgo === algo ? 'var(--color-teal)' : 'var(--text-secondary)',
                     fontWeight: traditionalAlgo === algo ? 'bold' : 'normal'
                   }}>
                   {algo === 'random' ? 'Ngẫu nhiên' : 'Phân tích biên (BVA)'}
@@ -682,7 +682,7 @@ export const OptimizationDashboard: React.FC = () => {
         <div style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(8, 12, 28, 0.7)',
+          background: 'rgba(206, 245, 242, 0.8)',
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
           zIndex: 9999,
@@ -692,8 +692,8 @@ export const OptimizationDashboard: React.FC = () => {
           padding: '20px'
         }}>
           <div className="glass-card" style={{
-            background: 'rgba(10, 18, 36, 0.85)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-subtle)',
             borderRadius: '24px',
             padding: '36px 40px',
             width: '100%',
@@ -702,7 +702,7 @@ export const OptimizationDashboard: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             textAlign: 'center',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.05)',
             gap: '24px'
           }}>
             <LoadingSpinner
@@ -712,7 +712,7 @@ export const OptimizationDashboard: React.FC = () => {
             />
 
             <div>
-              <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff', margin: '0 0 8px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--text-primary)', margin: '0 0 8px' }}>
                 Đang chạy tối ưu hóa song song...
               </h3>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.6' }}>
@@ -728,12 +728,12 @@ export const OptimizationDashboard: React.FC = () => {
                 { key: 'hc', label: 'Local Refinement', color: 'var(--color-violet)' },
                 { key: 'hybrid', label: 'Hybrid AI Optimization', color: 'var(--color-rose)' },
               ].map(a => (
-                <div key={a.key} style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid rgba(255,255,255,0.04)`, borderRadius: '12px', padding: '12px 14px', textAlign: 'left' }}>
+                <div key={a.key} style={{ background: 'rgba(0,0,0,0.02)', border: `1px solid var(--border-subtle)`, borderRadius: '12px', padding: '12px 14px', textAlign: 'left' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ fontSize: '11px', color: a.color, fontWeight: 'bold' }}>{a.label}</span>
-                    <span style={{ fontSize: '11px', color: '#fff', fontWeight: 'bold' }}>{runStates[a.key]?.progress || 0}%</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 'bold' }}>{runStates[a.key]?.progress || 0}%</span>
                   </div>
-                  <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{ width: '100%', height: '4px', background: 'rgba(0,0,0,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
                     <div style={{ width: `${runStates[a.key]?.progress || 0}%`, height: '100%', background: a.color, transition: 'width 0.3s', borderRadius: '2px' }} />
                   </div>
                 </div>
@@ -745,11 +745,11 @@ export const OptimizationDashboard: React.FC = () => {
 
       {/* EMPTY STATE */}
       {!isRunning && !isComplete && (
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '56px 24px', textAlign: 'center', background: 'rgba(15,23,42,0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px' }}>
-          <div style={{ background: 'rgba(45,212,191,0.08)', border: '1px solid rgba(45,212,191,0.2)', width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '56px 24px', textAlign: 'center', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '10px' }}>
+          <div style={{ background: 'rgba(13, 148, 136, 0.1)', border: '1px solid rgba(13, 148, 136, 0.2)', width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
             <Sparkles size={30} style={{ color: 'var(--color-teal)' }} />
           </div>
-          <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff', margin: '0 0 8px' }}>Nền tảng Tối ưu hóa AI đã sẵn sàng</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: 'var(--text-primary)', margin: '0 0 8px' }}>Nền tảng Tối ưu hóa AI đã sẵn sàng</h3>
           <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', maxWidth: '480px', lineHeight: '1.6', margin: 0 }}>
             Chọn cấu hình bên trên và nhấn <strong>Bắt Đầu Tối Ưu Hóa</strong>. Kết quả sẽ xuất hiện sau khi hoàn thành.
           </p>
@@ -770,19 +770,19 @@ export const OptimizationDashboard: React.FC = () => {
                   key={res.key}
                   className="glass-card"
                   style={{
-                    border: isSelected ? `1.5px solid ${res.color}` : isWinner ? '1.5px solid var(--color-rose)' : '1px solid rgba(255,255,255,0.07)',
-                    background: isSelected ? `${res.color}08` : isWinner ? 'rgba(244,63,94,0.04)' : 'rgba(15,23,42,0.55)',
+                    border: isSelected ? `1.5px solid ${res.color}` : isWinner ? '1.5px solid var(--color-rose)' : '1px solid var(--border-subtle)',
+                    background: isSelected ? `${res.color}10` : isWinner ? 'rgba(225, 29, 72, 0.04)' : 'var(--bg-card)',
                     padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px',
                     position: 'relative', borderRadius: '10px',
-                    boxShadow: isSelected ? `0 0 20px ${res.color}18` : isWinner ? '0 0 20px rgba(244,63,94,0.12)' : 'none'
+                    boxShadow: isSelected ? `0 0 20px ${res.color}18` : isWinner ? '0 0 20px rgba(225, 29, 72, 0.08)' : 'none'
                   }}
                 >
                   {isWinner && (
                     <span style={{
                       position: 'absolute', top: '10px', right: '10px',
-                      background: 'rgba(244,63,94,0.15)', color: 'var(--color-rose)',
+                      background: 'rgba(225, 29, 72, 0.1)', color: 'var(--color-rose)',
                       fontSize: '9px', padding: '3px 8px', borderRadius: '10px',
-                      border: '1px solid rgba(244,63,94,0.3)', fontWeight: 700
+                      border: '1px solid rgba(225, 29, 72, 0.2)', fontWeight: 700
                     }}>🏆 TỐT NHẤT</span>
                   )}
 
@@ -790,7 +790,7 @@ export const OptimizationDashboard: React.FC = () => {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                       <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: res.color, flexShrink: 0 }} />
-                      <h4 style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', margin: 0 }}>{res.name}</h4>
+                      <h4 style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)', margin: 0 }}>{res.name}</h4>
                     </div>
                     <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>{res.badge}</div>
                   </div>
@@ -799,16 +799,16 @@ export const OptimizationDashboard: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ position: 'relative', width: '60px', height: '60px', flexShrink: 0 }}>
                       <svg width="60" height="60" viewBox="0 0 36 36">
-                        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3.5" />
+                        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth="3.5" />
                         <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={res.color} strokeWidth="3.5" strokeDasharray={`${res.coverage}, 100`} strokeLinecap="round" />
-                        <text x="18" y="21.5" fill="#fff" fontSize="8.5" fontWeight="bold" textAnchor="middle">{res.coverage}%</text>
+                        <text x="18" y="21.5" fill="var(--text-primary)" fontSize="8.5" fontWeight="bold" textAnchor="middle">{res.coverage}%</text>
                       </svg>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                      <div>Số ca: <b style={{ color: '#fff' }}>{res.allData.length}</b></div>
-                      <div>Trùng lặp: <b style={{ color: res.duplicateRate > 10 ? 'var(--color-rose)' : '#fff' }}>{res.duplicateRate}%</b></div>
-                      <div>Lỗi biên: <b style={{ color: isWinner ? 'var(--color-rose)' : '#fff' }}>{res.edgeCases} ca</b></div>
-                      <div>Thời gian: <b style={{ color: '#fff' }}>{res.execTime} ms</b></div>
+                      <div>Số ca: <b style={{ color: 'var(--text-primary)' }}>{res.allData.length}</b></div>
+                      <div>Trùng lặp: <b style={{ color: res.duplicateRate > 10 ? 'var(--color-rose)' : 'var(--text-primary)' }}>{res.duplicateRate}%</b></div>
+                      <div>Lỗi biên: <b style={{ color: isWinner ? 'var(--color-rose)' : 'var(--text-primary)' }}>{res.edgeCases} ca</b></div>
+                      <div>Thời gian: <b style={{ color: 'var(--text-primary)' }}>{res.execTime} ms</b></div>
                     </div>
                   </div>
 
@@ -820,9 +820,9 @@ export const OptimizationDashboard: React.FC = () => {
                       border: isSelected ? `1.5px solid ${res.color}` : 'none',
                       fontWeight: 'bold', fontSize: '11.5px', 
                       background: isSelected ? 'transparent' : res.color, 
-                      color: isSelected ? '#fff' : '#000',
+                      color: isSelected ? 'var(--text-primary)' : 'var(--bg-space)',
                       cursor: 'pointer', 
-                      boxShadow: isSelected ? `0 0 16px ${res.color}30` : `0 0 12px ${res.color}40`, 
+                      boxShadow: isSelected ? `0 0 16px ${res.color}20` : `0 0 12px ${res.color}30`, 
                       transition: 'all 0.2s',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
                     }}
@@ -839,44 +839,44 @@ export const OptimizationDashboard: React.FC = () => {
           <div className="grid-2" style={{ gap: '16px' }}>
 
             {/* Bar Chart */}
-            <div className="glass-card" style={{ padding: '16px 20px', background: 'rgba(15,23,42,0.6)', borderRadius: '8px' }}>
-              <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 12px' }}>
+            <div className="glass-card" style={{ padding: '16px 20px', background: 'var(--bg-card)', borderRadius: '8px' }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 12px' }}>
                 <BarChart2 size={15} style={{ color: 'var(--color-teal)' }} />
                 So Sánh Chỉ Số Chất Lượng
               </h3>
               <div style={{ width: '100%', height: '230px' }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={results} margin={{ top: 10, right: 10, left: -25, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" />
                     <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={9} tickLine={false} />
                     <YAxis stroke="var(--text-muted)" fontSize={10} />
-                    <Tooltip contentStyle={{ background: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', fontSize: '12px' }} />
-                    <Bar dataKey="coverage" fill="#2dd4bf" name="Độ phủ (%)" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="duplicateRate" fill="#a78bfa" name="Trùng lặp (%)" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="edgeCases" fill="#f43f5e" name="Lỗi biên (ca)" radius={[3, 3, 0, 0]} />
+                    <Tooltip contentStyle={{ background: 'var(--bg-card)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)', borderRadius: '8px', fontSize: '12px' }} />
+                    <Bar dataKey="coverage" fill="var(--color-teal)" name="Độ phủ (%)" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="duplicateRate" fill="var(--color-violet)" name="Trùng lặp (%)" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="edgeCases" fill="var(--color-rose)" name="Lỗi biên (ca)" radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
             {/* Line Chart */}
-            <div className="glass-card" style={{ padding: '16px 20px', background: 'rgba(15,23,42,0.6)', borderRadius: '8px' }}>
-              <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 12px' }}>
+            <div className="glass-card" style={{ padding: '16px 20px', background: 'var(--bg-card)', borderRadius: '8px' }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 12px' }}>
                 <Zap size={15} style={{ color: 'var(--color-violet)' }} />
                 Đường Cong Tiến Hóa Độ Phủ
               </h3>
               <div style={{ width: '100%', height: '230px' }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={coverageHistory.length > 0 ? coverageHistory : getProgressChartData()} margin={{ top: 10, right: 15, left: -25, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" />
                     <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={10} tickLine={false} />
                     <YAxis stroke="var(--text-muted)" fontSize={10} unit="%" />
-                    <Tooltip contentStyle={{ background: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', fontSize: '12px' }} />
+                    <Tooltip contentStyle={{ background: 'var(--bg-card)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)', borderRadius: '8px', fontSize: '12px' }} />
                     <Legend wrapperStyle={{ fontSize: '11px' }} />
                     <Line type="monotone" dataKey="Baseline Validation" stroke="#64748b" strokeWidth={1.5} dot={false} />
-                    <Line type="monotone" dataKey="Local Refinement" stroke="#a78bfa" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
-                    <Line type="monotone" dataKey="Genetic Optimization" stroke="#2dd4bf" strokeWidth={1.8} dot={false} />
-                    <Line type="monotone" dataKey="Hybrid AI Optimization" stroke="#f43f5e" strokeWidth={2.5} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="Local Refinement" stroke="var(--color-violet)" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
+                    <Line type="monotone" dataKey="Genetic Optimization" stroke="var(--color-teal)" strokeWidth={1.8} dot={false} />
+                    <Line type="monotone" dataKey="Hybrid AI Optimization" stroke="var(--color-rose)" strokeWidth={2.5} activeDot={{ r: 5 }} />
                     <ReferenceLine x={`T.${Math.round(generations * 0.7)}`} stroke="var(--color-violet)" strokeDasharray="4 4" label={{ value: 'Leo đồi HC', fill: 'var(--color-violet)', fontSize: 9, position: 'insideTopLeft' }} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -885,23 +885,23 @@ export const OptimizationDashboard: React.FC = () => {
           </div>
 
           {/* 3. BẢNG KẾT QUẢ */}
-          <div className="glass-card" style={{ padding: '20px', background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 14px' }}>
+          <div className="glass-card" style={{ padding: '20px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 14px' }}>
               <BarChart2 size={16} style={{ color: 'var(--color-teal)' }} />
               Bảng So Sánh Kết Quả
             </h3>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                  <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <th style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>Chỉ số</th>
                     {results.map(r => (
                       <th key={r.key} style={{
                         padding: '10px 12px',
-                        color: r.key === 'hybrid' ? 'var(--color-rose)' : '#fff',
-                        background: r.key === 'hybrid' ? 'rgba(244,63,94,0.05)' : 'none',
-                        borderLeft: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none',
-                        borderRight: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.15)' : 'none'
+                        color: r.key === 'hybrid' ? 'var(--color-rose)' : 'var(--text-primary)',
+                        background: r.key === 'hybrid' ? 'rgba(225, 29, 72, 0.03)' : 'none',
+                        borderLeft: r.key === 'hybrid' ? '1px solid rgba(225, 29, 72, 0.1)' : 'none',
+                        borderRight: r.key === 'hybrid' ? '1px solid rgba(225, 29, 72, 0.1)' : 'none'
                       }}>
                         {r.name} {r.key === 'hybrid' && '🏆'}
                       </th>
@@ -918,34 +918,34 @@ export const OptimizationDashboard: React.FC = () => {
                     {
                       label: 'Trùng lặp (Duplicate Rate)',
                       getValue: (r: DashboardResult) => `${r.duplicateRate}%`,
-                      getColor: (r: DashboardResult) => r.duplicateRate > 10 ? 'var(--color-rose)' : '#fff'
+                      getColor: (r: DashboardResult) => r.duplicateRate > 10 ? 'var(--color-rose)' : 'var(--text-primary)'
                     },
                     {
                       label: 'Số ca test (Test Cases)',
                       getValue: (r: DashboardResult) => `${r.allData.length} ca`,
-                      getColor: () => '#fff'
+                      getColor: () => 'var(--text-primary)'
                     },
                     {
                       label: 'Lỗi biên phát hiện (Edge Cases)',
                       getValue: (r: DashboardResult) => `${r.edgeCases} ca`,
-                      getColor: (r: DashboardResult) => r.key === 'hybrid' ? 'var(--color-rose)' : '#fff'
+                      getColor: (r: DashboardResult) => r.key === 'hybrid' ? 'var(--color-rose)' : 'var(--text-primary)'
                     },
                     {
                       label: 'Thời gian thực thi (Runtime)',
                       getValue: (r: DashboardResult) => `${r.execTime} ms`,
-                      getColor: () => '#fff'
+                      getColor: () => 'var(--text-primary)'
                     },
                   ].map((row, rowIdx) => (
-                    <tr key={rowIdx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                      <td style={{ padding: '10px 12px', fontWeight: 'bold', color: '#fff' }}>{row.label}</td>
+                    <tr key={rowIdx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '10px 12px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{row.label}</td>
                       {results.map(r => (
                         <td key={r.key} style={{
                           padding: '10px 12px',
                           fontWeight: r.key === 'hybrid' ? 'bold' : 'normal',
                           color: row.getColor(r),
-                          background: r.key === 'hybrid' ? 'rgba(244,63,94,0.04)' : 'none',
-                          borderLeft: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.1)' : 'none',
-                          borderRight: r.key === 'hybrid' ? '1px solid rgba(244,63,94,0.1)' : 'none'
+                          background: r.key === 'hybrid' ? 'rgba(225, 29, 72, 0.02)' : 'none',
+                          borderLeft: r.key === 'hybrid' ? '1px solid rgba(225, 29, 72, 0.05)' : 'none',
+                          borderRight: r.key === 'hybrid' ? '1px solid rgba(225, 29, 72, 0.05)' : 'none'
                         }}>
                           {row.getValue(r)}
                         </td>
@@ -961,23 +961,23 @@ export const OptimizationDashboard: React.FC = () => {
           {optimizedDataset && optimizedDataset.length > 0 && (
             <div className="glass-card animate-fade-in" style={{
               padding: '20px',
-              background: 'rgba(15, 23, 42, 0.65)',
-              border: '1px solid rgba(45, 212, 191, 0.2)',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
               borderRadius: '8px',
               display: 'flex',
               flexDirection: 'column',
               gap: '14px',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.05)',
               marginTop: '8px'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <CheckCircle2 size={16} style={{ color: 'var(--color-teal)' }} />
-                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', margin: 0 }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-primary)', margin: 0 }}>
                     Chi Tiết Dữ Liệu Bộ Test Cases Đã Chọn ({selectedSuiteName})
                   </h3>
                 </div>
-                <span style={{ fontSize: '11px', background: 'rgba(45, 212, 191, 0.12)', color: 'var(--color-teal)', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                <span style={{ fontSize: '11px', background: 'rgba(13, 148, 136, 0.1)', color: 'var(--color-teal)', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
                   {optimizedDataset.length} ca test
                 </span>
               </div>
@@ -987,19 +987,19 @@ export const OptimizationDashboard: React.FC = () => {
               </p>
 
               {/* BẢNG DỮ LIỆU */}
-              <div style={{ width: '100%', overflowX: 'auto', maxHeight: '300px', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+              <div style={{ width: '100%', overflowX: 'auto', maxHeight: '300px', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                   <thead>
-                    <tr style={{ background: 'rgba(15,23,42,0.8)', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+                    <tr style={{ background: 'rgba(0,0,0,0.03)', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
                       <th style={{ padding: '10px 12px', width: '50px' }}>STT</th>
                       {optimizedDataset[0] && Object.keys(optimizedDataset[0]).map(key => (
-                        <th key={key} style={{ padding: '10px 12px', color: '#fff' }}>{key}</th>
+                        <th key={key} style={{ padding: '10px 12px', color: 'var(--text-primary)' }}>{key}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {optimizedDataset.map((row, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: idx % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)', background: idx % 2 === 0 ? 'rgba(0,0,0,0.01)' : 'transparent' }}>
                         <td style={{ padding: '10px 12px', color: 'var(--text-muted)', fontWeight: 'bold' }}>{idx + 1}</td>
                         {Object.keys(row).map(key => (
                           <td key={key} style={{ padding: '10px 12px', color: 'var(--text-primary)' }}>
@@ -1029,7 +1029,7 @@ export const OptimizationDashboard: React.FC = () => {
                     gap: '8px',
                     borderRadius: '8px',
                     border: 'none',
-                    boxShadow: '0 4px 16px rgba(45, 212, 191, 0.3)',
+                    boxShadow: '0 4px 16px rgba(13, 148, 136, 0.3)',
                     transition: 'all 0.2s'
                   }}
                 >
@@ -1048,7 +1048,7 @@ export const OptimizationDashboard: React.FC = () => {
         <div style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(8, 12, 28, 0.7)',
+          background: 'rgba(206, 245, 242, 0.8)',
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
           zIndex: 9999,
@@ -1058,8 +1058,8 @@ export const OptimizationDashboard: React.FC = () => {
           padding: '20px'
         }}>
           <div className="glass-card" style={{
-            background: 'rgba(10, 18, 36, 0.85)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-subtle)',
             borderRadius: '24px',
             padding: '36px 40px',
             width: '100%',
@@ -1068,7 +1068,7 @@ export const OptimizationDashboard: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             textAlign: 'center',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.05)',
             gap: '24px'
           }}>
             <LoadingSpinner
@@ -1078,7 +1078,7 @@ export const OptimizationDashboard: React.FC = () => {
             />
 
             <div>
-              <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff', margin: '0 0 8px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--text-primary)', margin: '0 0 8px' }}>
                 Đang lưu bộ dữ liệu...
               </h3>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.6' }}>
@@ -1092,5 +1092,3 @@ export const OptimizationDashboard: React.FC = () => {
     </div>
   );
 };
-
-

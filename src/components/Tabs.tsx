@@ -25,8 +25,8 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, activeTab, onChange }) => {
         display: 'flex',
         gap: '6px',
         padding: '5px',
-        background: 'rgba(15, 23, 42, 0.6)',
-        border: '1px solid rgba(255,255,255,0.06)',
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '12px',
         marginBottom: '4px',
       }}
@@ -49,7 +49,7 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, activeTab, onChange }) => {
               padding: '10px 16px',
               borderRadius: '8px',
               border: isActive ? `1px solid ${color}55` : '1px solid transparent',
-              background: isActive ? `${color}18` : 'transparent',
+              background: isActive ? `${color}16` : 'transparent',
               color: isActive ? color : 'var(--text-muted)',
               fontSize: '13.5px',
               fontWeight: isActive ? 700 : 500,
@@ -58,7 +58,7 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, activeTab, onChange }) => {
               whiteSpace: 'nowrap',
             }}
             onMouseOver={(e) => {
-              if (!isActive) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
+              if (!isActive) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.03)';
             }}
             onMouseOut={(e) => {
               if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent';

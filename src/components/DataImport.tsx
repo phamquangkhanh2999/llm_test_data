@@ -144,7 +144,7 @@ export const DataImport: React.FC = () => {
       <div
         className="glass-card"
         style={{
-          border: isImported ? '1px solid rgba(45,212,191,0.4)' : '2px dashed rgba(250,204,21,0.35)',
+          border: isImported ? '1px solid rgba(13, 148, 136, 0.4)' : '2px dashed rgba(217, 119, 6, 0.35)',
           borderRadius: '16px',
           padding: '36px',
           display: 'flex',
@@ -154,8 +154,8 @@ export const DataImport: React.FC = () => {
           cursor: isImported ? 'default' : 'pointer',
           transition: 'all 0.3s ease',
           background: isImported
-            ? 'rgba(45,212,191,0.04)'
-            : 'rgba(250,204,21,0.03)',
+            ? 'rgba(13, 148, 136, 0.04)'
+            : 'rgba(217, 119, 6, 0.03)',
         }}
         onClick={() => !isImported && fileInputRef.current?.click()}
         onDragOver={e => { e.preventDefault(); }}
@@ -182,18 +182,18 @@ export const DataImport: React.FC = () => {
           <>
             <div style={{
               width: '72px', height: '72px', borderRadius: '20px',
-              background: 'rgba(250,204,21,0.1)', border: '1px solid rgba(250,204,21,0.3)',
+              background: 'rgba(217, 119, 6, 0.1)', border: '1px solid rgba(217, 119, 6, 0.3)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <Upload size={36} style={{ color: '#facc15' }} />
+              <Upload size={36} style={{ color: 'var(--color-yellow)' }} />
             </div>
             <div style={{ textAlign: 'center' }}>
-              <h3 style={{ color: '#facc15', margin: '0 0 8px 0', fontSize: '18px', fontWeight: 700 }}>
+              <h3 style={{ color: 'var(--color-yellow)', margin: '0 0 8px 0', fontSize: '18px', fontWeight: 700 }}>
                 Kéo thả hoặc click để chọn file JSON
               </h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0, lineHeight: 1.6 }}>
                 Hỗ trợ file JSON (mảng object) hoặc CSV (có header).<br />
-                <code style={{ color: '#facc15', background: 'rgba(250,204,21,0.1)', padding: '2px 8px', borderRadius: '4px' }}>[&#123; ... &#125;, &#123; ... &#125;]</code> hoặc <code style={{ color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '2px 8px', borderRadius: '4px' }}>name,email,age...</code><br />
+                <code style={{ color: 'var(--color-yellow)', background: 'rgba(217, 119, 6, 0.1)', padding: '2px 8px', borderRadius: '4px' }}>[&#123; ... &#125;, &#123; ... &#125;]</code> hoặc <code style={{ color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '2px 8px', borderRadius: '4px' }}>name,email,age...</code><br />
                 Hệ thống sẽ tự nhận diện cấu trúc cột và chuẩn bị dữ liệu đầu vào.
               </p>
             </div>
@@ -201,9 +201,9 @@ export const DataImport: React.FC = () => {
               onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
               style={{
                 padding: '12px 32px', borderRadius: '30px',
-                background: '#facc15', color: '#000', border: 'none',
+                background: 'var(--color-yellow)', color: 'var(--bg-space)', border: 'none',
                 fontSize: '15px', fontWeight: 700, cursor: 'pointer',
-                boxShadow: '0 4px 20px rgba(250,204,21,0.3)',
+                boxShadow: '0 4px 20px rgba(217, 119, 6, 0.3)',
               }}
             >
               📁 Chọn file dữ liệu (.JSON / .CSV)
@@ -214,27 +214,27 @@ export const DataImport: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px', width: '100%' }}>
             <div style={{
               width: '56px', height: '56px', borderRadius: '16px',
-              background: 'rgba(45,212,191,0.12)', border: '1px solid rgba(45,212,191,0.3)',
+              background: 'rgba(13, 148, 136, 0.12)', border: '1px solid rgba(13, 148, 136, 0.3)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>
-              <CheckCircle2 size={32} style={{ color: '#2dd4bf' }} />
+              <CheckCircle2 size={32} style={{ color: 'var(--color-teal)' }} />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '16px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
                 Đọc file thành công
               </div>
               <div style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                 <span>
-                  <FileJson size={13} style={{ display: 'inline', marginRight: '4px', color: '#facc15' }} />
-                  <b style={{ color: '#facc15' }}>{fileName}</b>
+                  <FileJson size={13} style={{ display: 'inline', marginRight: '4px', color: 'var(--color-yellow)' }} />
+                  <b style={{ color: 'var(--color-yellow)' }}>{fileName}</b>
                 </span>
                 <span>
-                  <Database size={13} style={{ display: 'inline', marginRight: '4px', color: '#2dd4bf' }} />
-                  <b style={{ color: '#2dd4bf' }}>{recordCount}</b> bản ghi
+                  <Database size={13} style={{ display: 'inline', marginRight: '4px', color: 'var(--color-teal)' }} />
+                  <b style={{ color: 'var(--color-teal)' }}>{recordCount}</b> bản ghi
                 </span>
                 <span>
-                  <Activity size={13} style={{ display: 'inline', marginRight: '4px', color: '#a78bfa' }} />
-                  <b style={{ color: '#a78bfa' }}>{parsedSchema.length}</b> cột dữ liệu
+                  <Activity size={13} style={{ display: 'inline', marginRight: '4px', color: 'var(--color-violet)' }} />
+                  <b style={{ color: 'var(--color-violet)' }}>{parsedSchema.length}</b> cột dữ liệu
                 </span>
               </div>
             </div>
@@ -242,7 +242,7 @@ export const DataImport: React.FC = () => {
               onClick={() => { setIsImported(false); setFileName(''); setRecordCount(0); }}
               style={{
                 padding: '8px 16px', borderRadius: '8px', fontSize: '12px',
-                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(0,0,0,0.05)', border: '1px solid var(--border-subtle)',
                 color: 'var(--text-secondary)', cursor: 'pointer',
                 marginRight: '8px'
               }}
@@ -256,10 +256,10 @@ export const DataImport: React.FC = () => {
               }}
               style={{
                 padding: '8px 18px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                background: 'linear-gradient(135deg, #a78bfa, #8b5cf6)', border: '1px solid #8b5cf6',
-                color: '#fff', cursor: 'pointer',
+                background: 'linear-gradient(135deg, var(--color-violet), #8b5cf6)', border: '1px solid #8b5cf6',
+                color: 'var(--bg-space)', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: '6px',
-                boxShadow: '0 4px 12px rgba(167, 139, 250, 0.3)'
+                boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)'
               }}
             >
               <span>Tiếp theo</span>
@@ -273,17 +273,17 @@ export const DataImport: React.FC = () => {
       {isImported && initialSeeds.length > 0 && (
         <div style={{
           padding: '16px 20px', borderRadius: '12px',
-          background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.25)',
+          background: 'rgba(13, 148, 136, 0.06)', border: '1px solid rgba(13, 148, 136, 0.25)',
           display: 'flex', alignItems: 'center', gap: '14px',
         }}>
-          <CheckCircle2 size={28} style={{ color: '#2dd4bf', flexShrink: 0 }} />
+          <CheckCircle2 size={28} style={{ color: 'var(--color-teal)', flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff', marginBottom: '3px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '3px' }}>
               Dữ liệu đã sẵn sàng để tối ưu
             </div>
             <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Đã nạp <b style={{ color: '#2dd4bf' }}>{recordCount}</b> bản ghi với <b style={{ color: '#a78bfa' }}>{parsedSchema.length}</b> cột.
-              Chuyển sang <b style={{ color: '#fff' }}>Bước 2: Tối Ưu &amp; So Sánh</b> để chạy thuật toán GA + Hill Climbing.
+              Đã nạp <b style={{ color: 'var(--color-teal)' }}>{recordCount}</b> bản ghi với <b style={{ color: 'var(--color-violet)' }}>{parsedSchema.length}</b> cột.
+              Chuyển sang <b style={{ color: 'var(--text-primary)' }}>Bước 2: Tối Ưu &amp; So Sánh</b> để chạy thuật toán GA + Hill Climbing.
             </div>
           </div>
         </div>

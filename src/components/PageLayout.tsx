@@ -88,8 +88,8 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
 
   return (
     <div style={{
-      background: 'rgba(10,16,36,0.7)',
-      border: '1px solid rgba(255,255,255,0.07)',
+      background: 'var(--bg-card)',
+      border: '1px solid var(--border-subtle)',
       borderRadius: '12px',
       padding: '10px 16px',
       backdropFilter: 'blur(10px)',
@@ -118,9 +118,9 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
                   background: isCurrent
                     ? `${node.color}12`
                     : node.done
-                      ? 'rgba(45,212,191,0.04)'
-                      : 'rgba(255,255,255,0.02)',
-                  border: `1px solid ${isCurrent ? node.color + '50' : node.done ? 'rgba(45,212,191,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                      ? 'rgba(13,148,136,0.04)'
+                      : 'rgba(0,0,0,0.02)',
+                  border: `1px solid ${isCurrent ? node.color + '50' : node.done ? 'rgba(13,148,136,0.2)' : 'var(--border-subtle)'}`,
                   borderRadius: '10px',
                   padding: '8px 12px',
                   textAlign: 'left',
@@ -132,28 +132,28 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
                   (e.currentTarget as HTMLElement).style.background = `${node.color}10`;
                 }}
                 onMouseOut={e => {
-                  (e.currentTarget as HTMLElement).style.borderColor = isCurrent ? `${node.color}50` : node.done ? 'rgba(45,212,191,0.2)' : 'rgba(255,255,255,0.06)';
-                  (e.currentTarget as HTMLElement).style.background = isCurrent ? `${node.color}12` : node.done ? 'rgba(45,212,191,0.04)' : 'rgba(255,255,255,0.02)';
+                  (e.currentTarget as HTMLElement).style.borderColor = isCurrent ? `${node.color}50` : node.done ? 'rgba(13,148,136,0.2)' : 'var(--border-subtle)';
+                  (e.currentTarget as HTMLElement).style.background = isCurrent ? `${node.color}12` : node.done ? 'rgba(13,148,136,0.04)' : 'rgba(0,0,0,0.02)';
                 }}
                 onFocus={e => {
                   (e.currentTarget as HTMLElement).style.borderColor = `${node.color}60`;
                   (e.currentTarget as HTMLElement).style.background = `${node.color}10`;
                 }}
                 onBlur={e => {
-                  (e.currentTarget as HTMLElement).style.borderColor = isCurrent ? `${node.color}50` : node.done ? 'rgba(45,212,191,0.2)' : 'rgba(255,255,255,0.06)';
-                  (e.currentTarget as HTMLElement).style.background = isCurrent ? `${node.color}12` : node.done ? 'rgba(45,212,191,0.04)' : 'rgba(255,255,255,0.02)';
+                  (e.currentTarget as HTMLElement).style.borderColor = isCurrent ? `${node.color}50` : node.done ? 'rgba(13,148,136,0.2)' : 'var(--border-subtle)';
+                  (e.currentTarget as HTMLElement).style.background = isCurrent ? `${node.color}12` : node.done ? 'rgba(13,148,136,0.04)' : 'rgba(0,0,0,0.02)';
                 }}
               >
                 {/* Header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
                   <span style={{
-                    color: node.done ? '#2dd4bf' : isCurrent ? node.color : 'var(--text-muted)',
+                    color: node.done ? '#0D9488' : isCurrent ? node.color : 'var(--text-muted)',
                   }}>
                     {node.done ? <CheckCircle2 size={14} /> : node.icon}
                   </span>
                   <span style={{
                     fontSize: '11px', fontWeight: 600, letterSpacing: '0.03em',
-                    color: isCurrent ? node.color : node.done ? '#2dd4bf' : 'var(--text-muted)',
+                    color: isCurrent ? node.color : node.done ? '#0D9488' : 'var(--text-muted)',
                     textTransform: 'uppercase',
                   }}>
                     {node.label}
@@ -163,7 +163,7 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
                 {/* Value (big) */}
                 {node.value ? (
                   <div style={{
-                    fontSize: '18px', fontWeight: 800, color: '#fff',
+                    fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)',
                     letterSpacing: '-0.02em', marginBottom: '4px', lineHeight: 1.1,
                   }}>
                     {node.value}
@@ -179,7 +179,7 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
                 )}
 
                 {/* Sublabel */}
-                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                   {node.sublabel}
                 </div>
               </button>
@@ -187,7 +187,7 @@ const DataFlowPanel: React.FC<{ currentScreen: string }> = ({ currentScreen }) =
               {idx < nodes.length - 1 && (
                 <div style={{
                   display: 'flex', alignItems: 'center', padding: '0 8px',
-                  color: nodes[idx].done ? '#2dd4bf' : 'rgba(255,255,255,0.15)',
+                  color: nodes[idx].done ? '#0D9488' : 'rgba(0,0,0,0.15)',
                 }}>
                   <ChevronRight size={18} />
                 </div>

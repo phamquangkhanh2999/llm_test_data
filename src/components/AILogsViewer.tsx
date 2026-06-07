@@ -97,9 +97,9 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
         bottom: 0,
         width: '560px',
         maxWidth: '100vw',
-        background: 'rgba(8, 13, 28, 0.98)',
-        borderLeft: '1px solid rgba(45, 212, 191, 0.2)',
-        boxShadow: '-10px 0 30px rgba(0, 0, 0, 0.7)',
+        background: 'var(--bg-card)',
+        borderLeft: '1px solid var(--border-subtle)',
+        boxShadow: '-10px 0 30px rgba(0, 0, 0, 0.05)',
         zIndex: 2000,
         display: 'flex',
         flexDirection: 'column',
@@ -111,17 +111,17 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
       <div
         style={{
           padding: '20px 24px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'rgba(12, 20, 43, 0.6)',
+          background: 'rgba(0, 0, 0, 0.02)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Terminal style={{ color: 'var(--color-teal)' }} size={20} />
           <div>
-            <h3 style={{ margin: 0, fontSize: '16px', color: '#fff', fontWeight: 600 }}>Nhật Ký Cuộc Gọi LLM</h3>
+            <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--text-primary)', fontWeight: 600 }}>Nhật Ký Cuộc Gọi LLM</h3>
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Theo dõi token &amp; tham số gọi AI thời gian thực</span>
           </div>
         </div>
@@ -139,7 +139,7 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
             justifyContent: 'center',
             transition: 'all 0.2s',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
           onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
         >
           <X size={20} />
@@ -150,11 +150,11 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
       <div
         style={{
           padding: '12px 20px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+          borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'rgba(0, 0, 0, 0.2)',
+          background: 'rgba(0, 0, 0, 0.01)',
           fontSize: '12px',
         }}
       >
@@ -175,8 +175,8 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
             onClick={fetchLogs}
             disabled={loading}
             style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(0,0,0,0.02)',
+              border: '1px solid var(--border-subtle)',
               color: 'var(--text-secondary)',
               padding: '6px 12px',
               borderRadius: '6px',
@@ -187,8 +187,8 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
               fontSize: '12px',
               transition: 'all 0.2s',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.05)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.02)')}
           >
             <RefreshCw size={13} className={loading ? 'spin-anim' : ''} />
             <span>Làm mới</span>
@@ -198,9 +198,9 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
             onClick={clearLogs}
             disabled={logs.length === 0}
             style={{
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.2)',
-              color: '#f87171',
+              background: 'rgba(225, 29, 72, 0.05)',
+              border: '1px solid rgba(225, 29, 72, 0.15)',
+              color: 'var(--color-rose)',
               padding: '6px 12px',
               borderRadius: '6px',
               cursor: 'pointer',
@@ -210,8 +210,8 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
               fontSize: '12px',
               transition: 'all 0.2s',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)')}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(225, 29, 72, 0.1)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(225, 29, 72, 0.05)')}
           >
             <Trash2 size={13} />
             <span>Xóa hết</span>
@@ -249,16 +249,16 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
                   style={{
                     border: '1px solid',
                     borderColor: isExpanded
-                      ? 'rgba(45, 212, 191, 0.3)'
+                      ? 'rgba(13, 148, 136, 0.3)'
                       : isSuccess
-                        ? 'rgba(255, 255, 255, 0.05)'
-                        : 'rgba(239, 68, 68, 0.25)',
+                        ? 'var(--border-subtle)'
+                        : 'rgba(225, 29, 72, 0.25)',
                     borderRadius: '8px',
                     background: isExpanded
-                      ? 'rgba(12, 24, 48, 0.4)'
+                      ? 'rgba(13, 148, 136, 0.04)'
                       : isSuccess
-                        ? 'rgba(255, 255, 255, 0.01)'
-                        : 'rgba(239, 68, 68, 0.02)',
+                        ? 'rgba(0, 0, 0, 0.01)'
+                        : 'rgba(225, 29, 72, 0.02)',
                     transition: 'all 0.2s ease',
                     overflow: 'hidden',
                   }}
@@ -282,8 +282,8 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
                           width: '8px',
                           height: '8px',
                           borderRadius: '50%',
-                          background: isSuccess ? 'var(--color-teal)' : '#ef4444',
-                          boxShadow: isSuccess ? '0 0 6px var(--color-teal)' : '0 0 6px #ef4444',
+                          background: isSuccess ? 'var(--color-teal)' : 'var(--color-rose)',
+                          boxShadow: isSuccess ? '0 0 6px var(--color-teal)' : '0 0 6px var(--color-rose)',
                           flexShrink: 0,
                         }}
                       />
@@ -293,7 +293,7 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
                         style={{
                           fontFamily: 'var(--font-mono)',
                           fontSize: '12px',
-                          color: '#fff',
+                          color: 'var(--text-primary)',
                           fontWeight: 500,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -310,21 +310,21 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
                           padding: '2px 8px',
                           borderRadius: '12px',
                           background: isMock
-                            ? 'rgba(156, 163, 175, 0.15)'
+                            ? 'rgba(100, 116, 139, 0.1)'
                             : log.provider === 'Gemini'
-                              ? 'rgba(59, 130, 246, 0.15)'
-                              : 'rgba(167, 139, 250, 0.15)',
+                              ? 'rgba(59, 130, 246, 0.1)'
+                              : 'rgba(124, 58, 237, 0.1)',
                           color: isMock
-                            ? '#9ca3af'
+                            ? 'var(--text-muted)'
                             : log.provider === 'Gemini'
-                              ? '#60a5fa'
-                              : '#c084fc',
+                              ? '#3b82f6'
+                              : '#7c3AED',
                           border: '1px solid',
                           borderColor: isMock
-                            ? 'rgba(156, 163, 175, 0.25)'
+                            ? 'rgba(100, 116, 139, 0.2)'
                             : log.provider === 'Gemini'
-                              ? 'rgba(59, 130, 246, 0.3)'
-                              : 'rgba(167, 139, 250, 0.3)',
+                              ? 'rgba(59, 130, 246, 0.2)'
+                              : 'rgba(124, 58, 237, 0.2)',
                           fontWeight: 600,
                           flexShrink: 0,
                         }}
@@ -356,8 +356,8 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
                     <div
                       style={{
                         padding: '16px',
-                        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-                        background: 'rgba(0, 0, 0, 0.3)',
+                        borderTop: '1px solid var(--border-subtle)',
+                        background: 'rgba(0, 0, 0, 0.02)',
                       }}
                     >
                       {/* Error block if failed */}
@@ -365,10 +365,10 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
                         <div
                           style={{
                             padding: '10px 14px',
-                            background: 'rgba(239, 68, 68, 0.1)',
-                            border: '1px solid rgba(239, 68, 68, 0.25)',
+                            background: 'rgba(225, 29, 72, 0.05)',
+                            border: '1px solid rgba(225, 29, 72, 0.2)',
                             borderRadius: '6px',
-                            color: '#f87171',
+                            color: 'var(--color-rose)',
                             fontSize: '12px',
                             marginBottom: '12px',
                             display: 'flex',
@@ -394,12 +394,12 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
                             style={{
                               margin: 0,
                               padding: '12px',
-                              background: '#040711',
-                              border: '1px solid rgba(255, 255, 255, 0.05)',
+                              background: '#f8fafc',
+                              border: '1px solid var(--border-subtle)',
                               borderRadius: '6px',
                               fontSize: '11.5px',
                               fontFamily: 'var(--font-mono)',
-                              color: '#94a3b8',
+                              color: 'var(--text-primary)',
                               whiteSpace: 'pre-wrap',
                               wordBreak: 'break-all',
                               maxHeight: '180px',
@@ -422,12 +422,12 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
                             style={{
                               margin: 0,
                               padding: '12px',
-                              background: '#040711',
-                              border: '1px solid rgba(255, 255, 255, 0.05)',
+                              background: '#f8fafc',
+                              border: '1px solid var(--border-subtle)',
                               borderRadius: '6px',
                               fontSize: '11.5px',
                               fontFamily: 'var(--font-mono)',
-                              color: '#a7f3d0',
+                              color: 'var(--color-teal)',
                               whiteSpace: 'pre-wrap',
                               wordBreak: 'break-all',
                               maxHeight: '240px',
@@ -472,11 +472,11 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
           background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(0, 0, 0, 0.05);
           border-radius: 3px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
+          background: rgba(0, 0, 0, 0.1);
         }
       `}</style>
     </div>

@@ -771,7 +771,7 @@ export const SpecInput: React.FC = () => {
                 fontSize: '14px',
                 lineHeight: '1.6',
                 color: 'var(--text-secondary)',
-                backgroundColor: 'rgba(15,23,42,0.6)',
+                backgroundColor: 'var(--bg-card)',
                 whiteSpace: 'pre-wrap',
                 wordWrap: 'break-word',
                 overflow: 'hidden',
@@ -808,7 +808,7 @@ export const SpecInput: React.FC = () => {
                 lineHeight: '1.6',
                 background: 'transparent',
                 color: 'transparent',
-                caretColor: '#fff',
+                caretColor: 'var(--text-primary)',
                 position: 'relative',
                 zIndex: 2,
                 whiteSpace: 'pre-wrap',
@@ -1859,7 +1859,7 @@ export const SpecInput: React.FC = () => {
                       <span style={{ color: 'var(--color-violet)', fontSize: '14px', fontWeight: '500' }}>Chuyên gia AI đang phân tích dữ liệu hạt giống F0... Vui lòng đợi trong giây lát!</span>
                     </div>
                   ) : evaluationResult ? (
-                    <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid var(--color-violet)', background: 'linear-gradient(90deg, rgba(167, 139, 250, 0.08) 0%, rgba(15, 23, 42, 0) 100%)' }}>
+                    <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid var(--color-violet)', background: 'linear-gradient(90deg, rgba(124, 58, 237, 0.08) 0%, var(--bg-card) 100%)' }}>
                       <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: 'var(--color-violet)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <BrainCircuit size={20} />
                         Báo Cáo Đánh Giá Chất Lượng Test Case
@@ -1870,14 +1870,14 @@ export const SpecInput: React.FC = () => {
                           <div style={{ marginBottom: '16px' }}>
                             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Điểm Tối Ưu Tổng Quan</span>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px' }}>
-                              <div style={{ flex: 1, height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{ flex: 1, height: '8px', background: 'var(--border-subtle)', borderRadius: '4px', overflow: 'hidden' }}>
                                 <div style={{
                                   height: '100%',
                                   width: `${evaluationResult.score}%`,
                                   background: evaluationResult.score >= 80 ? 'var(--color-teal)' : evaluationResult.score >= 50 ? 'var(--color-yellow)' : 'var(--color-rose)'
                                 }} />
                               </div>
-                              <span style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff' }}>{evaluationResult.score}/100</span>
+                              <span style={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--text-primary)' }}>{evaluationResult.score}/100</span>
                             </div>
                           </div>
 
@@ -1922,19 +1922,19 @@ export const SpecInput: React.FC = () => {
                       className="btn"
                       style={{
                         display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontSize: '13px', fontWeight: 600, cursor: isEvaluating ? 'not-allowed' : 'pointer',
-                        background: 'rgba(167, 139, 250, 0.08)', color: 'var(--color-violet)', border: '1px solid rgba(167, 139, 250, 0.25)', borderRadius: '8px',
+                        background: 'rgba(124, 58, 237, 0.08)', color: 'var(--color-violet)', border: '1px solid rgba(124, 58, 237, 0.25)', borderRadius: '8px',
                         transition: 'all 0.2s ease',
                       }}
                       onMouseOver={e => {
                         if (!isEvaluating) {
-                          e.currentTarget.style.background = 'rgba(167, 139, 250, 0.16)';
-                          e.currentTarget.style.borderColor = 'rgba(167, 139, 250, 0.45)';
+                          e.currentTarget.style.background = 'rgba(124, 58, 237, 0.16)';
+                          e.currentTarget.style.borderColor = 'rgba(124, 58, 237, 0.45)';
                         }
                       }}
                       onMouseOut={e => {
                         if (!isEvaluating) {
-                          e.currentTarget.style.background = 'rgba(167, 139, 250, 0.08)';
-                          e.currentTarget.style.borderColor = 'rgba(167, 139, 250, 0.25)';
+                          e.currentTarget.style.background = 'rgba(124, 58, 237, 0.08)';
+                          e.currentTarget.style.borderColor = 'rgba(124, 58, 237, 0.25)';
                         }
                       }}
                     >
@@ -1954,7 +1954,7 @@ export const SpecInput: React.FC = () => {
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.8)',
+          background: 'rgba(0, 0, 0, 0.3)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           justifyContent: 'center',
@@ -1964,11 +1964,11 @@ export const SpecInput: React.FC = () => {
           <div className="glass-card" style={{
             width: '80%', maxWidth: '800px', maxHeight: '80vh',
             display: 'flex', flexDirection: 'column',
-            background: 'var(--color-bg)',
-            border: '1px solid rgba(45, 212, 191, 0.3)',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.5)'
+            background: 'var(--bg-space)',
+            border: '1px solid var(--border-subtle)',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.1)'
           }}>
-            <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ margin: 0, color: 'var(--color-teal)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <FileText size={24} /> {selectedHistoryItem ? 'Chi tiết Đặc tả' : 'Lịch sử Đặc tả đã phân tích'}
               </h2>
@@ -1981,26 +1981,26 @@ export const SpecInput: React.FC = () => {
                   {/* DETAIL VIEW */}
                   <div>
                     <h3 style={{ fontSize: '14px', color: 'var(--color-teal)', marginBottom: '8px' }}>1. Yêu cầu nghiệp vụ (Business Requirements)</h3>
-                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px', fontSize: '13px', color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>
+                    <div style={{ background: 'rgba(0,0,0,0.03)', padding: '12px', borderRadius: '8px', fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', border: '1px solid var(--border-subtle)' }}>
                       {selectedHistoryItem.raw_text}
                     </div>
                   </div>
 
                   <div>
                     <h3 style={{ fontSize: '14px', color: 'var(--color-yellow)', marginBottom: '8px' }}>2. Ràng buộc miền giá trị (Domain Constraints)</h3>
-                    <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', overflowX: 'auto' }}>
+                    <div style={{ background: 'rgba(0,0,0,0.02)', borderRadius: '8px', overflowX: 'auto', border: '1px solid var(--border-subtle)' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                         <thead>
-                          <tr style={{ background: 'rgba(255,255,255,0.05)' }}>
-                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Trường (Field)</div></th>
-                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ minWidth: '100px', maxWidth: '200px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Kiểu (Type)</div></th>
-                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ minWidth: '80px', maxWidth: '120px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Bắt buộc</div></th>
-                            <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ minWidth: '150px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Ràng buộc (Constraints)</div></th>
+                          <tr style={{ background: 'rgba(0,0,0,0.05)' }}>
+                            <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)' }}><div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Trường (Field)</div></th>
+                            <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)' }}><div style={{ minWidth: '100px', maxWidth: '200px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Kiểu (Type)</div></th>
+                            <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)' }}><div style={{ minWidth: '80px', maxWidth: '120px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Bắt buộc</div></th>
+                            <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)' }}><div style={{ minWidth: '150px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Ràng buộc (Constraints)</div></th>
                           </tr>
                         </thead>
                         <tbody>
                           {selectedHistoryItem.fields?.map((field: any, idx: number) => (
-                            <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                               <td style={{ padding: '10px 12px', color: 'var(--color-yellow)', verticalAlign: 'top' }}>
                                 <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{field.name}</div>
                               </td>
@@ -2024,25 +2024,25 @@ export const SpecInput: React.FC = () => {
 
                   <div>
                     <h3 style={{ fontSize: '14px', color: 'var(--color-violet)', marginBottom: '8px' }}>3. Dữ liệu kiểm thử ban đầu (Test Data)</h3>
-                    <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', overflowX: 'auto', maxHeight: '250px', overflowY: 'auto' }}>
+                    <div style={{ background: 'rgba(0,0,0,0.02)', borderRadius: '8px', overflowX: 'auto', maxHeight: '250px', overflowY: 'auto', border: '1px solid var(--border-subtle)' }}>
                       {selectedHistoryItem.initialPopulation && selectedHistoryItem.initialPopulation.length > 0 ? (
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-                          <thead style={{ position: 'sticky', top: 0, background: 'rgba(15, 23, 42, 0.95)', zIndex: 1 }}>
+                          <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
                             <tr>
-                              <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--color-violet)' }}>#</th>
+                              <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--color-violet)' }}>#</th>
                               {selectedHistoryItem.fields?.map((f: any) => (
-                                <th key={f.name} style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--color-violet)' }}>
+                                <th key={f.name} style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--color-violet)' }}>
                                   <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{f.name}</div>
                                 </th>
                               ))}
-                              <th style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--color-violet)' }}>
+                              <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--color-violet)' }}>
                                 <div style={{ minWidth: '150px', maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal' }}>Kết quả mong đợi</div>
                               </th>
                             </tr>
                           </thead>
                           <tbody>
                             {selectedHistoryItem.initialPopulation.map((seed: any, idx: number) => (
-                              <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                              <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                                 <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{idx + 1}</td>
                                 {selectedHistoryItem.fields?.map((f: any) => (
                                   <td key={f.name} style={{ padding: '10px 12px', color: 'var(--text-primary)', verticalAlign: 'top' }}>
@@ -2096,7 +2096,7 @@ export const SpecInput: React.FC = () => {
                         ep: [],
                         decision: []
                       });
-                    }} className="btn btn-primary glow-teal" style={{ background: 'var(--color-teal)', border: 'none', color: '#000' }}>
+                    }} className="btn btn-primary glow-teal" style={{ background: 'var(--color-teal)', border: 'none', color: 'var(--bg-space)' }}>
                       🚀 Nạp vào Editor
                     </button>
                   </div>
@@ -2110,18 +2110,18 @@ export const SpecInput: React.FC = () => {
                   {specificationHistory.map((item: any) => (
                     <div key={item.id} className="glass-card flex align-center" style={{
                       padding: '16px',
-                      border: '1px solid rgba(255,255,255,0.05)',
+                      border: '1px solid var(--border-subtle)',
                       transition: 'all 0.2s ease',
                       justifyContent: 'space-between'
                     }}
                       onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--color-teal)'}
-                      onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'}>
+                      onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-subtle)'}>
                       <div style={{ flex: 1, marginRight: '16px' }}>
                         <div style={{ display: 'flex', gap: '12px', marginBottom: '8px' }}>
                           <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
                             {new Date(item.created_at).toLocaleString('vi-VN')}
                           </span>
-                          <span style={{ color: 'var(--color-teal)', fontSize: '12px', background: 'rgba(45,212,191,0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                          <span style={{ color: 'var(--color-teal)', fontSize: '12px', background: 'rgba(13, 148, 136, 0.1)', padding: '2px 8px', borderRadius: '4px' }}>
                             {item.fields.length} trường
                           </span>
                         </div>
@@ -2129,7 +2129,7 @@ export const SpecInput: React.FC = () => {
                           {item.raw_text}
                         </p>
                       </div>
-                      <button onClick={() => setSelectedHistoryItem(item)} className="btn" style={{ background: 'rgba(255,255,255,0.1)', border: 'none', padding: '8px 16px', color: '#fff', fontSize: '13px' }}>
+                      <button onClick={() => setSelectedHistoryItem(item)} className="btn" style={{ background: 'rgba(0,0,0,0.05)', border: 'none', padding: '8px 16px', color: 'var(--text-primary)', fontSize: '13px' }}>
                         👁️ Xem chi tiết
                       </button>
                     </div>
@@ -2146,25 +2146,25 @@ export const SpecInput: React.FC = () => {
         <div style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(8, 13, 28, 0.9)',
+          background: 'rgba(206, 245, 242, 0.8)',
           backdropFilter: 'blur(8px)',
           zIndex: 99999,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#fff',
+          color: 'var(--text-primary)',
           fontFamily: 'system-ui, sans-serif'
         }}>
           <div style={{
-            background: 'rgba(15, 23, 42, 0.8)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-subtle)',
             borderRadius: '16px',
             padding: '40px',
             maxWidth: '540px',
             width: '90%',
             textAlign: 'center',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.05)',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -2177,7 +2177,7 @@ export const SpecInput: React.FC = () => {
             />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, letterSpacing: '-0.01em', color: '#fff' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
                 Đang Tái Sinh Quần Thể F0...
               </h3>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
@@ -2193,25 +2193,25 @@ export const SpecInput: React.FC = () => {
         <div style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(8, 13, 28, 0.9)',
+          background: 'rgba(206, 245, 242, 0.8)',
           backdropFilter: 'blur(8px)',
           zIndex: 99999,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#fff',
+          color: 'var(--text-primary)',
           fontFamily: 'system-ui, sans-serif'
         }}>
           <div style={{
-            background: 'rgba(15, 23, 42, 0.8)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-subtle)',
             borderRadius: '16px',
             padding: '40px',
             maxWidth: '540px',
             width: '90%',
             textAlign: 'center',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.05)',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -2224,7 +2224,7 @@ export const SpecInput: React.FC = () => {
             />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <h3 style={{ fontSize: '17px', fontWeight: 'bold', margin: 0, letterSpacing: '-0.01em', color: '#fff' }}>
+              <h3 style={{ fontSize: '17px', fontWeight: 'bold', margin: 0, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
                 Đang Phân Tích Đặc Tả Bằng AI...
               </h3>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
@@ -2235,8 +2235,8 @@ export const SpecInput: React.FC = () => {
             {/* Steps Progress Checklist */}
             <div style={{
               width: '100%',
-              background: '#090d16',
-              border: '1px solid rgba(255, 255, 255, 0.05)',
+              background: 'rgba(0,0,0,0.03)',
+              border: '1px solid var(--border-subtle)',
               borderRadius: '8px',
               padding: '16px',
               display: 'flex',
@@ -2264,12 +2264,12 @@ export const SpecInput: React.FC = () => {
                       {isPast ? (
                         <span style={{ color: 'var(--color-teal)', fontWeight: 'bold' }}>✓</span>
                       ) : isCurrent ? (
-                        <div style={{ width: '12px', height: '12px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: 'var(--color-teal)', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+                        <div style={{ width: '12px', height: '12px', border: '2px solid rgba(0,0,0,0.1)', borderTopColor: 'var(--color-teal)', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
                       ) : (
                         <span style={{ color: 'var(--text-muted)' }}>•</span>
                       )}
                     </div>
-                    <span style={{ fontSize: '12.5px', color: isCurrent ? '#fff' : isPast ? 'var(--text-secondary)' : 'var(--text-muted)', fontWeight: isCurrent ? 'bold' : 'normal' }}>
+                    <span style={{ fontSize: '12.5px', color: isCurrent ? 'var(--text-primary)' : isPast ? 'var(--text-secondary)' : 'var(--text-muted)', fontWeight: isCurrent ? 'bold' : 'normal' }}>
                       {step.text}
                     </span>
                   </div>

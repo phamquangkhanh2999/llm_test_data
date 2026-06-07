@@ -13,18 +13,18 @@ const highlightSyntax = (content: string, language: string): string => {
     .replace(/>/g, '&gt;');
 
   if (language === 'typescript' || language === 'javascript') {
-    escaped = escaped.replace(/\b(import|from|const|let|var|function|return|async|await|test|describe|it|expect|cy|page|forEach|typeof|undefined)\b/g, '<span style="color: #f43f5e; font-weight: bold;">$1</span>');
-    escaped = escaped.replace(/(['"`])(.*?)\1/g, '<span style="color: #2dd4bf;">$1$2$1</span>');
-    escaped = escaped.replace(/(\/\/.*)/g, '<span style="color: #475569; font-style: italic;">$1</span>');
-    escaped = escaped.replace(/(\/\*\*[\s\S]*?\*\/)/g, '<span style="color: #475569; font-style: italic;">$1</span>');
+    escaped = escaped.replace(/\b(import|from|const|let|var|function|return|async|await|test|describe|it|expect|cy|page|forEach|typeof|undefined)\b/g, '<span style="color: #E11D48; font-weight: bold;">$1</span>');
+    escaped = escaped.replace(/(['"`])(.*?)\1/g, '<span style="color: #0D9488;">$1$2$1</span>');
+    escaped = escaped.replace(/(\/\/.*)/g, '<span style="color: #64748B; font-style: italic;">$1</span>');
+    escaped = escaped.replace(/(\/\*\*[\s\S]*?\*\/)/g, '<span style="color: #64748B; font-style: italic;">$1</span>');
   } else if (language === 'sql') {
-    escaped = escaped.replace(/\b(CREATE TABLE|IF NOT EXISTS|INTEGER|PRIMARY KEY|AUTOINCREMENT|TEXT|INSERT INTO|VALUES|NULL|SELECT|UNION)\b/g, '<span style="color: #a78bfa; font-weight: bold;">$1</span>');
-    escaped = escaped.replace(/(['])(.*?)\1/g, '<span style="color: #2dd4bf;">$1$2$1</span>');
-    escaped = escaped.replace(/(--.*)/g, '<span style="color: #475569; font-style: italic;">$1</span>');
+    escaped = escaped.replace(/\b(CREATE TABLE|IF NOT EXISTS|INTEGER|PRIMARY KEY|AUTOINCREMENT|TEXT|INSERT INTO|VALUES|NULL|SELECT|UNION)\b/g, '<span style="color: #7C3AED; font-weight: bold;">$1</span>');
+    escaped = escaped.replace(/(['])(.*?)\1/g, '<span style="color: #0D9488;">$1$2$1</span>');
+    escaped = escaped.replace(/(--.*)/g, '<span style="color: #64748B; font-style: italic;">$1</span>');
   } else if (language === 'json') {
-    escaped = escaped.replace(/(".*?")(\s*:)/g, '<span style="color: #a78bfa;">$1</span>$2');
-    escaped = escaped.replace(/(:\s*)(".*?")/g, '$1<span style="color: #2dd4bf;">$2</span>');
-    escaped = escaped.replace(/(:\s*)(\b\d+\b|true|false|null)/g, '$1<span style="color: #facc15;">$2</span>');
+    escaped = escaped.replace(/(".*?")(\s*:)/g, '<span style="color: #7C3AED;">$1</span>$2');
+    escaped = escaped.replace(/(:\s*)(".*?")/g, '$1<span style="color: #0D9488;">$2</span>');
+    escaped = escaped.replace(/(:\s*)(\b\d+\b|true|false|null)/g, '$1<span style="color: #D97706;">$2</span>');
   }
   return escaped;
 };
@@ -607,20 +607,20 @@ ${values};
       <div className="grid-2" style={{ gap: '20px' }}>
       
       {/* CỘT BÊN TRÁI: KHÔNG GIAN ĐIỀU KHIỂN XUẤT DỮ LIỆU & LỊCH SỬ PHIÊN CHẠY */}
-      <div className="glass-card flex flex-col gap-md teal-border" style={{ background: 'rgba(15, 23, 42, 0.4)' }}>
-        <div className="flex align-center gap-sm" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+      <div className="glass-card flex flex-col gap-md teal-border" style={{ background: 'var(--bg-card)' }}>
+        <div className="flex align-center gap-sm" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
           <History className="text-teal" size={22} style={{ color: 'var(--color-teal)' }} />
-          <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff', letterSpacing: '0.03em' }}>TRUNG TÂM XUẤT DỮ LIỆU &amp; LỊCH SỬ</h2>
+          <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: 'var(--text-primary)', letterSpacing: '0.03em' }}>TRUNG TÂM XUẤT DỮ LIỆU &amp; LỊCH SỬ</h2>
         </div>
 
         {selectedSuiteName && (
           <div style={{
-            background: 'rgba(45, 212, 191, 0.08)',
-            border: '1px solid rgba(45, 212, 191, 0.25)',
+            background: 'rgba(13, 148, 136, 0.08)',
+            border: '1px solid rgba(13, 148, 136, 0.25)',
             borderRadius: '6px',
             padding: '8px 12px',
             fontSize: '12px',
-            color: '#fff',
+            color: 'var(--text-primary)',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
@@ -646,16 +646,16 @@ ${values};
                   flex: 1, 
                   fontSize: '13px', 
                   padding: '11px 16px',
-                  background: 'linear-gradient(135deg, var(--color-teal) 0%, #0d9488 100%)', 
+                  background: 'var(--color-teal)', 
                   border: 'none',
-                  color: '#fff',
+                  color: 'var(--bg-space)',
                   fontWeight: '700',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '8px',
                   borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(45, 212, 191, 0.2)'
+                  boxShadow: '0 4px 12px rgba(13, 148, 136, 0.2)'
                 }}
               >
                 <Download size={16} /> 
@@ -675,9 +675,9 @@ ${values};
                   zIndex: 200, 
                   marginTop: '8px', 
                   padding: '12px', 
-                  background: 'rgba(10,16,36,0.98)', 
-                  border: '1px solid rgba(45, 212, 191, 0.4)',
-                  boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
+                  background: 'var(--bg-card)', 
+                  border: '1px solid var(--color-teal)',
+                  boxShadow: '0 10px 40px rgba(0,0,0,0.1)',
                   borderRadius: '10px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -696,16 +696,16 @@ ${values};
                     <button 
                       onClick={() => { handleExportCSV(); setExportMenuOpen(false); }}
                       className="btn btn-secondary" 
-                      style={{ fontSize: '12px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}
+                      style={{ fontSize: '12px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%', background: 'rgba(0,0,0,0.02)' }}
                     >
-                      <FileSpreadsheet size={14} className="text-teal" /> CSV / Excel
+                      <FileSpreadsheet size={14} style={{ color: 'var(--color-teal)' }} /> CSV / Excel
                     </button>
                     <button 
                       onClick={() => { handleExportJSON(); setExportMenuOpen(false); }}
                       className="btn btn-secondary" 
-                      style={{ fontSize: '12px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}
+                      style={{ fontSize: '12px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%', background: 'rgba(0,0,0,0.02)' }}
                     >
-                      <FileJson size={14} className="text-teal" /> File JSON
+                      <FileJson size={14} style={{ color: 'var(--color-teal)' }} /> File JSON
                     </button>
                   </div>
                 </div>
@@ -719,14 +719,14 @@ ${values};
                     <button 
                       onClick={() => { handleExportPlaywright(); setExportMenuOpen(false); }}
                       className="btn btn-secondary" 
-                      style={{ fontSize: '11px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}
+                      style={{ fontSize: '11px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%', background: 'rgba(0,0,0,0.02)' }}
                     >
                       <Terminal size={13} style={{ color: 'var(--color-teal)' }} /> Playwright Spec
                     </button>
                     <button 
                       onClick={() => { handleExportCypress(); setExportMenuOpen(false); }}
                       className="btn btn-secondary" 
-                      style={{ fontSize: '11px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}
+                      style={{ fontSize: '11px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%', background: 'rgba(0,0,0,0.02)' }}
                     >
                       <Code size={13} style={{ color: 'var(--color-violet)' }} /> Cypress Spec
                     </button>
@@ -742,14 +742,14 @@ ${values};
                     <button 
                       onClick={() => { handleExportSQL(); setExportMenuOpen(false); }}
                       className="btn btn-secondary" 
-                      style={{ fontSize: '11px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}
+                      style={{ fontSize: '11px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%', background: 'rgba(0,0,0,0.02)' }}
                     >
-                      <Database size={13} style={{ color: '#facc15' }} /> SQL Script
+                      <Database size={13} style={{ color: 'var(--color-yellow)' }} /> SQL Script
                     </button>
                     <button 
                       onClick={() => { handleExportPostman(); setExportMenuOpen(false); }}
                       className="btn btn-secondary" 
-                      style={{ fontSize: '11px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}
+                      style={{ fontSize: '11px', padding: '8px', justifyContent: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', width: '100%', background: 'rgba(0,0,0,0.02)' }}
                     >
                       <FileCode size={13} style={{ color: 'var(--color-rose)' }} /> Postman
                     </button>
@@ -757,16 +757,16 @@ ${values};
                 </div>
 
                 {/* NHÓM 4: THAO TÁC KHÁC */}
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '8px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '8px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <button 
                     onClick={() => { handleCopyClipboard(); setExportMenuOpen(false); }}
                     className="btn btn-secondary" 
                     style={{ 
                       fontSize: '12px', 
                       padding: '8px 12px', 
-                      background: copied ? 'rgba(45,212,191,0.06)' : 'rgba(255,255,255,0.01)',
-                      borderColor: copied ? 'var(--color-teal)' : 'rgba(255,255,255,0.08)',
-                      color: copied ? 'var(--color-teal)' : '#94a3b8',
+                      background: copied ? 'rgba(13, 148, 136, 0.06)' : 'rgba(0,0,0,0.01)',
+                      borderColor: copied ? 'var(--color-teal)' : 'var(--border-subtle)',
+                      color: copied ? 'var(--color-teal)' : 'var(--text-secondary)',
                       width: '100%',
                       justifyContent: 'center',
                       display: 'flex',
@@ -785,9 +785,9 @@ ${values};
                     style={{
                       fontSize: '12px',
                       padding: '8px 12px',
-                      borderColor: 'rgba(244, 63, 94, 0.2)',
+                      borderColor: 'rgba(225, 29, 72, 0.2)',
                       color: isMinimizing ? 'var(--text-muted)' : 'var(--color-rose)',
-                      background: 'rgba(244, 63, 94, 0.02)',
+                      background: 'rgba(225, 29, 72, 0.02)',
                       width: '100%',
                       display: 'flex',
                       alignItems: 'center',
@@ -797,7 +797,7 @@ ${values};
                   >
                     {isMinimizing ? (
                       <>
-                        <div style={{ width: '12px', height: '12px', border: '2px solid rgba(244,63,94,0.2)', borderTopColor: 'var(--color-rose)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                        <div style={{ width: '12px', height: '12px', border: '2px solid rgba(225, 29, 72, 0.2)', borderTopColor: 'var(--color-rose)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
                         Đang tối giản...
                       </>
                     ) : (
@@ -815,8 +815,8 @@ ${values};
             {minimizeResult && (
               <div style={{
                 padding: '8px 12px',
-                background: 'rgba(244,63,94,0.04)',
-                border: '1px solid rgba(244,63,94,0.15)',
+                background: 'rgba(225, 29, 72, 0.04)',
+                border: '1px solid rgba(225, 29, 72, 0.15)',
                 borderRadius: '6px',
                 fontSize: '11.5px',
                 color: 'var(--text-secondary)',
@@ -833,14 +833,14 @@ ${values};
             )}
           </div>
         ) : (
-          <div className="flex align-center gap-sm" style={{ padding: '16px', background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.06)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', fontSize: '13px', justifyContent: 'center' }}>
+          <div className="flex align-center gap-sm" style={{ padding: '16px', background: 'rgba(0,0,0,0.01)', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', fontSize: '13px', justifyContent: 'center' }}>
             <AlertCircle size={16} /> Hãy chạy tối ưu hóa ở Tab "Tối Ưu Hóa Bộ Test" để xuất dữ liệu.
           </div>
         )}
 
         {/* DANH SÁCH LỊCH SỬ CÁC LƯỢT CHẠY TRONG PHIÊN */}
         <div className="flex flex-col gap-sm" style={{ marginTop: '10px' }}>
-          <div className="flex justify-between align-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '6px' }}>
+          <div className="flex justify-between align-center" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '6px' }}>
             <h4 style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
               Lịch sử các phiên chạy đã lưu
             </h4>
@@ -848,7 +848,7 @@ ${values};
               <button 
                 onClick={onClearHistory}
                 className="btn btn-secondary flex align-center gap-xs" 
-                style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--color-rose)', borderColor: 'rgba(244,63,94,0.1)' }}
+                style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--color-rose)', borderColor: 'rgba(225, 29, 72, 0.1)' }}
               >
                 <Trash2 size={12} /> Xóa sạch
               </button>
@@ -857,7 +857,7 @@ ${values};
           
           <div className="flex flex-col gap-sm" style={{ maxHeight: '200px', overflowY: 'auto', paddingRight: '4px' }}>
             {historyRuns.length === 0 ? (
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', padding: '24px 0', border: '1px dashed rgba(255,255,255,0.03)', borderRadius: 'var(--radius-sm)' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', padding: '24px 0', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
                 Chưa có lượt chạy thành công nào được lưu trữ.
               </span>
             ) : (
@@ -866,8 +866,8 @@ ${values};
                   key={idx} 
                   className="flex justify-between align-center card-hover-animation"
                   style={{ 
-                    background: 'rgba(255,255,255,0.02)', 
-                    border: '1px solid rgba(255,255,255,0.05)', 
+                    background: 'rgba(0,0,0,0.02)', 
+                    border: '1px solid var(--border-subtle)', 
                     padding: '10px 14px', 
                     borderRadius: '8px',
                     fontSize: '12px',
@@ -882,13 +882,13 @@ ${values};
                   </div>
                   <div className="flex align-center gap-md">
                     <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: '#fff' }}>{(run.coverage * 100).toFixed(0)}%</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: 'var(--text-primary)' }}>{(run.coverage * 100).toFixed(0)}%</span>
                       <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Độ phủ</div>
                     </div>
                     <button 
                       onClick={() => onLoadPastRun(run.data)}
                       className="btn btn-secondary" 
-                      style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold', borderColor: 'rgba(45,212,191,0.2)', color: 'var(--color-teal)' }}
+                      style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold', borderColor: 'rgba(13, 148, 136, 0.2)', color: 'var(--color-teal)' }}
                     >
                       Nạp lại
                     </button>
@@ -901,14 +901,14 @@ ${values};
       </div>
  
       {/* CỘT BÊN PHẢI: BẢNG XEM TRƯỚC BẢN GHI DỮ LIỆU CHI TIẾT HOẶC XEM TRƯỚC CODE */}
-      <div className="glass-card flex flex-col gap-md violet-border" style={{ background: 'rgba(15, 23, 42, 0.4)', minHeight: '520px' }}>
+      <div className="glass-card flex flex-col gap-md violet-border" style={{ background: 'var(--bg-card)', minHeight: '520px' }}>
         {previewCode ? (
           <div className="flex flex-col gap-md" style={{ flex: 1, minHeight: '520px' }}>
-            <div className="flex justify-between align-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+            <div className="flex justify-between align-center" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
               <div className="flex align-center gap-sm">
                 <Code className="text-violet" size={22} style={{ color: 'var(--color-violet)' }} />
                 <div>
-                  <h2 style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', margin: 0 }}>{previewCode.title}</h2>
+                  <h2 style={{ fontSize: '15px', fontWeight: 'bold', color: 'var(--text-primary)', margin: 0 }}>{previewCode.title}</h2>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{previewCode.filename}</span>
                 </div>
               </div>
@@ -923,9 +923,9 @@ ${values};
                     });
                   }}
                   className="btn btn-secondary flex align-center gap-xs"
-                  style={{ padding: '6px 10px', fontSize: '12px' }}
+                  style={{ padding: '6px 10px', fontSize: '12px', background: 'rgba(0,0,0,0.02)' }}
                 >
-                  {codeCopied ? <Check size={14} className="text-teal" /> : <Copy size={14} />}
+                  {codeCopied ? <Check size={14} style={{ color: 'var(--color-teal)' }} /> : <Copy size={14} />}
                   {codeCopied ? 'Đã sao chép' : 'Sao chép'}
                 </button>
                 
@@ -942,9 +942,9 @@ ${values};
                   style={{ 
                     padding: '6px 12px', 
                     fontSize: '12px',
-                    background: 'linear-gradient(135deg, var(--color-teal) 0%, #0d9488 100%)', 
+                    background: 'var(--color-teal)', 
                     border: 'none', 
-                    color: '#fff', 
+                    color: 'var(--bg-space)', 
                     fontWeight: 'bold'
                   }}
                 >
@@ -967,9 +967,9 @@ ${values};
               display: 'flex', 
               fontFamily: 'var(--font-mono)', 
               fontSize: '12px', 
-              background: '#040711', 
+              background: '#f8fafc', 
               borderRadius: '8px', 
-              border: '1px solid rgba(255,255,255,0.05)', 
+              border: '1px solid var(--border-subtle)', 
               overflow: 'hidden', 
               flex: 1,
               maxHeight: '420px',
@@ -977,11 +977,11 @@ ${values};
             }}>
               {/* Line numbers gutter */}
               <div style={{ 
-                color: 'rgba(255,255,255,0.2)', 
+                color: 'rgba(0,0,0,0.3)', 
                 textAlign: 'right', 
                 padding: '12px 8px', 
-                background: '#020307',
-                borderRight: '1px solid rgba(255,255,255,0.05)', 
+                background: '#f1f5f9',
+                borderRight: '1px solid var(--border-subtle)', 
                 userSelect: 'none',
                 minWidth: '40px'
               }}>
@@ -994,7 +994,7 @@ ${values};
               <pre style={{ 
                 margin: 0, 
                 padding: '12px', 
-                color: '#e2e8f0', 
+                color: 'var(--text-primary)', 
                 whiteSpace: 'pre', 
                 overflow: 'auto', 
                 flex: 1,
@@ -1005,20 +1005,20 @@ ${values};
             </div>
             
             {/* LƯU Ý AN TOÀN */}
-            <div className="flex align-center gap-sm" style={{ padding: '8px 12px', background: 'rgba(244,63,94,0.04)', border: '1px solid rgba(244,63,94,0.1)', borderRadius: '6px', fontSize: '11px', color: 'var(--color-rose)', marginTop: 'auto' }}>
+            <div className="flex align-center gap-sm" style={{ padding: '8px 12px', background: 'rgba(225, 29, 72, 0.04)', border: '1px solid rgba(225, 29, 72, 0.1)', borderRadius: '6px', fontSize: '11px', color: 'var(--color-rose)', marginTop: 'auto' }}>
               <ShieldAlert size={14} style={{ flexShrink: 0 }} />
               <span><b>Lưu ý an toàn:</b> Script kiểm thử sinh ra chỉ chứa dữ liệu giả lập. Hãy xác minh kỹ lưỡng trước khi đưa vào môi trường kiểm thử thực tế.</span>
             </div>
           </div>
         ) : (
           <>
-            <div className="flex justify-between align-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+            <div className="flex justify-between align-center" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
               <div className="flex align-center gap-sm">
                 <Database className="text-violet" size={22} style={{ color: 'var(--color-violet)' }} />
-                <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff', letterSpacing: '0.03em' }}>XEM TRƯỚC BỘ CA KIỂM THỬ</h2>
+                <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: 'var(--text-primary)', letterSpacing: '0.03em' }}>XEM TRƯỚC BỘ CA KIỂM THỬ</h2>
               </div>
               {optimizedDataset.length > 0 && (
-                <span style={{ fontSize: '11px', background: 'rgba(167,139,250,0.1)', color: 'var(--color-violet)', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                <span style={{ fontSize: '11px', background: 'rgba(124, 58, 237, 0.1)', color: 'var(--color-violet)', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
                   Tổng cộng: {optimizedDataset.length} ca test
                 </span>
               )}
@@ -1034,13 +1034,13 @@ ${values};
               <div className="flex flex-col gap-md" style={{ flex: 1 }}>
                 
                 {/* THANH BỘ LỌC THÔNG MINH (QA CATEGORY FILTERS) */}
-                <div className="flex gap-xs" style={{ flexWrap: 'wrap', background: 'rgba(15, 23, 42, 0.4)', padding: '4px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div className="flex gap-xs" style={{ flexWrap: 'wrap', background: 'rgba(0,0,0,0.02)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
                   <button 
                     onClick={() => setFilterType('all')}
                     style={{ 
                       flex: 1, minWidth: '80px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                      background: filterType === 'all' ? 'rgba(255,255,255,0.08)' : 'transparent',
-                      color: filterType === 'all' ? '#fff' : 'var(--text-muted)'
+                      background: filterType === 'all' ? 'rgba(0,0,0,0.05)' : 'transparent',
+                      color: filterType === 'all' ? 'var(--text-primary)' : 'var(--text-muted)'
                     }}
                   >
                     Tất cả ({totalCount})
@@ -1049,7 +1049,7 @@ ${values};
                     onClick={() => setFilterType('happy')}
                     style={{ 
                       flex: 1, minWidth: '95px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                      background: filterType === 'happy' ? 'rgba(45,212,191,0.08)' : 'transparent',
+                      background: filterType === 'happy' ? 'rgba(13, 148, 136, 0.08)' : 'transparent',
                       color: filterType === 'happy' ? 'var(--color-teal)' : 'var(--text-muted)'
                     }}
                   >
@@ -1059,7 +1059,7 @@ ${values};
                     onClick={() => setFilterType('boundary')}
                     style={{ 
                       flex: 1, minWidth: '95px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                      background: filterType === 'boundary' ? 'rgba(167,139,250,0.08)' : 'transparent',
+                      background: filterType === 'boundary' ? 'rgba(124, 58, 237, 0.08)' : 'transparent',
                       color: filterType === 'boundary' ? 'var(--color-violet)' : 'var(--text-muted)'
                     }}
                   >
@@ -1069,7 +1069,7 @@ ${values};
                     onClick={() => setFilterType('security')}
                     style={{ 
                       flex: 1, minWidth: '95px', padding: '6px 8px', border: 'none', borderRadius: '6px', fontSize: '11.5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s',
-                      background: filterType === 'security' ? 'rgba(244,63,94,0.08)' : 'transparent',
+                      background: filterType === 'security' ? 'rgba(225, 29, 72, 0.08)' : 'transparent',
                       color: filterType === 'security' ? 'var(--color-rose)' : 'var(--text-muted)'
                     }}
                   >
@@ -1078,7 +1078,7 @@ ${values};
                 </div>
 
                 {/* BẢNG DỮ LIỆU HIỂN THỊ SAU KHI LỌC */}
-                <div style={{ flex: 1, width: '100%', overflowX: 'auto', maxHeight: '310px', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                <div style={{ flex: 1, width: '100%', overflowX: 'auto', maxHeight: '310px', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}>
                   {filteredDataset.length === 0 ? (
                     <div style={{ padding: '48px', color: 'var(--text-muted)', textAlign: 'center', fontSize: '13px' }}>
                       Không tìm thấy ca kiểm thử nào khớp với bộ lọc này.
@@ -1086,7 +1086,7 @@ ${values};
                   ) : (
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                       <thead>
-                        <tr style={{ background: 'rgba(15,23,42,0.8)', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+                        <tr style={{ background: 'rgba(0,0,0,0.03)', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
                           <th style={{ padding: '10px 12px', width: '80px', minWidth: '100px' }}>
                             <div style={{ minWidth: '100px' }}>Phân Loại</div>
                           </th>
@@ -1106,8 +1106,8 @@ ${values};
                             <tr 
                               key={idx} 
                               style={{ 
-                                borderBottom: '1px solid rgba(255,255,255,0.04)',
-                                background: category === 'security' ? 'rgba(244,63,94,0.03)' : category === 'boundary' ? 'rgba(167,139,250,0.03)' : 'none'
+                                borderBottom: '1px solid var(--border-subtle)',
+                                background: category === 'security' ? 'rgba(225, 29, 72, 0.02)' : category === 'boundary' ? 'rgba(124, 58, 237, 0.02)' : 'none'
                               }}
                             >
                               {/* Render badge phân loại */}
@@ -1118,7 +1118,7 @@ ${values};
                                     borderRadius: '4px', 
                                     fontSize: '9.5px', 
                                     fontWeight: 'bold',
-                                    background: category === 'security' ? 'rgba(244,63,94,0.15)' : category === 'boundary' ? 'rgba(167,139,250,0.15)' : 'rgba(45,212,191,0.15)',
+                                    background: category === 'security' ? 'rgba(225, 29, 72, 0.1)' : category === 'boundary' ? 'rgba(124, 58, 237, 0.1)' : 'rgba(13, 148, 136, 0.1)',
                                     color: category === 'security' ? 'var(--color-rose)' : category === 'boundary' ? 'var(--color-violet)' : 'var(--color-teal)'
                                   }}
                                 >
@@ -1167,9 +1167,9 @@ ${values};
                                     alignItems: 'center',
                                     gap: '4px',
                                     border: '1px solid',
-                                    borderColor: selectedRecordIdx === idx ? 'var(--color-teal)' : 'rgba(255,255,255,0.08)',
+                                    borderColor: selectedRecordIdx === idx ? 'var(--color-teal)' : 'var(--border-subtle)',
                                     color: selectedRecordIdx === idx ? 'var(--color-teal)' : 'var(--text-secondary)',
-                                    background: selectedRecordIdx === idx ? 'rgba(45,212,191,0.08)' : 'rgba(255,255,255,0.01)',
+                                    background: selectedRecordIdx === idx ? 'rgba(13, 148, 136, 0.08)' : 'rgba(0,0,0,0.01)',
                                     cursor: 'pointer',
                                     borderRadius: '4px',
                                     transition: 'all 0.2s',
@@ -1188,19 +1188,19 @@ ${values};
                   
                   {/* NÚT XEM THÊM / THU GỌN */}
                   {filteredDataset.length > displayLimit ? (
-                    <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(15,23,42,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'center', gap: '10px' }}>
+                    <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(0,0,0,0.02)', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'center', gap: '10px' }}>
                       <button
                         onClick={() => setDisplayLimit(prev => prev + 30)}
-                        style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.2)', borderRadius: '6px', color: 'var(--color-teal)', cursor: 'pointer', fontWeight: 'bold' }}
+                        style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(13, 148, 136, 0.06)', border: '1px solid rgba(13, 148, 136, 0.2)', borderRadius: '6px', color: 'var(--color-teal)', cursor: 'pointer', fontWeight: 'bold' }}
                       >
                         ↓ Xem thêm {Math.min(30, filteredDataset.length - displayLimit)} ca ({filteredDataset.length - displayLimit} còn lại)
                       </button>
                     </div>
                   ) : filteredDataset.length > 30 ? (
-                    <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(15,23,42,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(0,0,0,0.02)', borderTop: '1px solid var(--border-subtle)' }}>
                       <button
                         onClick={() => setDisplayLimit(30)}
-                        style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: 'var(--text-muted)', cursor: 'pointer' }}
+                        style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: 'var(--text-muted)', cursor: 'pointer' }}
                       >
                         ↑ Thu gọn
                       </button>
@@ -1209,13 +1209,13 @@ ${values};
                 </div>
                 
                 {/* LƯU Ý BẢO MẬT DƯỚI ĐÁY */}
-                <div className="flex align-center gap-sm" style={{ padding: '8px 12px', background: 'rgba(244,63,94,0.04)', border: '1px solid rgba(244,63,94,0.1)', borderRadius: '6px', fontSize: '11px', color: 'var(--color-rose)', marginTop: 'auto' }}>
+                <div className="flex align-center gap-sm" style={{ padding: '8px 12px', background: 'rgba(225, 29, 72, 0.04)', border: '1px solid rgba(225, 29, 72, 0.1)', borderRadius: '6px', fontSize: '11px', color: 'var(--color-rose)', marginTop: 'auto' }}>
                   <ShieldAlert size={14} style={{ flexShrink: 0 }} />
                   <span><b>Lưu ý an toàn:</b> Các chuỗi XSS/SQLi tấn công được sinh ra nhằm mục đích dò quét an ninh phần mềm. Đã mã hóa HTML khi render, tránh dán trực tiếp vào DB sản xuất của bạn.</span>
                 </div>
               </div>
             ) : (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.05)', borderRadius: 'var(--radius-sm)', background: 'rgba(255,255,255,0.01)', padding: '80px 0', color: 'var(--text-muted)' }}>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)', background: 'rgba(0,0,0,0.01)', padding: '80px 0', color: 'var(--text-muted)' }}>
                 Chưa có tập dữ liệu tối ưu hóa nào được sinh ra.
               </div>
             )}
@@ -1229,9 +1229,9 @@ ${values};
         <div 
           className="glass-card flex flex-col gap-md"
           style={{ 
-            background: 'rgba(15, 23, 42, 0.4)', 
-            border: '1px solid rgba(255,255,255,0.06)',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            background: 'var(--bg-card)', 
+            border: '1px solid var(--border-subtle)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
             padding: '20px',
             borderRadius: '12px',
             transition: 'all 0.3s ease'
@@ -1245,13 +1245,13 @@ ${values};
               cursor: 'pointer',
               userSelect: 'none',
               paddingBottom: showApiSandbox ? '16px' : '0',
-              borderBottom: showApiSandbox ? '1px solid rgba(255,255,255,0.06)' : 'none',
+              borderBottom: showApiSandbox ? '1px solid var(--border-subtle)' : 'none',
               transition: 'all 0.2s ease-in-out'
             }}
           >
             <div className="flex align-center gap-sm">
               <Zap className="text-teal animate-pulse" size={22} style={{ color: 'var(--color-teal)' }} />
-              <h2 style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', letterSpacing: '0.03em' }}>
+              <h2 style={{ fontSize: '15px', fontWeight: 'bold', color: 'var(--text-primary)', letterSpacing: '0.03em' }}>
                 ⚡ CHẠY THỬ NGHIỆM API SANDBOX (LIVE API VALIDATION &amp; BATCH RUN)
               </h2>
             </div>
@@ -1266,13 +1266,13 @@ ${values};
                 Hỗ trợ QA và Developer kiểm thử tích hợp bằng cách mô phỏng gửi dữ liệu ca kiểm thử (JSON payload) trực tiếp lên endpoint API. Hệ thống tích hợp sẵn tường lửa WAF và bộ kiểm duyệt Schema tự động.
               </p>
 
-              <div className="flex justify-between align-center" style={{ flexWrap: 'wrap', gap: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+              <div className="flex justify-between align-center" style={{ flexWrap: 'wrap', gap: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-subtle)' }}>
                 <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
                   Mô phỏng gửi HTTP POST requests hàng loạt hoặc từng ca.
                 </div>
                 <div className="flex align-center gap-sm">
                   {selectedRecord && (
-                    <span style={{ fontSize: '11.5px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', padding: '3px 10px', borderRadius: '12px', fontWeight: '500' }}>
+                    <span style={{ fontSize: '11.5px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-secondary)', padding: '3px 10px', borderRadius: '12px', fontWeight: '500' }}>
                       Đang chọn: Ca Test #{selectedRecordIdx !== null ? selectedRecordIdx + 1 : ''}
                     </span>
                   )}
@@ -1282,9 +1282,9 @@ ${values};
                     style={{
                       fontSize: '12px',
                       padding: '7px 14px',
-                      background: batchRunning ? 'rgba(255,255,255,0.02)' : 'linear-gradient(135deg, rgba(45,212,191,0.15), rgba(45,212,191,0.05))',
+                      background: batchRunning ? 'rgba(0,0,0,0.02)' : 'linear-gradient(135deg, rgba(13, 148, 136, 0.15), rgba(13, 148, 136, 0.05))',
                       border: '1px solid',
-                      borderColor: batchRunning ? 'rgba(255,255,255,0.05)' : 'rgba(45,212,191,0.3)',
+                      borderColor: batchRunning ? 'var(--border-subtle)' : 'rgba(13, 148, 136, 0.3)',
                       borderRadius: '8px',
                       color: batchRunning ? 'var(--text-muted)' : 'var(--color-teal)',
                       cursor: batchRunning ? 'not-allowed' : 'pointer',
@@ -1298,7 +1298,7 @@ ${values};
                   >
                     {batchRunning ? (
                       <>
-                        <div style={{ width: '12px', height: '12px', border: '2px solid rgba(45,212,191,0.2)', borderTopColor: 'var(--color-teal)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                        <div style={{ width: '12px', height: '12px', border: '2px solid rgba(13, 148, 136, 0.2)', borderTopColor: 'var(--color-teal)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                         Đang chạy {batchProgress}%...
                       </>
                     ) : (
@@ -1318,7 +1318,7 @@ ${values};
                     <span>Đang kiểm duyệt toàn bộ dataset...</span>
                     <span>{batchProgress}%</span>
                   </div>
-                  <div style={{ height: '6px', background: 'rgba(255,255,255,0.04)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ height: '6px', background: 'rgba(0,0,0,0.04)', borderRadius: '3px', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${batchProgress}%`, background: 'linear-gradient(90deg, var(--color-teal), #0d9488)', borderRadius: '3px', transition: 'width 0.1s' }} />
                   </div>
                 </div>
@@ -1327,19 +1327,19 @@ ${values};
               {/* KẾT QUẢ BATCH RUN SUMMARY */}
               {batchSummary && !batchRunning && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '8px' }}>
-                  <div style={{ background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                  <div style={{ background: 'rgba(13, 148, 136, 0.06)', border: '1px solid rgba(13, 148, 136, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                     <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-teal)', fontFamily: 'var(--font-mono)' }}>{batchSummary.total}</div>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>TỔNG CA</div>
                   </div>
-                  <div style={{ background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                  <div style={{ background: 'rgba(13, 148, 136, 0.06)', border: '1px solid rgba(13, 148, 136, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                     <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-teal)', fontFamily: 'var(--font-mono)' }}>{batchSummary.passed}</div>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 200 ✅</div>
                   </div>
-                  <div style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                  <div style={{ background: 'rgba(124, 58, 237, 0.06)', border: '1px solid rgba(124, 58, 237, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                     <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-violet)', fontFamily: 'var(--font-mono)' }}>{batchSummary.validationErrors}</div>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 400 ⚠️</div>
                   </div>
-                  <div style={{ background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                  <div style={{ background: 'rgba(225, 29, 72, 0.06)', border: '1px solid rgba(225, 29, 72, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                     <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-rose)', fontFamily: 'var(--font-mono)' }}>{batchSummary.wafBlocked}</div>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 403 🚫</div>
                   </div>
@@ -1347,8 +1347,8 @@ ${values};
               )}
 
               {apiSimStatus === 'idle' ? (
-                <div className="flex flex-col align-center justify-center gap-sm" style={{ padding: '40px 20px', color: 'var(--text-muted)', border: '1px dashed rgba(255,255,255,0.05)', borderRadius: '8px' }}>
-                  <Zap size={28} style={{ color: 'rgba(255,255,255,0.1)' }} />
+                <div className="flex flex-col align-center justify-center gap-sm" style={{ padding: '40px 20px', color: 'var(--text-muted)', border: '1px dashed var(--border-subtle)', borderRadius: '8px' }}>
+                  <Zap size={28} style={{ color: 'rgba(0,0,0,0.1)' }} />
                   <p style={{ fontSize: '13px', textAlign: 'center' }}>
                     Chọn một ca test bất kỳ trong bảng xem trước và bấm <b>"⚡ Test API"</b> để gửi payload giả lập kiểm thử.
                   </p>
@@ -1362,13 +1362,13 @@ ${values};
                     </span>
                     <pre 
                       style={{ 
-                        background: 'rgba(15, 23, 42, 0.8)', 
-                        border: '1px solid rgba(255,255,255,0.05)',
+                        background: '#f8fafc', 
+                        border: '1px solid var(--border-subtle)',
                         padding: '12px', 
                         borderRadius: '8px', 
                         fontSize: '11px', 
                         fontFamily: 'var(--font-mono)', 
-                        color: '#a7f3d0', 
+                        color: 'var(--text-primary)', 
                         overflow: 'auto',
                         maxHeight: '180px',
                         margin: 0
@@ -1392,9 +1392,9 @@ ${values};
                             fontSize: '11px', 
                             fontWeight: 'bold',
                             background: 
-                              apiSimStatus === 'success' ? 'rgba(45, 212, 191, 0.15)' : 
-                              apiSimStatus === 'validation_error' ? 'rgba(167, 139, 250, 0.15)' : 
-                              'rgba(244, 63, 94, 0.15)',
+                              apiSimStatus === 'success' ? 'rgba(13, 148, 136, 0.15)' : 
+                              apiSimStatus === 'validation_error' ? 'rgba(124, 58, 237, 0.15)' : 
+                              'rgba(225, 29, 72, 0.15)',
                             color: 
                               apiSimStatus === 'success' ? 'var(--color-teal)' : 
                               apiSimStatus === 'validation_error' ? 'var(--color-violet)' : 
@@ -1407,9 +1407,9 @@ ${values};
                     </div>
 
                     {apiSimStatus === 'loading' ? (
-                      <div className="flex align-center justify-center" style={{ flex: 1, minHeight: '120px', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div className="flex align-center justify-center" style={{ flex: 1, minHeight: '120px', background: 'rgba(0,0,0,0.02)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
                         <div className="flex flex-col align-center gap-sm">
-                          <div style={{ width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-teal)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                          <div style={{ width: '24px', height: '24px', border: '2px solid rgba(0,0,0,0.1)', borderTopColor: 'var(--color-teal)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                           <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Đang kiểm duyệt qua WAF &amp; Sandbox API...</span>
                         </div>
                       </div>
@@ -1417,20 +1417,20 @@ ${values};
                       <div style={{ position: 'relative' }}>
                         <pre 
                           style={{ 
-                            background: 'rgba(15, 23, 42, 0.8)', 
+                            background: '#f8fafc', 
                             border: '1px solid',
                             borderColor: 
-                              apiSimStatus === 'success' ? 'rgba(45, 212, 191, 0.15)' : 
-                              apiSimStatus === 'validation_error' ? 'rgba(167, 139, 250, 0.15)' : 
-                              'rgba(244, 63, 94, 0.2)',
+                              apiSimStatus === 'success' ? 'rgba(13, 148, 136, 0.15)' : 
+                              apiSimStatus === 'validation_error' ? 'rgba(124, 58, 237, 0.15)' : 
+                              'rgba(225, 29, 72, 0.2)',
                             padding: '12px', 
                             borderRadius: '8px', 
                             fontSize: '11px', 
                             fontFamily: 'var(--font-mono)', 
                             color: 
-                              apiSimStatus === 'success' ? '#2dd4bf' : 
-                              apiSimStatus === 'validation_error' ? '#c084fc' : 
-                              '#fda4af', 
+                              apiSimStatus === 'success' ? 'var(--color-teal)' : 
+                              apiSimStatus === 'validation_error' ? 'var(--color-violet)' : 
+                              'var(--color-rose)', 
                             overflow: 'auto',
                             maxHeight: '180px',
                             margin: 0
@@ -1445,7 +1445,7 @@ ${values};
                             style={{ 
                               marginTop: '8px',
                               padding: '8px 12px',
-                              background: 'rgba(244, 63, 94, 0.1)',
+                              background: 'rgba(225, 29, 72, 0.1)',
                               border: '1px solid var(--color-rose)',
                               borderRadius: '6px',
                               fontSize: '11px',

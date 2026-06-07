@@ -29,10 +29,10 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   className,
 }) => {
   const outerColorRgba = outerColor.startsWith('var')
-    ? 'rgba(45, 212, 191, 0.1)'
+    ? 'rgba(13, 148, 136, 0.1)'
     : `${outerColor}1a`;
   const innerColorRgba = innerColor.startsWith('var')
-    ? 'rgba(167, 139, 250, 0.1)'
+    ? 'rgba(124, 58, 237, 0.1)'
     : `${innerColor}1a`;
 
   const renderIcon = () => {
