@@ -933,7 +933,7 @@ export const SpecInput: React.FC = () => {
               className="btn btn-secondary"
               style={{ fontSize: '13px', padding: '9px 14px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              ⚙️ {showAdvancedConfig ? 'Ẩn Cấu Hình' : 'Cấu Hình Sinh'}
+              ⚙️ {showAdvancedConfig ? 'Ẩn phương pháp' : 'Chọn phương pháp'}
             </button>
 
             {/* Nút Tinh Chỉnh Ràng Buộc Schema */}
