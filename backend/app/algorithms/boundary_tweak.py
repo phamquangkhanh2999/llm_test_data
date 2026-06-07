@@ -280,6 +280,7 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
                     best_neighbor = candidate_val
                     best_neighbor_fitness = score
 
+            # [START: SIMULATED_ANNEALING_ACCEPTANCE]
             # --- 3. Chấp nhận bước đi (SA hoặc Leo dốc đứng) ---
             if best_neighbor is not None:
                 delta = best_neighbor_fitness - current_fitness
@@ -296,6 +297,7 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
                         details.append(
                             f"  [SA] Chấp nhận bước xấu (delta={delta:.4f}, T={temperature:.4f}, P={sa_prob:.3f})"
                         )
+            # [END: SIMULATED_ANNEALING_ACCEPTANCE]
 
                 if accept_move:
                     prev_val = optimized[field_name]

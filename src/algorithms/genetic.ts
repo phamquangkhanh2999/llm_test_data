@@ -553,6 +553,12 @@ export class GeneticEngine {
   // CROSSOVER (adaptive rate)
   // ═══════════════════════════════════════════════
 
+  // [START: GENETIC_CROSSOVER]
+  /**
+   * CƠ CHẾ LAI GHÉP (CROSSOVER)
+   * Tạo ra cá thể con bằng cách kết hợp DNA (các trường dữ liệu) của bố và mẹ.
+   * Sử dụng kỹ thuật lai ghép 1 điểm (Single-point crossover) để giữ lại các cụm logic dữ liệu.
+   */
   crossover(p1: Chromosome, p2: Chromosome): [Chromosome, Chromosome] {
     const child1: Chromosome = {};
     const child2: Chromosome = {};
@@ -571,11 +577,13 @@ export class GeneticEngine {
 
     return [child1, child2];
   }
+  // [END: GENETIC_CROSSOVER]
 
-  // ═══════════════════════════════════════════════
-  // MUTATION (adaptive + Gaussian + enum-aware)
-  // ═══════════════════════════════════════════════
-
+  // [START: GENETIC_MUTATION]
+  /**
+   * CƠ CHẾ ĐỘT BIẾN (MUTATION)
+   * Giúp thuật toán duy trì sự đa dạng di truyền và tránh rơi vào tối ưu cục bộ.
+   */
   mutate(c: Chromosome): { values: Chromosome; mutated: boolean } {
     const mutatedRecord = { ...c };
     let mutated = false;
@@ -647,6 +655,7 @@ export class GeneticEngine {
 
     return { values: mutatedRecord, mutated };
   }
+  // [END: GENETIC_MUTATION]
 
   // ═══════════════════════════════════════════════
   // STAGNATION DETECTION

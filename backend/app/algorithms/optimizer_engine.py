@@ -331,6 +331,7 @@ class TestSuiteOptimizer:
             if is_valid:
                 validation_score += 1
 
+                # [START: BOUNDARY_FITNESS_SCORING]
                 # =========================================================================
                 # [BVA] ĐÁNH GIÁ ĐỘ THÍCH NGHI ĐỘ PHỦ BIÊN (BOUNDARY FITNESS EVALUATION)
                 # GA cần tín hiệu hướng dẫn (fitness landscape) để tiến hóa về các giá trị sát biên.
@@ -379,6 +380,7 @@ class TestSuiteOptimizer:
                     boundary_score += 1.0  # Phần thưởng tối đa cho ca kiểm thử biên chuẩn
                 elif is_near_boundary:
                     boundary_score += 0.5  # Điểm bộ phận khuyến khích thuật toán di chuyển gần hơn tới biên
+                # [END: BOUNDARY_FITNESS_SCORING]
 
             # --- 3. Kiểm tra nhúng mã độc (Security Payloads) ---
             security_keywords = ["' or", '" or', "--", "union", "select", "drop table", "<script", "onload=", "onerror="]
