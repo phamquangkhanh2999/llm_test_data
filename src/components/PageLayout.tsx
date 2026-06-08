@@ -255,11 +255,11 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
       {/* ── WORKFLOW PROGRESS BAR ── */}
       {stepId && (
         <div style={{
-          background: 'rgba(15, 23, 42, 0.7)',
-          border: '1px solid rgba(255,255,255,0.07)',
-          borderRadius: '12px',
-          padding: '10px 18px',
-          backdropFilter: 'blur(8px)',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-md)',
+          padding: '12px 18px',
+          boxShadow: 'var(--shadow-sm)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             {WORKFLOW_STEPS.map((step, idx) => {
@@ -282,10 +282,10 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
                       width: '32px', height: '32px', borderRadius: '50%',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '13px', fontWeight: 700,
-                      background: isCurrent ? step.color : isDone || isPast ? 'rgba(45,212,191,0.18)' : 'rgba(255,255,255,0.05)',
-                      color: isCurrent ? '#000' : isDone || isPast ? '#2dd4bf' : 'var(--text-muted)',
-                      border: isCurrent ? `2px solid ${step.color}` : isDone || isPast ? '2px solid rgba(45,212,191,0.4)' : '2px solid rgba(255,255,255,0.09)',
-                      boxShadow: isCurrent ? `0 0 14px ${step.color}55` : 'none',
+                      background: isCurrent ? step.color : isDone || isPast ? 'rgba(13,148,136,0.12)' : 'var(--divider)',
+                      color: isCurrent ? '#fff' : isDone || isPast ? 'var(--color-teal)' : 'var(--text-muted)',
+                      border: isCurrent ? `2px solid ${step.color}` : isDone || isPast ? '2px solid rgba(13,148,136,0.4)' : '2px solid var(--border-subtle)',
+                      boxShadow: isCurrent ? `0 4px 12px ${step.color}40` : 'none',
                       transition: 'all 0.3s ease', flexShrink: 0,
                     }}>
                       {isDone || isPast ? <CheckCircle2 size={15} /> : idx + 1}
@@ -302,8 +302,8 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
                     <div style={{
                       flex: 1, height: '2px', margin: '0 12px',
                       background: isDone || isPast
-                        ? 'linear-gradient(90deg, rgba(45,212,191,0.5), rgba(45,212,191,0.15))'
-                        : 'rgba(255,255,255,0.06)',
+                        ? 'linear-gradient(90deg, rgba(13,148,136,0.5), rgba(13,148,136,0.15))'
+                        : 'var(--border-subtle)',
                       transition: 'background 0.4s ease',
                     }} />
                   )}
@@ -321,15 +321,16 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
 
       {/* ── PAGE HEADER ── */}
       <div style={{
-        background: `linear-gradient(135deg, rgba(15,23,42,0.88) 0%, rgba(15,23,42,0.5) 100%)`,
-        border: `1px solid ${accentColor}28`,
+        background: `linear-gradient(135deg, ${accentColor}0f 0%, var(--bg-card) 55%)`,
+        border: `1px solid var(--border-subtle)`,
         borderLeft: `4px solid ${accentColor}`,
-        borderRadius: '12px',
-        padding: '12px 18px',
-        display: 'flex', alignItems: 'flex-start', gap: '12px',
+        borderRadius: 'var(--radius-md)',
+        padding: '16px 20px',
+        display: 'flex', alignItems: 'flex-start', gap: '14px',
+        boxShadow: 'var(--shadow-sm)',
       }}>
         <div style={{
-          width: '46px', height: '46px', borderRadius: '11px',
+          width: '46px', height: '46px', borderRadius: 'var(--radius-sm)',
           background: `${accentColor}1a`, border: `1px solid ${accentColor}38`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, color: accentColor,
@@ -337,7 +338,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
           {icon}
         </div>
         <div style={{ flex: 1 }}>
-          <h2 style={{ fontSize: '19px', fontWeight: 700, color: '#fff', margin: '0 0 5px 0', letterSpacing: '-0.02em' }}>
+          <h2 style={{ fontSize: '19px', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 5px 0', letterSpacing: '-0.02em' }}>
             {title}
           </h2>
           <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.65 }}>
@@ -347,8 +348,8 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
           {/* Context note: "Tại sao có màn hình này?" */}
           {contextNote && (
             <div style={{
-              marginTop: '12px', padding: '10px 14px', borderRadius: '8px',
-              background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.18)',
+              marginTop: '12px', padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+              background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)',
               display: 'flex', gap: '10px', alignItems: 'flex-start',
             }}>
               <Info size={14} style={{ color: '#3b82f6', flexShrink: 0, marginTop: '2px' }} />
@@ -421,7 +422,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
       {nextScreen && nextLabel && allPrereqsMet && (
         <div style={{
           display: 'flex', justifyContent: 'flex-end',
-          paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)',
+          paddingTop: '8px', borderTop: '1px solid var(--border-subtle)',
         }}>
           <button
             onClick={handleNext}

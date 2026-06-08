@@ -128,7 +128,7 @@ function App() {
         position: 'fixed', top: 0, bottom: 0,
         left: mobile ? (sidebarOpen ? '0' : '-240px') : '0',
         zIndex: 1000,
-        backdropFilter: 'blur(20px)',
+        boxShadow: 'var(--shadow-sm)',
         transition: mobile ? 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
       }}>
         {/* Logo */}

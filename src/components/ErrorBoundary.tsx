@@ -36,15 +36,15 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           alignItems: 'center',
           justifyContent: 'center',
           minHeight: '100vh',
-          background: 'var(--bg-space, #030712)',
-          color: '#fff',
+          background: 'var(--bg-space, #F8FCFC)',
+          color: 'var(--text-primary, #1F2937)',
           padding: '40px 24px',
           gap: '20px',
           fontFamily: 'Inter, sans-serif',
         }}>
           <div style={{
             width: '64px', height: '64px', borderRadius: '16px',
-            background: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.3)',
+            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.28)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '28px',
           }}>
@@ -56,7 +56,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           </h1>
 
           <p style={{
-            fontSize: '14px', color: 'var(--text-secondary, #94a3b8)',
+            fontSize: '14px', color: 'var(--text-secondary, #6B7280)',
             textAlign: 'center', maxWidth: '480px', lineHeight: 1.6, margin: 0,
           }}>
             Ứng dụng gặp sự cố khi render giao diện. Dữ liệu của bạn vẫn an toàn.
@@ -65,15 +65,16 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
           {this.state.error && (
             <pre style={{
-              background: 'rgba(15,23,42,0.8)',
-              border: '1px solid rgba(244,63,94,0.2)',
+              background: '#FFFFFF',
+              border: '1px solid rgba(239,68,68,0.25)',
               borderRadius: '8px',
               padding: '12px 16px',
               fontSize: '12px',
-              color: '#fda4af',
+              color: 'var(--error, #EF4444)',
               maxWidth: '520px',
               overflowX: 'auto',
               fontFamily: 'var(--font-mono, monospace)',
+              boxShadow: 'var(--shadow-sm)',
               margin: 0,
             }}>
               {this.state.error.message}
@@ -84,10 +85,10 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             onClick={this.handleRetry}
             style={{
               padding: '12px 28px', borderRadius: '10px',
-              background: 'linear-gradient(135deg, var(--color-teal, #2dd4bf), #0d9488)',
-              border: 'none', color: '#000', fontSize: '14px', fontWeight: 600,
+              background: 'var(--color-teal, #0D9488)',
+              border: 'none', color: '#fff', fontSize: '14px', fontWeight: 600,
               cursor: 'pointer',
-              boxShadow: '0 4px 16px rgba(45,212,191,0.25)',
+              boxShadow: '0 6px 20px rgba(13,148,136,0.25)',
             }}
           >
             🔄 Thử tải lại

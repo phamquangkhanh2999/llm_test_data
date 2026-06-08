@@ -674,8 +674,8 @@ export const SpecInput: React.FC = () => {
                 color: 'var(--color-teal)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.07em',
-                background: 'rgba(45,212,191,0.1)',
-                border: '1px solid rgba(45,212,191,0.25)',
+                background: 'rgba(13,148,136,0.1)',
+                border: '1px solid rgba(13,148,136,0.25)',
                 padding: '3px 10px',
                 borderRadius: '20px',
               }}>
@@ -743,7 +743,7 @@ export const SpecInput: React.FC = () => {
             {isDragging && (
               <div style={{
                 position: 'absolute', inset: 0, zIndex: 10,
-                background: 'rgba(8, 13, 28, 0.95)', border: '2px dashed var(--color-teal)',
+                background: 'rgba(234, 251, 249, 0.95)', border: '2px dashed var(--color-teal)',
                 borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center', gap: '12px',
                 animation: 'pulse-dot 2s infinite'
@@ -828,22 +828,22 @@ export const SpecInput: React.FC = () => {
             background: isParsing
               ? 'rgba(59, 130, 246, 0.06)'
               : isConnected
-                ? 'rgba(45, 212, 191, 0.06)'
-                : 'rgba(255, 255, 255, 0.02)',
+                ? 'rgba(13, 148, 136, 0.06)'
+                : 'var(--surface-subtle)',
             border: '1px solid',
             borderColor: isParsing
               ? 'rgba(59, 130, 246, 0.3)'
               : isConnected
-                ? 'rgba(45, 212, 191, 0.25)'
-                : 'rgba(255, 255, 255, 0.06)',
+                ? 'rgba(13, 148, 136, 0.25)'
+                : 'var(--border-subtle)',
             borderRadius: '10px',
             transition: 'all 0.4s ease',
             marginTop: '4px',
             marginBottom: '4px',
             boxShadow: isParsing
-              ? '0 0 12px rgba(59, 130, 246, 0.1)'
+              ? 'var(--shadow-sm)'
               : isConnected
-                ? '0 0 12px rgba(45, 212, 191, 0.08)'
+                ? 'var(--shadow-sm)'
                 : 'none'
           }}>
             {/* Icon trạng thái */}
@@ -876,8 +876,8 @@ export const SpecInput: React.FC = () => {
                   fontSize: '9.5px',
                   padding: '1px 6px',
                   borderRadius: '8px',
-                  background: hasApiKey ? 'rgba(45,212,191,0.1)' : 'rgba(250,204,21,0.08)',
-                  border: hasApiKey ? '1px solid rgba(45,212,191,0.25)' : '1px solid rgba(250,204,21,0.2)',
+                  background: hasApiKey ? 'rgba(13,148,136,0.1)' : 'rgba(250,204,21,0.08)',
+                  border: hasApiKey ? '1px solid rgba(13,148,136,0.25)' : '1px solid rgba(250,204,21,0.2)',
                   color: hasApiKey ? 'var(--color-teal)' : '#facc15',
                   fontFamily: 'var(--font-mono)',
                   fontWeight: 'bold',
@@ -917,7 +917,7 @@ export const SpecInput: React.FC = () => {
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              background: isParsing ? '#3b82f6' : isConnected ? 'var(--color-teal)' : 'rgba(255,255,255,0.15)',
+              background: isParsing ? '#3b82f6' : isConnected ? 'var(--color-teal)' : 'var(--border-subtle)',
               boxShadow: isParsing ? '0 0 8px #3b82f6' : isConnected ? '0 0 8px var(--color-teal)' : 'none',
               animation: isParsing ? 'pulse 1s infinite' : isConnected ? 'pulse 3s infinite' : 'none',
               flexShrink: 0
@@ -949,8 +949,8 @@ export const SpecInput: React.FC = () => {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  background: showSchemaDetails ? 'rgba(167,139,250,0.1)' : 'rgba(255,255,255,0.03)',
-                  borderColor: showSchemaDetails ? 'var(--color-violet)' : 'rgba(255,255,255,0.08)',
+                  background: showSchemaDetails ? 'rgba(124,58,237,0.1)' : '#FFFFFF',
+                  borderColor: showSchemaDetails ? 'var(--color-violet)' : 'var(--border-subtle)',
                   color: showSchemaDetails ? 'var(--color-violet)' : 'var(--text-secondary)'
                 }}
               >
@@ -1007,8 +1007,8 @@ export const SpecInput: React.FC = () => {
                   padding: '9px 16px',
                   whiteSpace: 'nowrap',
                   color: 'var(--color-teal)',
-                  borderColor: 'rgba(45,212,191,0.25)',
-                  background: 'rgba(45,212,191,0.03)',
+                  borderColor: 'rgba(13,148,136,0.25)',
+                  background: 'rgba(13,148,136,0.03)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
@@ -1017,7 +1017,7 @@ export const SpecInput: React.FC = () => {
               >
                 {isRegenerating ? (
                   <>
-                    <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: 'var(--color-teal)', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+                    <div style={{ width: '14px', height: '14px', border: '2px solid rgba(13,148,136,0.2)', borderTopColor: 'var(--color-teal)', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
                     Đang Tái Sinh...
                   </>
                 ) : (
@@ -1083,8 +1083,8 @@ export const SpecInput: React.FC = () => {
               gap: '12px',
               marginTop: '12px',
               padding: '14px',
-              background: 'rgba(255, 255, 255, 0.02)',
-              border: '1px solid rgba(255, 255, 255, 0.05)',
+              background: 'var(--surface-subtle)',
+              border: '1px solid var(--border-subtle)',
               borderRadius: '10px'
             }}>
               <span style={{
@@ -1147,7 +1147,7 @@ export const SpecInput: React.FC = () => {
                   flexDirection: 'column',
                   gap: '6px',
                   padding: '8px 10px',
-                  background: 'rgba(45, 212, 191, 0.04)',
+                  background: 'rgba(13, 148, 136, 0.04)',
                   borderLeft: '2px solid var(--color-teal)',
                   borderRadius: '4px',
                   marginTop: '4px'
@@ -1163,12 +1163,12 @@ export const SpecInput: React.FC = () => {
                         type="button"
                         style={{
                           flex: 1,
-                          padding: '4px 8px',
+                          padding: '5px 8px',
                           fontSize: '12px',
-                          background: boundaryCount === num ? 'var(--color-teal)' : 'rgba(255,255,255,0.05)',
-                          color: boundaryCount === num ? '#000' : 'var(--text-primary)',
-                          border: 'none',
-                          borderRadius: '4px',
+                          background: boundaryCount === num ? 'var(--color-teal)' : '#FFFFFF',
+                          color: boundaryCount === num ? '#fff' : 'var(--text-primary)',
+                          border: boundaryCount === num ? '1px solid var(--color-teal)' : '1px solid var(--border-subtle)',
+                          borderRadius: '6px',
                           fontWeight: 'bold',
                           cursor: 'pointer',
                           transition: 'all 0.2s'
@@ -1243,8 +1243,8 @@ export const SpecInput: React.FC = () => {
               `}</style>
                   {Array(3).fill(0).map((_, i) => (
                     <div key={i} className="skeleton-row" style={{
-                      background: 'rgba(255,255,255,0.02)',
-                      border: '1px solid rgba(255,255,255,0.04)',
+                      background: 'var(--surface-subtle)',
+                      border: '1px solid var(--border-subtle)',
                       padding: '16px',
                       borderRadius: 'var(--radius-sm)',
                       display: 'flex',
@@ -1252,13 +1252,13 @@ export const SpecInput: React.FC = () => {
                       gap: '8px'
                     }}>
                       <div className="flex justify-between">
-                        <div style={{ width: '35%', height: '14px', background: 'rgba(255,255,255,0.08)', borderRadius: '4px' }}></div>
-                        <div style={{ width: '15%', height: '12px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px' }}></div>
+                        <div style={{ width: '35%', height: '14px', background: 'var(--border-subtle)', borderRadius: '4px' }}></div>
+                        <div style={{ width: '15%', height: '12px', background: 'var(--border-subtle)', borderRadius: '4px' }}></div>
                       </div>
                       <div className="flex gap-sm">
-                        <div style={{ width: '70px', height: '22px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px' }}></div>
-                        <div style={{ width: '80px', height: '22px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px' }}></div>
-                        <div style={{ width: '110px', height: '22px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px' }}></div>
+                        <div style={{ width: '70px', height: '22px', background: 'var(--border-subtle)', borderRadius: '4px' }}></div>
+                        <div style={{ width: '80px', height: '22px', background: 'var(--border-subtle)', borderRadius: '4px' }}></div>
+                        <div style={{ width: '110px', height: '22px', background: 'var(--border-subtle)', borderRadius: '4px' }}></div>
                       </div>
                     </div>
                   ))}
@@ -1273,8 +1273,8 @@ export const SpecInput: React.FC = () => {
                     key={field.name}
                     className="flex align-start gap-sm"
                     style={{
-                      background: 'rgba(255,255,255,0.02)',
-                      border: '1px solid rgba(255,255,255,0.04)',
+                      background: 'var(--surface-subtle)',
+                      border: '1px solid var(--border-subtle)',
                       padding: '12px',
                       borderRadius: 'var(--radius-sm)'
                     }}
@@ -1362,7 +1362,7 @@ export const SpecInput: React.FC = () => {
                           <div style={{
                             marginTop: '8px',
                             padding: '10px',
-                            background: 'rgba(15, 23, 42, 0.4)',
+                            background: 'var(--brand-50)',
                             borderLeft: '3px solid var(--color-teal)',
                             borderRadius: '4px',
                             fontSize: '11px'
@@ -1375,8 +1375,8 @@ export const SpecInput: React.FC = () => {
                                     <span key={pIdx} style={{
                                       padding: '2px 6px',
                                       borderRadius: '4px',
-                                      background: pt.valid ? 'rgba(45, 212, 191, 0.1)' : 'rgba(244, 63, 94, 0.1)',
-                                      border: `1px solid ${pt.valid ? 'rgba(45, 212, 191, 0.25)' : 'rgba(244, 63, 94, 0.25)'}`,
+                                      background: pt.valid ? 'rgba(13, 148, 136, 0.1)' : 'rgba(225, 29, 72, 0.1)',
+                                      border: `1px solid ${pt.valid ? 'rgba(13, 148, 136, 0.25)' : 'rgba(225, 29, 72, 0.25)'}`,
                                       color: pt.valid ? 'var(--color-teal)' : 'var(--color-rose)'
                                     }}>
                                       <code>{pt.val}</code> ({pt.label})
@@ -1391,8 +1391,8 @@ export const SpecInput: React.FC = () => {
                                     <span key={rIdx} style={{
                                       padding: '2px 6px',
                                       borderRadius: '4px',
-                                      background: 'rgba(255, 255, 255, 0.03)',
-                                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                                      background: 'var(--surface-subtle)',
+                                      border: '1px solid var(--border-subtle)',
                                       color: 'var(--text-secondary)'
                                     }}>
                                       {range}
@@ -1426,7 +1426,7 @@ export const SpecInput: React.FC = () => {
               style={{
                 marginTop: 'auto',
                 paddingTop: '12px',
-                borderTop: '1px solid rgba(255,255,255,0.06)'
+                borderTop: '1px solid var(--border-subtle)'
               }}
             >
               <input
@@ -1466,7 +1466,7 @@ export const SpecInput: React.FC = () => {
         {/* 3. PHẦN DƯỚI: HIỂN THỊ DỮ LIỆU HẠT GIỐNG F0 (PREVIEW INITIAL SEEDS) */}
         {(isParsing || (initialSeeds && initialSeeds.length > 0)) && (
           <div className="glass-card flex flex-col gap-md violet-border glow-violet" style={{ gridColumn: showSchemaDetails ? 'span 2' : 'span 1', marginTop: '20px' }}>
-            <div className="flex justify-between align-center" style={{ flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '14px', marginBottom: '10px' }}>
+            <div className="flex justify-between align-center" style={{ flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '14px', marginBottom: '10px' }}>
               <div className="flex flex-col gap-xs">
                 <div className="flex align-center gap-sm">
                   <Database className="text-violet" size={20} style={{ color: 'var(--color-violet)' }} />
@@ -1492,7 +1492,7 @@ export const SpecInput: React.FC = () => {
 
             {/* Bảng giải thích chiến lược kiểm thử */}
             {/* <div style={{
-              background: 'rgba(15, 23, 42, 0.4)',
+              background: 'var(--brand-50)',
               padding: '16px',
               borderRadius: '8px',
               border: '1px solid rgba(255, 255, 255, 0.05)',
@@ -1531,9 +1531,9 @@ export const SpecInput: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '16px',
-                background: 'rgba(255,255,255,0.01)',
+                background: 'var(--surface-subtle)',
                 borderRadius: 'var(--radius-sm)',
-                border: '1px solid rgba(255,255,255,0.03)'
+                border: '1px solid var(--surface-subtle)'
               }}>
                 <div
                   className="status-dot-pulse"
@@ -1554,10 +1554,10 @@ export const SpecInput: React.FC = () => {
 
                 {/* Bảng skeleton micro thể hiện tiến trình loading */}
                 <div className="skeleton-row" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px' }}>
-                  <div style={{ width: '100%', height: '36px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px' }} />
-                  <div style={{ width: '100%', height: '28px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }} />
-                  <div style={{ width: '100%', height: '28px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }} />
-                  <div style={{ width: '100%', height: '28px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }} />
+                  <div style={{ width: '100%', height: '36px', background: 'var(--border-subtle)', borderRadius: '4px' }} />
+                  <div style={{ width: '100%', height: '28px', background: 'var(--surface-subtle)', borderRadius: '4px' }} />
+                  <div style={{ width: '100%', height: '28px', background: 'var(--surface-subtle)', borderRadius: '4px' }} />
+                  <div style={{ width: '100%', height: '28px', background: 'var(--surface-subtle)', borderRadius: '4px' }} />
                 </div>
               </div>
             ) : (
@@ -1566,7 +1566,7 @@ export const SpecInput: React.FC = () => {
                   const hasMethodSeeds = Object.values(methodSeeds).some(arr => arr && arr.length > 0);
                   if (!hasMethodSeeds && initialSeeds && initialSeeds.length > 0) {
                     return (
-                      <div className="glass-card" style={{ padding: '16px', border: `1px solid rgba(255,255,255,0.06)`, background: 'rgba(255,255,255,0.01)' }}>
+                      <div className="glass-card" style={{ padding: '16px', border: `1px solid var(--border-subtle)`, background: 'var(--surface-subtle)' }}>
                         <h3 style={{ fontSize: '14.5px', color: 'var(--color-violet)', margin: '0 0 12px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <Zap size={14} style={{ color: 'var(--color-violet)' }} />
                           Tập Dữ Liệu Hạt Giống F0 (Đã Nạp/Gộp) ({initialSeeds.length} hạt giống)
@@ -1574,7 +1574,7 @@ export const SpecInput: React.FC = () => {
                         <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                             <thead>
-                              <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                              <tr style={{ background: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
                                 <th style={{ padding: '10px 16px', color: 'var(--text-secondary)', width: '80px' }}>STT</th>
                                 <th style={{ padding: '10px 16px', color: 'var(--color-teal)', fontWeight: '600', width: '120px' }}>Phương pháp</th>
                                 {parsedSchema.map((field) => (
@@ -1601,8 +1601,8 @@ export const SpecInput: React.FC = () => {
                                 <tr
                                   key={idx}
                                   style={{
-                                    borderBottom: idx < initialSeeds.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-                                    background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
+                                    borderBottom: idx < initialSeeds.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                                    background: idx % 2 === 0 ? 'transparent' : 'var(--surface-subtle)',
                                     transition: 'background 0.2s'
                                   }}
                                   className="table-row-hover"
@@ -1617,8 +1617,8 @@ export const SpecInput: React.FC = () => {
                                       fontSize: '11px',
                                       background: seed.method === 'bva' ? 'rgba(167, 139, 250, 0.15)' :
                                         seed.method === 'ep' ? 'rgba(59, 130, 246, 0.15)' :
-                                          seed.method === 'decision' ? 'rgba(244, 63, 94, 0.15)' :
-                                            'rgba(45, 212, 191, 0.15)',
+                                          seed.method === 'decision' ? 'rgba(225, 29, 72, 0.15)' :
+                                            'rgba(13, 148, 136, 0.15)',
                                       color: seed.method === 'bva' ? 'var(--color-violet)' :
                                         seed.method === 'ep' ? '#60a5fa' :
                                           seed.method === 'decision' ? 'var(--color-rose)' :
@@ -1721,7 +1721,7 @@ export const SpecInput: React.FC = () => {
                               'var(--color-teal)';
 
                         return (
-                          <div key={method} className="glass-card" style={{ padding: '16px', border: `1px solid rgba(255,255,255,0.06)`, background: 'rgba(255,255,255,0.01)' }}>
+                          <div key={method} className="glass-card" style={{ padding: '16px', border: `1px solid var(--border-subtle)`, background: 'var(--surface-subtle)' }}>
                             <h3 style={{ fontSize: '14.5px', color: methodColor, margin: '0 0 12px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <Zap size={14} style={{ color: methodColor }} />
                               {methodName} ({seeds.length} hạt giống)
@@ -1735,7 +1735,7 @@ export const SpecInput: React.FC = () => {
                               <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                                   <thead>
-                                    <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                                    <tr style={{ background: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
                                       <th style={{ padding: '8px 12px', color: 'var(--text-secondary)', width: '70px' }}>STT</th>
                                       {parsedSchema.map((field) => (
                                         <th key={field.name} style={{ padding: '8px 12px', color: 'var(--color-teal)', fontWeight: '600' }}>
@@ -1761,8 +1761,8 @@ export const SpecInput: React.FC = () => {
                                       <tr
                                         key={idx}
                                         style={{
-                                          borderBottom: idx < seeds.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-                                          background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
+                                          borderBottom: idx < seeds.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                                          background: idx % 2 === 0 ? 'transparent' : 'var(--surface-subtle)',
                                           transition: 'background 0.2s'
                                         }}
                                         className="table-row-hover"
@@ -2096,7 +2096,7 @@ export const SpecInput: React.FC = () => {
                         ep: [],
                         decision: []
                       });
-                    }} className="btn btn-primary glow-teal" style={{ background: 'var(--color-teal)', border: 'none', color: 'var(--bg-space)' }}>
+                    }} className="btn btn-primary glow-teal" style={{ background: 'var(--color-teal)', border: 'none', color: '#fff' }}>
                       🚀 Nạp vào Editor
                     </button>
                   </div>

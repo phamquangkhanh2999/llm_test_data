@@ -3,10 +3,10 @@ import { useToastStore } from '../store/useToastStore';
 import { X, CheckCircle2, AlertTriangle, XCircle, Info } from 'lucide-react';
 
 const ICON_MAP = {
-  success: { icon: CheckCircle2, color: 'var(--color-teal)', bg: 'rgba(45,212,191,0.08)' },
-  error: { icon: XCircle, color: 'var(--color-rose)', bg: 'rgba(244,63,94,0.08)' },
-  warning: { icon: AlertTriangle, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
-  info: { icon: Info, color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' },
+  success: { icon: CheckCircle2, color: 'var(--success)', bg: 'rgba(34,197,94,0.08)' },
+  error: { icon: XCircle, color: 'var(--error)', bg: 'rgba(239,68,68,0.08)' },
+  warning: { icon: AlertTriangle, color: 'var(--warning)', bg: 'rgba(245,158,11,0.08)' },
+  info: { icon: Info, color: 'var(--info)', bg: 'rgba(59,130,246,0.08)' },
 };
 
 export const ToastContainer: React.FC = () => {
@@ -42,12 +42,11 @@ export const ToastContainer: React.FC = () => {
               alignItems: 'flex-start',
               gap: '12px',
               padding: '14px 16px',
-              borderRadius: '12px',
-              background: 'rgba(15, 23, 42, 0.95)',
-              border: `1px solid ${color}40`,
+              borderRadius: 'var(--radius-md)',
+              background: '#FFFFFF',
+              border: `1px solid var(--border-subtle)`,
               borderLeft: `4px solid ${color}`,
-              boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 12px ${color}15`,
-              backdropFilter: 'blur(16px)',
+              boxShadow: 'var(--shadow-lg)',
               pointerEvents: 'auto',
               animation: 'toastSlideIn 0.35s cubic-bezier(0.21, 1.02, 0.73, 1)',
               position: 'relative',
@@ -60,7 +59,7 @@ export const ToastContainer: React.FC = () => {
                 position: 'absolute',
                 inset: 0,
                 background: bg,
-                opacity: 0.4,
+                opacity: 0.6,
                 pointerEvents: 'none',
               }}
             />
@@ -73,7 +72,7 @@ export const ToastContainer: React.FC = () => {
               style={{
                 flex: 1,
                 fontSize: '13px',
-                color: '#e2e8f0',
+                color: 'var(--text-primary)',
                 lineHeight: 1.55,
                 whiteSpace: 'pre-line',
                 position: 'relative',
@@ -88,8 +87,8 @@ export const ToastContainer: React.FC = () => {
               aria-label="Đóng thông báo"
               style={{
                 flexShrink: 0,
-                background: 'rgba(255,255,255,0.05)',
-                border: 'none',
+                background: 'var(--surface-subtle)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: '6px',
                 width: '26px',
                 height: '26px',
@@ -103,11 +102,11 @@ export const ToastContainer: React.FC = () => {
                 transition: 'all 0.15s',
               }}
               onMouseOver={(e) => {
-                (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.1)';
-                (e.currentTarget as HTMLElement).style.color = '#fff';
+                (e.currentTarget as HTMLElement).style.background = '#EEF1F4';
+                (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)';
               }}
               onMouseOut={(e) => {
-                (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)';
+                (e.currentTarget as HTMLElement).style.background = 'var(--surface-subtle)';
                 (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)';
               }}
             >
