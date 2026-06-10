@@ -1,18 +1,26 @@
-import React from 'react';
-import { SpecInput } from './components/SpecInput';
-import { OptimizationDashboard } from './components/OptimizationDashboard';
-import { HistoryManager } from './components/HistoryManager';
-import { DataImport } from './components/DataImport';
-import { PageLayout } from './components/PageLayout';
 import {
-  Sparkles, Activity, Layers, Key,
-  CheckCircle, Database, Download,
-  CheckCircle2, Zap, Menu, X, Terminal,
+  Activity,
+  CheckCircle,
+  CheckCircle2,
+  Database, Download,
+  Key,
+  Layers,
+  Menu,
+  Sparkles,
+  Terminal,
+  X,
+  Zap,
 } from 'lucide-react';
-import { useAppStore } from './store/useAppStore';
-import { ToastContainer } from './components/ToastContainer';
-import { Tabs } from './components/Tabs';
+import React from 'react';
 import { AILogsViewer } from './components/AILogsViewer';
+import { DataImport } from './components/DataImport';
+import { HistoryManager } from './components/HistoryManager';
+import { OptimizationDashboard } from './components/OptimizationDashboard';
+import { PageLayout } from './components/PageLayout';
+import { SpecInput } from './components/SpecInput';
+import { Tabs } from './components/Tabs';
+import { ToastContainer } from './components/ToastContainer';
+import { useAppStore } from './store/useAppStore';
 
 // ─── Sidebar nav item ─────────────────────────────────────────────────────────
 interface NavItemProps {
@@ -289,7 +297,8 @@ function App() {
               title="Bước 2: Tối Ưu Hóa & So Sánh Thuật Toán"
               icon={<Zap size={24} />}
               description="Chạy đồng bộ các giải thuật tối ưu hóa di truyền GA phối hợp leo đồi HC và đối chiếu trực tuyến kết quả với thuật toán truyền thống BVA/Random."
-              hints={['Lai ghép GA -> HC', 'Bao phủ biên & bảo mật', 'So sánh đối kháng trực tiếp', 'Đồ thị tiến hóa di truyền']}
+              contextNote="GA (Genetic Algorithm) tìm kiếm toàn cục bằng cách lai ghép, đột biến và chọn lọc các thế hệ test tốt hơn. HC (Hill Climbing) làm tinh chỉnh cục bộ quanh lời giải hiện tại để nâng chất lượng và độ ổn định."
+              hints={['GA: tìm kiếm toàn cục', 'HC: tinh chỉnh cục bộ', 'Lai ghép GA -> HC', 'Bao phủ biên & bảo mật']}
               accentColor="#7C3AED"
               prerequisites={[
                 {
