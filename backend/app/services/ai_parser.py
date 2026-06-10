@@ -721,12 +721,10 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
     """
     active_key = api_key if api_key else (os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY"))
     
-    user_prompt = f"Fields Schema: {json.dumps(fields, ensure_ascii=False)}\n\nOriginal business requirements context (if any):\n{raw_text}"
-
     if not active_key or active_key.strip() == "":
         print(f">>> INFO: No API key found. Running local seed generator for method '{test_method}'...")
         seeds = generate_seeds_locally(fields, test_method, boundary_count, partition_count)
-        log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Mock", "mock-ai-local", user_prompt, json.dumps(seeds, ensure_ascii=False), "SUCCESS")
+        log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Mock", "mock-ai-local", f"Fields Schema: {json.dumps(fields, ensure_ascii=False)}\n\nOriginal business requirements context (if any):\n{raw_text}", json.dumps(seeds, ensure_ascii=False), "SUCCESS")
         # Bổ sung expectedResult trước khi trả về
         for s in seeds:
             if "expectedResult" not in s:
@@ -851,106 +849,143 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             "}"
         )
 
-    try:
-        if is_gemini:
-            print(f">>> INFO: Calling Gemini API for seed regeneration (Method: {test_method})...")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={active_key.strip()}"
-            
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": f"{system_instructions}\n\n{user_prompt}"}
-                        ]
-                    }
-                ],
-                "generationConfig": {
-                    "responseMimeType": "application/json",
-                    "temperature": 0.7
-                }
-            }
-            
-            req_data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(
-                url,
-                data=req_data,
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            
-            import ssl
-            ssl_context = None
-            try:
-                import certifi
-                ssl_context = ssl.create_default_context(cafile=certifi.where())
-            except Exception:
-                ssl_context = ssl._create_unverified_context()
-            
-            try:
-                with urllib.request.urlopen(req, context=ssl_context, timeout=60) as response:
-                    resp_data = response.read().decode("utf-8")
-                    resp_json = json.loads(resp_data)
-                    text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
-                    parsed_result = json.loads(text_content)
-                    seeds = parsed_result.get("initialPopulation", [])
-                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
-                    for s in seeds:
-                        if "expectedResult" not in s:
-                            s["expectedResult"] = check_record_expected_result(s, fields)
-                    return seeds
-            except urllib.error.HTTPError as http_err:
-                raise http_err
-            except Exception as ssl_err:
-                print(f">>> WARNING: SSL verification failed. Retrying with unverified context...")
-                unverified_context = ssl._create_unverified_context()
-                with urllib.request.urlopen(req, context=unverified_context, timeout=60) as response:
-                    resp_data = response.read().decode("utf-8")
-                    resp_json = json.loads(resp_data)
-                    text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
-                    parsed_result = json.loads(text_content)
-                    seeds = parsed_result.get("initialPopulation", [])
-                    log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
-                    for s in seeds:
-                        if "expectedResult" not in s:
-                            s["expectedResult"] = check_record_expected_result(s, fields)
-                    return seeds
-        else:
-            print(f">>> INFO: Calling OpenAI API for seed regeneration (Method: {test_method})...")
-            client = OpenAI(api_key=active_key)
-            
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_instructions},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.7,
-                max_tokens=1000
-            )
-            
-            raw_response_content = response.choices[0].message.content
-            parsed_result = json.loads(raw_response_content)
-            seeds = parsed_result.get("initialPopulation", [])
-            log_ai_call(db, f"/api/generate-seeds?method={test_method}", "OpenAI", "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
-            for s in seeds:
-                if "expectedResult" not in s:
-                    s["expectedResult"] = check_record_expected_result(s, fields)
-            return seeds
+    # Regeneration Loop (Harness 1: Data Sanity Check feedback loop)
+    prompt_feedback = ""
+    best_seeds = []
+    best_valid_ratio = -1.0
 
-    except Exception as e:
-        error_msg = str(e)
-        log_ai_call(db, f"/api/generate-seeds?method={test_method}", "Gemini" if is_gemini else "OpenAI", "gemini-2.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
-        if "401" in error_msg or "403" in error_msg:
-            raise ValueError(f"API_KEY_ERROR: {error_msg}")
-            
-        print(f">>> WARNING: AI API failed for seed regeneration ({error_msg}). Running local generator fallback...")
-        seeds = generate_seeds_locally(fields, test_method, boundary_count, partition_count)
-        log_ai_call(db, f"/api/generate-seeds?method={test_method} (Fallback)", "Mock", "mock-ai-local", user_prompt, json.dumps(seeds, ensure_ascii=False), "SUCCESS")
-        for s in seeds:
+    for attempt in range(1, 4):
+        user_prompt = f"Fields Schema: {json.dumps(fields, ensure_ascii=False)}\n\nOriginal business requirements context (if any):\n{raw_text}"
+        if prompt_feedback:
+            user_prompt += f"\n\n--- CỐ GẮNG LẦN PHÂN TÍCH THỨ {attempt} (PHẢN HỒI SỬA LỖI SANITY CHECK) ---\n{prompt_feedback}"
+
+        try:
+            if is_gemini:
+                print(f">>> INFO: Calling Gemini API for seed regeneration (Method: {test_method}, Attempt: {attempt})...")
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={active_key.strip()}"
+                
+                payload = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": f"{system_instructions}\n\n{user_prompt}"}
+                            ]
+                        }
+                    ],
+                    "generationConfig": {
+                        "responseMimeType": "application/json",
+                        "temperature": 0.7
+                    }
+                }
+                
+                req_data = json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(
+                    url,
+                    data=req_data,
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
+                )
+                
+                import ssl
+                ssl_context = None
+                try:
+                    import certifi
+                    ssl_context = ssl.create_default_context(cafile=certifi.where())
+                except Exception:
+                    ssl_context = ssl._create_unverified_context()
+                
+                try:
+                    with urllib.request.urlopen(req, context=ssl_context, timeout=60) as response:
+                        resp_data = response.read().decode("utf-8")
+                        resp_json = json.loads(resp_data)
+                        text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
+                        parsed_result = json.loads(text_content)
+                        seeds = parsed_result.get("initialPopulation", [])
+                        log_ai_call(db, f"/api/generate-seeds?method={test_method}&attempt={attempt}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+                except Exception as ssl_err:
+                    print(f">>> WARNING: SSL verification failed. Retrying with unverified context...")
+                    unverified_context = ssl._create_unverified_context()
+                    with urllib.request.urlopen(req, context=unverified_context, timeout=60) as response:
+                        resp_data = response.read().decode("utf-8")
+                        resp_json = json.loads(resp_data)
+                        text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
+                        parsed_result = json.loads(text_content)
+                        seeds = parsed_result.get("initialPopulation", [])
+                        log_ai_call(db, f"/api/generate-seeds?method={test_method}&attempt={attempt}", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+            else:
+                print(f">>> INFO: Calling OpenAI API for seed regeneration (Method: {test_method}, Attempt: {attempt})...")
+                client = OpenAI(api_key=active_key)
+                
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": system_instructions},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=1000
+                )
+                
+                raw_response_content = response.choices[0].message.content
+                parsed_result = json.loads(raw_response_content)
+                seeds = parsed_result.get("initialPopulation", [])
+                log_ai_call(db, f"/api/generate-seeds?method={test_method}&attempt={attempt}", "OpenAI", "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(parsed_result, ensure_ascii=False), "SUCCESS")
+
+            # Tiến hành chạy Data Sanity Check (Harness 1)
+            invalid_list = []
+            for i, s in enumerate(seeds):
+                res = check_record_expected_result(s, fields)
+                # Chỉ lọc những trường hợp lỗi do sai cấu trúc (Lỗi:), các payload security (Chặn tấn công:) được coi là hợp lệ với các kịch bản kiểm thử của F0
+                if res.startswith("Lỗi:"):
+                    invalid_list.append(f"Bản ghi #{i+1} ({json.dumps(s, ensure_ascii=False)}): {res}")
+
+            valid_count = len(seeds) - len(invalid_list)
+            valid_ratio = valid_count / len(seeds) if len(seeds) > 0 else 0.0
+            print(f">>> DATA SANITY CHECK (Attempt {attempt}): Valid Ratio = {valid_ratio:.2f} ({valid_count}/{len(seeds)} valid).")
+
+            if valid_ratio > best_valid_ratio:
+                best_valid_ratio = valid_ratio
+                best_seeds = seeds
+
+            # Đạt tối thiểu 60% dữ liệu sạch và có tối thiểu 5 bản ghi -> Chấp nhận
+            if valid_ratio >= 0.6 and len(seeds) >= 5:
+                print(f">>> DATA SANITY CHECK PASSED! Accepting population.")
+                for s in seeds:
+                    if "expectedResult" not in s:
+                        s["expectedResult"] = check_record_expected_result(s, fields)
+                return seeds
+
+            # Cung cấp phản hồi chỉnh sửa cho LLM ở lần thử tiếp theo
+            prompt_feedback = (
+                "QUAN TRỌNG: Lần sinh trước đó chứa các bản ghi bị lỗi validation hoặc sai cấu trúc.\n"
+                "Hãy sửa đổi các lỗi sau đây và sinh lại quần thể F0 sạch hơn:\n"
+                + "\n".join(invalid_list[:4])
+                + "\nYêu cầu: Hãy đảm bảo các bản ghi Happy đúng kiểu dữ liệu, các bản ghi BVA có giá trị/độ dài chính xác và không bỏ trống trường bắt buộc."
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f">>> WARNING: Attempt {attempt} failed: {error_msg}")
+            log_ai_call(db, f"/api/generate-seeds?method={test_method}&attempt={attempt}", "Gemini" if is_gemini else "OpenAI", "gemini-2.5-flash" if is_gemini else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
+            if "401" in error_msg or "403" in error_msg:
+                raise ValueError(f"API_KEY_ERROR: {error_msg}")
+
+    # Nếu hết lượt thử mà không hoàn toàn đạt 60%, trả về tập thử có chất lượng tốt nhất thu được
+    if best_seeds:
+        print(f">>> WARNING: Regeneration loop completed. Valid Ratio: {best_valid_ratio:.2f}. Returning best attempt.")
+        for s in best_seeds:
             if "expectedResult" not in s:
                 s["expectedResult"] = check_record_expected_result(s, fields)
-        return seeds
+        return best_seeds
+
+    # Fallback cuối cùng nếu lỗi nặng
+    print(f">>> WARNING: All attempts failed or returned empty. Using local fallback generator...")
+    seeds = generate_seeds_locally(fields, test_method, boundary_count, partition_count)
+    for s in seeds:
+        if "expectedResult" not in s:
+            s["expectedResult"] = check_record_expected_result(s, fields)
+    return seeds
 
 
 
@@ -1080,5 +1115,199 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
         res = mock_response.copy()
         res["is_mock"] = True
         log_ai_call(db, "/api/evaluate-seeds (Fallback)", "Mock", "mock-ai-local", user_prompt, json.dumps(res, ensure_ascii=False), "SUCCESS")
+        return res
+
+
+def evaluate_optimized_dataset_with_ai(fields: list, dataset: list, algorithm: str, raw_text: str, api_key_override: str = None, db: Session = None) -> dict:
+    """
+    Gửi bộ dữ liệu test case đã tối ưu (optimizedDataset) lên AI (Gemini/OpenAI) để đánh giá chất lượng tối ưu cuối cùng.
+    """
+    active_key = api_key_override or os.getenv("OPENAI_API_KEY") or os.getenv("GEMINI_API_KEY")
+    
+    # 1. Tối ưu hóa Token: Chỉ gửi tối đa 12 ca test tiêu biểu lên AI thay vì gửi toàn bộ 100+ ca test trùng lặp
+    total_count = len(dataset)
+    
+    # Loại bỏ trùng lặp cơ bản trên python để lấy các ca test độc nhất
+    unique_cases = []
+    seen = set()
+    for tc in dataset:
+        # Chuyển testcase sang string để check unique
+        tc_str = json.dumps(tc, sort_keys=True)
+        if tc_str not in seen:
+            seen.add(tc_str)
+            unique_cases.append(tc)
+            
+    # Lấy tối đa 12 ca test tiêu biểu đại diện cho cả tập
+    representative_sample = unique_cases[:12]
+    
+    # Tính tỉ lệ trùng lặp thực tế
+    unique_count = len(unique_cases)
+    duplicate_rate_pct = round(((total_count - unique_count) / total_count) * 100, 1) if total_count > 0 else 0.0
+
+    system_instructions = """
+    Bạn là một chuyên gia kiểm thử phần mềm (QA Manager/Test Architect) xuất sắc.
+    Nhiệm vụ của bạn là đánh giá chất lượng bộ dữ liệu ca kiểm thử (Test Cases) đã được tối ưu hóa thông qua các thuật toán tối ưu hóa (như Thuật toán Di truyền - GA, Leo đồi - HC, hoặc Lai ghép Hybrid) dựa trên đặc tả nghiệp vụ và cấu trúc trường dữ liệu đầu vào.
+    Hãy phân tích và trả về kết quả dưới dạng JSON theo đúng cấu trúc sau:
+    {
+        "score": 95, // Điểm chất lượng tối ưu tổng quan (0-100)
+        "sanity_check": {
+            "status": "Đạt yêu cầu" | "Chưa đạt yêu cầu",
+            "schema_check": "Trạng thái đối chiếu cấu trúc (ví dụ: 'Khớp đặc tả 100%' hoặc 'Hợp lệ')",
+            "type_check": "Trạng thái kiểu dữ liệu (ví dụ: 'Đúng kiểu dữ liệu' hoặc 'Hợp lệ')",
+            "invalid_removed": 0, // Số lượng bản ghi bị loại bỏ do lỗi cấu trúc/kiểu (kiểu int)
+            "description": "Nhận xét về việc lọc dữ liệu sai cấu trúc, sai kiểu, đảm bảo dữ liệu đầu vào hợp lệ (Test Harness 1)"
+        },
+        "fitness_evaluation": {
+            "status": "Tối ưu xuất sắc" | "Tối ưu trung bình" | "Cần cải thiện",
+            "fitness_score": 0.96, // Điểm thích nghi trung bình hoặc cao nhất của quần thể tối ưu (0-1)
+            "penalty_score": 0.05, // Điểm phạt áp dụng cho vi phạm trùng lặp hoặc vi phạm luật (0-1)
+            "violations_count": 0, // Số lượng ca vi phạm luật ràng buộc còn sót lại (kiểu int)
+            "applied_weights": "Validation: 0.5, Boundary: 0.2, Security: 0.2, Diversity: 0.1", // Trọng số các luật áp dụng trong hàm thích nghi
+            "description": "Nhận xét về điểm thích nghi, áp dụng hàm phạt, đối chiếu với các luật trong đặc tả (Test Harness 2)"
+        },
+        "boundary_edge_check": {
+            "status": "Độ bao phủ cao" | "Độ bao phủ trung bình" | "Chưa bao phủ tốt",
+            "boundary_coverage": "95%", // Tỉ lệ bao phủ biên (ví dụ: '92%' hoặc 'Tốt')
+            "critical_hits": 8, // Số lượng ca test biên hiểm hóc / độc hại được sinh ra chạm biên thành công (kiểu int)
+            "description": "Nhận xét về đo khoảng cách đến các ranh giới biên, kiểm tra các trường hợp biên hiểm hóc, độ cọ sát (Test Harness 3)"
+        },
+        "missing_cases": ["Trường hợp biên/nghiệp vụ cụ thể còn thiếu 1", "Trường hợp biên/nghiệp vụ cụ thể còn thiếu 2"], // Mảng các chuỗi, tối đa 3 phần tử
+        "security_risks": ["Rủi ro bảo mật hoặc ghi nhận an toàn 1", "Rủi ro bảo mật hoặc ghi nhận an toàn 2"] // Mảng các chuỗi, tối đa 3 phần tử, nếu an toàn hoàn toàn thì để mảng rỗng
+    }
+    Lưu ý: TRẢ VỀ ĐÚNG FORMAT JSON OBJECT. Các trường mô tả viết ngắn gọn, súc tích bằng Tiếng Việt.
+    """
+    
+    user_prompt = f"""
+    --- ĐẶC TẢ NGHIỆP VỤ ---
+    {raw_text}
+    
+    --- CẤU TRÚC TRƯỜNG DỮ LIỆU ---
+    {json.dumps(fields, indent=2, ensure_ascii=False)}
+    
+    --- THÔNG TIN TỔNG QUAN TẬP TEST ---
+    - Thuật toán sử dụng: {algorithm}
+    - Tổng số ca kiểm thử sinh ra: {total_count} ca
+    - Số ca kiểm thử độc nhất: {unique_count} ca
+    - Tỷ lệ trùng lặp: {duplicate_rate_pct}%
+    
+    --- MẪU 12 CA KIỂM THỬ TIÊU BIỂU (Đã rút gọn tối ưu token) ---
+    {json.dumps(representative_sample, indent=2, ensure_ascii=False)}
+    
+    Hãy đánh giá khách quan kết quả tối ưu này và trả về JSON theo yêu cầu.
+    """
+    
+    # Mock fallback logic cụ thể cho bộ tối ưu hóa theo 3 bước Test Harness
+    mock_response = {
+        "score": random.randint(92, 98) if algorithm in ["ga", "hybrid"] else random.randint(78, 88),
+        "sanity_check": {
+            "status": "Đạt yêu cầu",
+            "schema_check": "Khớp đặc tả 100%",
+            "type_check": "Hợp lệ",
+            "invalid_removed": random.randint(0, 2),
+            "description": "Tập dữ liệu hoàn toàn sạch, lọc bỏ 100% các giá trị sai cấu trúc ràng buộc hoặc thiếu trường bắt buộc."
+        },
+        "fitness_evaluation": {
+            "status": "Tối ưu xuất sắc" if algorithm in ["ga", "hybrid"] else "Tối ưu trung bình",
+            "fitness_score": round(random.uniform(0.92, 0.98), 2) if algorithm in ["ga", "hybrid"] else round(random.uniform(0.75, 0.85), 2),
+            "penalty_score": round(random.uniform(0.01, 0.08), 2),
+            "violations_count": random.randint(0, 1) if algorithm in ["ga", "hybrid"] else random.randint(2, 4),
+            "applied_weights": "Validation: 0.5, Boundary: 0.2, Security: 0.2, Diversity: 0.1",
+            "description": f"Hàm fitness phân bổ trọng số hợp lý (Validation 50%, Boundary 20%, Security 20%, Diversity 10%). Đã triệt tiêu trùng lặp xuống dưới {random.randint(1, 4)}%."
+        },
+        "boundary_edge_check": {
+            "status": "Độ bao phủ cao" if algorithm in ["hc", "hybrid"] else "Độ bao phủ trung bình",
+            "boundary_coverage": f"{random.randint(88, 98)}%",
+            "critical_hits": random.randint(6, 12) if algorithm in ["hc", "hybrid"] else random.randint(3, 6),
+            "description": "Các ca kiểm thử biên (BVA) được tinh chỉnh bằng thuật toán leo đồi HC giúp cọ sát sát nút ranh giới rủi ro (Min, Max, Min-1, Max+1)."
+        },
+        "missing_cases": [
+            "Thiếu các trường hợp lỗi kết hợp đồng thời trên nhiều trường nghiệp vụ chéo.",
+            "Cần thêm các chuỗi Unicode đặc biệt chứa ký tự điều khiển hoặc biểu tượng Emoji."
+        ],
+        "security_risks": [
+            "Các mẫu tấn công SQL Injection và XSS cơ bản đã được bao phủ đầy đủ. Khuyến nghị bổ sung thêm kiểm thử an toàn cho cấu trúc tải lên tệp tin nếu có."
+        ]
+    }
+    
+    if not active_key:
+        print(">>> WARNING: No API Key provided for optimized evaluation. Using mock data.")
+        res = mock_response.copy()
+        res["is_mock"] = True
+        log_ai_call(db, "/api/evaluate-optimized", "Mock", "mock-ai-local", user_prompt, json.dumps(res, ensure_ascii=False), "SUCCESS")
+        return res
+        
+    is_openai = active_key.strip().startswith("sk-")
+    try:
+        active_key = active_key.strip()
+        if not is_openai:
+            import ssl
+            import urllib.request
+            req_data = {
+                "contents": [
+                    {"role": "user", "parts": [{"text": system_instructions + "\n\n" + user_prompt}]}
+                ],
+                "generationConfig": {
+                    "temperature": 0.5,
+                    "responseMimeType": "application/json"
+                }
+            }
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={active_key}"
+            req = urllib.request.Request(url, data=json.dumps(req_data).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+            
+            ssl_context = None
+            try:
+                import certifi
+                ssl_context = ssl.create_default_context(cafile=certifi.where())
+            except Exception:
+                ssl_context = ssl._create_unverified_context()
+                
+            try:
+                with urllib.request.urlopen(req, context=ssl_context, timeout=60) as response:
+                    resp_data = response.read().decode("utf-8")
+                    resp_json = json.loads(resp_data)
+                    text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
+                    res = json.loads(text_content)
+                    res["is_mock"] = False
+                    log_ai_call(db, "/api/evaluate-optimized", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(res, ensure_ascii=False), "SUCCESS")
+                    return res
+            except urllib.error.HTTPError as http_err:
+                raise http_err
+            except Exception as ssl_err:
+                print(f">>> WARNING: SSL verification failed for optimized evaluation. Retrying with unverified context...")
+                unverified_context = ssl._create_unverified_context()
+                with urllib.request.urlopen(req, context=unverified_context, timeout=60) as response:
+                    resp_data = response.read().decode("utf-8")
+                    resp_json = json.loads(resp_data)
+                    text_content = resp_json["candidates"][0]["content"]["parts"][0]["text"]
+                    res = json.loads(text_content)
+                    res["is_mock"] = False
+                    log_ai_call(db, "/api/evaluate-optimized", "Gemini", "gemini-2.5-flash", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(res, ensure_ascii=False), "SUCCESS")
+                    return res
+        else:
+            client = OpenAI(api_key=active_key)
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": system_instructions},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.2
+            )
+            res = json.loads(response.choices[0].message.content)
+            res["is_mock"] = False
+            log_ai_call(db, "/api/evaluate-optimized", "OpenAI", "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", json.dumps(res, ensure_ascii=False), "SUCCESS")
+            return res
+            
+    except Exception as e:
+        error_msg = str(e)
+        log_ai_call(db, "/api/evaluate-optimized", "Gemini" if not is_openai else "OpenAI", "gemini-2.5-flash" if not is_openai else "gpt-3.5-turbo", f"System: {system_instructions}\n\nUser: {user_prompt}", None, "FAILED", error_message=error_msg)
+        if "401" in error_msg or "403" in error_msg:
+            raise ValueError(f"API_KEY_ERROR: {error_msg}")
+            
+        print(f">>> ERROR: Optimized Evaluation API failed: {error_msg}. Using mock data.")
+        res = mock_response.copy()
+        res["is_mock"] = True
+        log_ai_call(db, "/api/evaluate-optimized (Fallback)", "Mock", "mock-ai-local", user_prompt, json.dumps(res, ensure_ascii=False), "SUCCESS")
         return res
 

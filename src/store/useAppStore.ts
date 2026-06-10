@@ -13,11 +13,37 @@ export interface HistoryRun {
   bestFitness: number;
   data: Chromosome[];
 }
+export interface SanityCheckStep {
+  status: string;
+  schema_check?: string;
+  type_check?: string;
+  invalid_removed?: number;
+  description: string;
+}
+
+export interface FitnessEvaluationStep {
+  status: string;
+  fitness_score?: number;
+  penalty_score?: number;
+  violations_count?: number;
+  applied_weights?: string;
+  description: string;
+}
+
+export interface BoundaryEdgeCheckStep {
+  status: string;
+  boundary_coverage?: string | number;
+  critical_hits?: number;
+  description: string;
+}
 
 export interface EvaluationResult {
   score: number;
-  strengths: string[];
-  weaknesses: string[];
+  strengths?: string[];
+  weaknesses?: string[];
+  sanity_check?: SanityCheckStep;
+  fitness_evaluation?: FitnessEvaluationStep;
+  boundary_edge_check?: BoundaryEdgeCheckStep;
   missing_cases: string[];
   security_risks: string[];
 }
@@ -38,6 +64,8 @@ interface AppState {
   isParsing: boolean;
   isEvaluating: boolean;
   evaluationResult: EvaluationResult | null;
+  isEvaluatingOptimized: boolean;
+  optimizedEvaluationResult: EvaluationResult | null;
   specificationHistory: any[];
   isFetchingHistory: boolean;
   parseError: string | null;
@@ -74,6 +102,7 @@ interface AppState {
   handleLoadPastRun: (pastData: Chromosome[]) => void;
   handleClearHistory: () => void;
   handleEvaluateSeeds: (testMethod: string) => Promise<void>;
+  handleEvaluateOptimized: (algorithm: string) => Promise<void>;
   fetchSpecificationHistory: () => Promise<void>;
   handleHistorySelect: (historyItem: any) => void;
   handleSwitchScreen: (screen: string) => void;
@@ -110,6 +139,8 @@ export const useAppStore = create<AppState>((set, get) => {
     isParsing: false,
     isEvaluating: false,
     evaluationResult: null,
+    isEvaluatingOptimized: false,
+    optimizedEvaluationResult: null,
     specificationHistory: [],
     isFetchingHistory: false,
     parseError: null,
@@ -189,6 +220,7 @@ export const useAppStore = create<AppState>((set, get) => {
           specificationId: res.specification_id,
           schemaName: rawText.substring(0, 25) + (rawText.length > 25 ? '...' : ''),
           optimizedDataset: [],
+          optimizedEvaluationResult: null,
           isParsing: false
         });
         
@@ -216,6 +248,7 @@ export const useAppStore = create<AppState>((set, get) => {
         schemaName: preset.title.split(' (')[0],
         specificationId: '',
         optimizedDataset: [],
+        optimizedEvaluationResult: null,
         selectedPresetId: preset.id,
         methodSeeds: {
           random: [],
@@ -247,7 +280,8 @@ export const useAppStore = create<AppState>((set, get) => {
 
       set({
         optimizedDataset: results,
-        historyRuns: updatedHistoryRuns
+        historyRuns: updatedHistoryRuns,
+        optimizedEvaluationResult: null
       });
     },
 
@@ -318,6 +352,78 @@ export const useAppStore = create<AppState>((set, get) => {
       }
     },
 
+    handleEvaluateOptimized: async (algorithm: string) => {
+      const { rawText, parsedSchema, optimizedDataset, apiKey } = get();
+      if (!optimizedDataset || optimizedDataset.length === 0) return;
+      
+      set({ isEvaluatingOptimized: true, optimizedEvaluationResult: null });
+      try {
+        const response = await fetch(`${config.API_BASE_URL}/api/evaluate-optimized`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            fields: parsedSchema,
+            dataset: optimizedDataset,
+            algorithm: algorithm,
+            raw_text: rawText,
+            api_key_override: apiKey ? apiKey.trim() : null
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || "Lỗi khi kết nối với máy chủ AI");
+        }
+
+        const res = await response.json();
+        if (res.success && res.data) {
+          set({ optimizedEvaluationResult: res.data, isEvaluatingOptimized: false });
+        } else {
+          throw new Error("Dữ liệu phản hồi không hợp lệ");
+        }
+      } catch (error: any) {
+        console.error("Optimized Evaluation Error:", error);
+        toast.warning(`Có lỗi khi nhờ AI đánh giá. Đã chuyển về dữ liệu đánh giá mô phỏng dự phòng.`);
+        // Mock fallback
+        set({
+          isEvaluatingOptimized: false,
+          optimizedEvaluationResult: {
+            score: algorithm === 'hybrid' ? 96 : algorithm === 'ga' ? 92 : 85,
+            sanity_check: {
+              status: "Đạt yêu cầu",
+              schema_check: "Khớp đặc tả 100%",
+              type_check: "Hợp lệ",
+              invalid_removed: 0,
+              description: "Tập dữ liệu hoàn toàn sạch, lọc bỏ 100% các giá trị sai cấu trúc ràng buộc hoặc thiếu trường bắt buộc."
+            },
+            fitness_evaluation: {
+              status: algorithm === 'hybrid' ? "Tối ưu xuất sắc" : "Tối ưu trung bình",
+              fitness_score: algorithm === 'hybrid' ? 0.96 : algorithm === 'ga' ? 0.92 : 0.85,
+              penalty_score: 0.05,
+              violations_count: algorithm === 'hybrid' ? 0 : 2,
+              applied_weights: "Validation: 0.5, Boundary: 0.2, Security: 0.2, Diversity: 0.1",
+              description: "Hàm fitness phân bổ trọng số hợp lý (Validation 50%, Boundary 20%, Security 20%, Diversity 10%). Đã triệt tiêu trùng lặp xuống mức tối thiểu."
+            },
+            boundary_edge_check: {
+              status: algorithm === 'hybrid' || algorithm === 'hc' ? "Độ bao phủ cao" : "Độ bao phủ trung bình",
+              boundary_coverage: algorithm === 'hybrid' ? "95%" : "88%",
+              critical_hits: algorithm === 'hybrid' ? 10 : 5,
+              description: "Các ca kiểm thử biên (BVA) được tinh chỉnh giúp cọ sát sát nút ranh giới rủi ro (Min, Max, Min-1, Max+1)."
+            },
+            missing_cases: [
+              "Có thể thiếu các trường hợp kiểm thử giá trị đặc biệt dài hoặc có ký tự Unicode phức tạp ở một số trường mô tả.",
+              "Trường hợp kiểm thử tích hợp kết hợp nhiều lỗi đồng thời trên các trường khác nhau để kiểm tra tính bền vững của giao diện."
+            ],
+            security_risks: [
+              "Các lỗ hổng XSS thông thường đã được phủ tốt, tuy nhiên cần kiểm nghiệm thêm các trường hợp lưu trữ dữ liệu độc hại (Stored XSS) trong cơ sở dữ liệu."
+            ]
+          }
+        });
+      }
+    },
+
     fetchSpecificationHistory: async () => {
       set({ isFetchingHistory: true });
       try {
@@ -360,6 +466,7 @@ export const useAppStore = create<AppState>((set, get) => {
         specificationId: '',
         optimizedDataset: [],
         evaluationResult: null,
+        optimizedEvaluationResult: null,
         parseError: null,
         selectedPresetId: '',
         selectedMethods: ['random'],

@@ -18,7 +18,7 @@ from .core.database import engine, Base, get_db, SessionLocal
 # Nạp các Models bảng dữ liệu quan hệ
 from . import models
 # Nạp dịch vụ kết nối OpenAI API thật
-from .services.ai_parser import parse_spec_with_openai, generate_seeds, evaluate_test_quality_with_ai
+from .services.ai_parser import parse_spec_with_openai, generate_seeds, evaluate_test_quality_with_ai, evaluate_optimized_dataset_with_ai
 # Nạp các bộ thuật toán tối ưu hóa chạy trên Server
 from .algorithms.optimizer_engine import TestSuiteOptimizer, generate_random_field_value
 from .algorithms.boundary_tweak import optimize_testcase_boundaries, BoundaryTweakStats
@@ -97,6 +97,16 @@ class EvaluateRequest(BaseModel):
     fields: List[Dict[str, Any]]
     seeds: List[Dict[str, Any]]
     test_method: str
+    raw_text: str
+    api_key_override: Optional[str] = None
+
+class EvaluateOptimizedRequest(BaseModel):
+    """
+    Schema cấu hình đánh giá chất lượng bộ dữ liệu tối ưu hóa.
+    """
+    fields: List[Dict[str, Any]]
+    dataset: List[Dict[str, Any]]
+    algorithm: str
     raw_text: str
     api_key_override: Optional[str] = None
 
@@ -258,6 +268,32 @@ def api_evaluate_seeds(req: EvaluateRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(ve))
     except Exception as e:
         print(f"Error evaluating seeds: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/evaluate-optimized")
+def api_evaluate_optimized(req: EvaluateOptimizedRequest, db: Session = Depends(get_db)):
+    """
+    ENDPOINT: Đánh giá chất lượng tập dữ liệu test cases đã tối ưu hóa.
+    Nhận tập dataset, schemas và gửi cho AI (Gemini/OpenAI) để chấm điểm và đánh giá.
+    """
+    try:
+        evaluation = evaluate_optimized_dataset_with_ai(
+            fields=req.fields,
+            dataset=req.dataset,
+            algorithm=req.algorithm,
+            raw_text=req.raw_text,
+            api_key_override=req.api_key_override,
+            db=db
+        )
+        return {"success": True, "data": evaluation}
+    except ValueError as ve:
+        if str(ve).startswith("API_KEY_ERROR"):
+            print(f">>> ERROR: {str(ve)}")
+            raise HTTPException(status_code=400, detail=f"Lỗi API Key: {str(ve).replace('API_KEY_ERROR: ', '')}")
+        raise HTTPException(status_code=500, detail=str(ve))
+    except Exception as e:
+        print(f"Error evaluating optimized dataset: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

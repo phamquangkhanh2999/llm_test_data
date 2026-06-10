@@ -204,6 +204,9 @@ export class GeneticEngine {
   hallOfFame: { values: Chromosome; fitness: number; origin: string }[] = [];
   private maxHofSize: number = 20;
 
+  // Static evaluations cache (caching validation, boundary, security scores)
+  private staticCache: Map<string, { vScore: number; bScore: number; sScore: number }> = new Map();
+
   constructor(schema: FieldConstraint[], config: GeneticConfig) {
     this.schema = schema;
     this.config = config;
@@ -240,6 +243,7 @@ export class GeneticEngine {
     this.generation = 0;
     this.hallOfFame = [];
     this.bestFitnessHistory = [];
+    this.staticCache.clear();
 
     // 1. Process Seeds
     seeds.forEach(s => {
@@ -328,102 +332,137 @@ export class GeneticEngine {
   // ═══════════════════════════════════════════════
 
   computeFitness(c: Chromosome, currentPop: Chromosome[]): { fitness: number; scoreBreakdown: Record<string, number> } {
-    let validationScore = 0;
-    let boundaryScore = 0;
-    let securityScore = 0;
+    let vScore = 0;
+    let bScore = 0;
+    let sScore = 0;
 
-    this.schema.forEach(field => {
-      const val = c[field.name];
-      if (val === undefined) return;
+    // Generate unique key for caching
+    const tcKey = JSON.stringify(Object.entries(c).sort());
 
-      const strVal = String(val);
-      let isValid = true;
-      let isBoundary = false;
-      let isNearBoundary = false;
-      let isSecurity = false;
+    if (this.staticCache.has(tcKey)) {
+      const cached = this.staticCache.get(tcKey)!;
+      vScore = cached.vScore;
+      bScore = cached.bScore;
+      sScore = cached.sScore;
+    } else {
+      let validationScore = 0;
+      let boundaryScore = 0;
+      let securityScore = 0;
 
-      // --- 1. Validation Check ---
-      if (field.required && (val === null || val === undefined || strVal === '')) {
-        isValid = false;
-      }
+      this.schema.forEach(field => {
+        const val = c[field.name];
+        if (val === undefined) return;
 
-      if (isValid) {
-        if (field.type === 'email') {
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-          if (!emailRegex.test(strVal)) isValid = false;
-        } else if (field.type === 'card') {
-          const cardRegex = /^\d{16}$/;
-          if (!cardRegex.test(strVal)) isValid = false;
-        } else if (field.type === 'phone') {
-          const phoneRegex = /^(03|05|07|08|09)\d{8}$/;
-          if (!phoneRegex.test(strVal)) isValid = false;
-        } else if (field.type === 'number') {
-          const num = Number(val);
-          if (isNaN(num)) isValid = false;
+        const strVal = String(val);
+        let isBoundary = false;
+        let isNearBoundary = false;
+        let isSecurity = false;
+
+        let hardPassed = true;
+        let softPassed = true;
+
+        // --- 1. Hard Constraints ---
+        // Required check
+        if (field.required && (val === null || val === undefined || strVal.trim() === '')) {
+          hardPassed = false;
         }
-      }
 
-      // Constraints Check (Length / Range)
-      if (isValid) {
-        if (field.type === 'number') {
-          const num = Number(val);
-          if (field.minValue !== undefined && num < field.minValue) isValid = false;
-          if (field.maxValue !== undefined && num > field.maxValue) isValid = false;
+        // Data type structure checks
+        if (hardPassed && val !== null && val !== undefined && strVal.trim() !== '') {
+          if (field.type === 'email') {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(strVal)) hardPassed = false;
+          } else if (field.type === 'card') {
+            const cardRegex = /^\d{16}$/;
+            if (!cardRegex.test(strVal)) hardPassed = false;
+          } else if (field.type === 'phone') {
+            const phoneRegex = /^(03|05|07|08|09)\d{8}$/;
+            if (!phoneRegex.test(strVal)) hardPassed = false;
+          } else if (field.type === 'number') {
+            const num = Number(val);
+            if (isNaN(num)) hardPassed = false;
+          }
+
+          // allowedValues (enum checks)
+          if (hardPassed && field.allowedValues && field.allowedValues.length > 0) {
+            if (!field.allowedValues.map(String).includes(strVal)) {
+              hardPassed = false;
+            }
+          }
+        }
+
+        // --- 2. Soft Constraints ---
+        if (hardPassed && val !== null && val !== undefined && strVal.trim() !== '') {
+          // Ranges
+          if (field.type === 'number') {
+            const num = Number(val);
+            if (field.minValue !== undefined && num < field.minValue) softPassed = false;
+            if (field.maxValue !== undefined && num > field.maxValue) softPassed = false;
+          } else {
+            // minLength / maxLength
+            if (field.minLength !== undefined && strVal.length < field.minLength) softPassed = false;
+            if (field.maxLength !== undefined && strVal.length > field.maxLength) softPassed = false;
+          }
+
+          // Regex Match
+          if (softPassed && field.regex) {
+            try {
+              const r = new RegExp(field.regex);
+              if (!r.test(strVal)) softPassed = false;
+            } catch {
+              // invalid regex template
+            }
+          }
+        }
+
+        // Calculate validation score for this field
+        let fieldValScore = 0;
+        if (!hardPassed) {
+          fieldValScore = 0.0;
+        } else if (!softPassed) {
+          fieldValScore = 0.70;
         } else {
-          if (field.minLength !== undefined && strVal.length < field.minLength) isValid = false;
-          if (field.maxLength !== undefined && strVal.length > field.maxLength) isValid = false;
+          fieldValScore = 1.00;
         }
-      }
 
-      // Allowed Values check
-      if (isValid && field.allowedValues && field.allowedValues.length > 0) {
-        if (!field.allowedValues.map(String).includes(strVal)) isValid = false;
-      }
+        validationScore += fieldValScore;
 
-      // Regex Match
-      if (isValid && field.regex) {
-        try {
-          const r = new RegExp(field.regex);
-          if (!r.test(strVal)) isValid = false;
-        } catch {
-          // invalid regex template
+        // --- 3. Boundary Check (only for structurally correct fieldValScore == 1.0) ---
+        if (fieldValScore === 1.0) {
+          if (field.type === 'number') {
+            const num = Number(val);
+            if (field.minValue !== undefined && num === field.minValue) isBoundary = true;
+            if (field.maxValue !== undefined && num === field.maxValue) isBoundary = true;
+            if (field.minValue !== undefined && num === field.minValue + 1) isNearBoundary = true;
+            if (field.maxValue !== undefined && num === field.maxValue - 1) isNearBoundary = true;
+          } else {
+            if (field.minLength !== undefined && strVal.length === field.minLength) isBoundary = true;
+            if (field.maxLength !== undefined && strVal.length === field.maxLength) isBoundary = true;
+            if (field.minLength !== undefined && strVal.length === field.minLength + 1) isNearBoundary = true;
+            if (field.maxLength !== undefined && strVal.length === field.maxLength - 1) isNearBoundary = true;
+          }
+          if (isBoundary) boundaryScore += 1;
+          else if (isNearBoundary) boundaryScore += 0.5;
         }
-      }
 
-      if (isValid) validationScore += 1;
-
-      // --- 2. Boundary Check (with near-boundary credit) ---
-      if (isValid) {
-        if (field.type === 'number') {
-          const num = Number(val);
-          if (field.minValue !== undefined && num === field.minValue) isBoundary = true;
-          if (field.maxValue !== undefined && num === field.maxValue) isBoundary = true;
-          if (field.minValue !== undefined && num === field.minValue + 1) isNearBoundary = true;
-          if (field.maxValue !== undefined && num === field.maxValue - 1) isNearBoundary = true;
-        } else {
-          if (field.minLength !== undefined && strVal.length === field.minLength) isBoundary = true;
-          if (field.maxLength !== undefined && strVal.length === field.maxLength) isBoundary = true;
-          if (field.minLength !== undefined && strVal.length === field.minLength + 1) isNearBoundary = true;
-          if (field.maxLength !== undefined && strVal.length === field.maxLength - 1) isNearBoundary = true;
+        // --- 4. Security Payload Check ---
+        const securityKeywords = ["' or", '" or', "'or", '"or', '--', 'union', 'select', 'drop table', '<script', 'onload=', 'onerror=', 'javascript:'];
+        const strLower = strVal.toLowerCase();
+        if (securityKeywords.some(kw => strLower.includes(kw))) {
+          isSecurity = true;
         }
-        if (isBoundary) boundaryScore += 1;
-        else if (isNearBoundary) boundaryScore += 0.5;
-      }
+        if (isSecurity) securityScore += 1;
+      });
 
-      // --- 3. Security Payload Check ---
-      const securityKeywords = ["' or", '" or', "'or", '"or', '--', 'union', 'select', 'drop table', '<script', 'onload=', 'onerror=', 'javascript:'];
-      const strLower = strVal.toLowerCase();
-      if (securityKeywords.some(kw => strLower.includes(kw))) {
-        isSecurity = true;
-      }
-      if (isSecurity) securityScore += 1;
-    });
+      // Normalize Scores
+      const numFields = this.schema.length;
+      vScore = validationScore / numFields;
+      bScore = Math.min(boundaryScore / numFields, 1);
+      sScore = Math.min(securityScore / numFields, 1);
 
-    // Normalize Scores
-    const numFields = this.schema.length;
-    const vScore = validationScore / numFields;
-    const bScore = Math.min(boundaryScore / numFields, 1);
-    const sScore = Math.min(securityScore / numFields, 1);
+      // Save to staticCache
+      this.staticCache.set(tcKey, { vScore, bScore, sScore });
+    }
 
     // --- 4. Diversity Score (larger sample) ---
     const sampleSize = Math.min(20, Math.max(5, Math.floor(currentPop.length / 2)));

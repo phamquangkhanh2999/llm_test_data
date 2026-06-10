@@ -32,16 +32,17 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon, activeColor, active, don
       display: 'flex', alignItems: 'center', gap: '9px',
       padding: '11px 14px', fontSize: '13px', borderRadius: '8px',
       background: active ? `${activeColor}16` : 'transparent',
-      border: `1px solid ${active ? activeColor + '38' : 'transparent'}`,
+      border: `1.5px solid ${active ? activeColor + '55' : 'transparent'}`, /* 1px -> 1.5px, slightly darker border */
       color: active ? activeColor : done ? 'var(--text-secondary)' : 'var(--text-muted)',
       cursor: 'pointer', transition: 'all 0.16s ease',
-      fontWeight: active ? 600 : 400, width: '100%', position: 'relative',
+      fontWeight: active ? 750 : 600, /* Make text bolder and friendlier */
+      width: '100%', position: 'relative',
     }}
   >
     <span style={{ flexShrink: 0 }}>{icon}</span>
     <span style={{ flex: 1 }}>{label}</span>
     {done && !active && (
-      <CheckCircle2 size={14} style={{ color: 'var(--color-teal)', flexShrink: 0, opacity: 0.8 }} />
+      <CheckCircle2 size={14} style={{ color: 'var(--color-teal)', flexShrink: 0, opacity: 0.9 }} />
     )}
     {active && (
       <span style={{
@@ -122,7 +123,7 @@ function App() {
       <aside style={{
         width: '240px',
         background: 'var(--bg-deep)',
-        borderRight: '1px solid var(--border-subtle)',
+        borderRight: '1.5px solid var(--border-subtle)', /* 1px -> 1.5px */
         padding: '20px 0',
         display: 'flex', flexDirection: 'column',
         position: 'fixed', top: 0, bottom: 0,
@@ -137,23 +138,23 @@ function App() {
             <Layers size={26} style={{ color: 'var(--color-teal)' }} />
             TESTFORGE
           </h1>
-          <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '3px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+          <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '3px', letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 700 }}>
             LLM · GA · HILL CLIMBING
           </div>
         </div>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '3px', padding: '0 8px', flex: 1, overflowY: 'auto' }}>
-          <div style={{ padding: '6px 12px 6px', fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+          <div style={{ padding: '6px 12px 6px', fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 750 }}>
             Quy Trình 3 Bước
           </div>
-          {nav('prepare', '1 · Chuẩn Bị Dữ Liệu', <Database size={16} />, '#3b82f6')}
-          {nav('optimize', '2 · Tối Ưu & So Sánh', <Activity size={16} />, '#7C3AED')}
-          {nav('export', '3 · Xuất Kết Quả', <Download size={16} />, '#0D9488')}
+          {nav('prepare', '1 · Chuẩn Bị Dữ Liệu', <Database size={16} />, '#1d4ed8')}
+          {nav('optimize', '2 · Tối Ưu & So Sánh', <Activity size={16} />, '#6d28d9')}
+          {nav('export', '3 · Xuất Kết Quả', <Download size={16} />, '#0f766e')}
         </nav>
 
         {/* Footer hint */}
-        <div style={{ padding: '12px 16px 0', borderTop: '1px solid var(--border-subtle)', marginTop: '8px' }}>
-          <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        <div style={{ padding: '12px 16px 0', borderTop: '1.5px solid var(--border-subtle)', marginTop: '8px' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5, fontWeight: 600 }}>
             <CheckCircle2 size={11} style={{ display: 'inline', marginRight: '4px', color: 'var(--color-teal)' }} />
             {completedScreens.length} / 3 bước hoàn thành
           </div>
@@ -167,7 +168,7 @@ function App() {
         <header style={{
           padding: '10px 24px',
           background: 'var(--bg-card)',
-          borderBottom: '1px solid var(--border-subtle)',
+          borderBottom: '1.5px solid var(--border-subtle)', /* 1px -> 1.5px */
           position: 'sticky', top: 0, zIndex: 90,
           backdropFilter: 'blur(16px)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
@@ -179,7 +180,7 @@ function App() {
               aria-label={sidebarOpen ? 'Đóng menu' : 'Mở menu'}
               style={{
                 background: 'rgba(0,0,0,0.05)',
-                border: '1px solid var(--border-subtle)',
+                border: '1.5px solid var(--border-subtle)',
                 borderRadius: '8px',
                 padding: '8px',
                 cursor: 'pointer',
@@ -194,15 +195,15 @@ function App() {
             </button>
           )}
 
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', fontSize: '12px', color: 'var(--text-secondary)', overflow: 'hidden', flexWrap: mobile ? 'wrap' : 'nowrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingRight: '16px', borderRight: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', fontSize: '12px', color: 'var(--text-secondary)', overflow: 'hidden', flexWrap: mobile ? 'wrap' : 'nowrap', fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingRight: '16px', borderRight: '1.5px solid var(--border-subtle)' }}>
               <Sparkles size={13} style={{ color: 'var(--color-teal)', flexShrink: 0 }} />
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Kịch bản: <b style={{ color: 'var(--text-primary)' }}>{schemaName || '—'}</b></span>
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Kịch bản: <b style={{ color: 'var(--text-primary)', fontWeight: 800 }}>{schemaName || '—'}</b></span>
             </div>
             {!mobile && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Activity size={13} style={{ color: 'var(--color-violet)' }} />
-                <span>Ràng buộc: <b style={{ color: 'var(--text-primary)' }}>{parsedSchema.length}</b></span>
+                <span>Ràng buộc: <b style={{ color: 'var(--text-primary)', fontWeight: 800 }}>{parsedSchema.length}</b></span>
               </div>
             )}
           </div>
@@ -213,7 +214,7 @@ function App() {
               onClick={() => setIsAILogsOpen(true)}
               style={{
                 background: 'rgba(0,0,0,0.05)',
-                border: '1px solid var(--border-subtle)',
+                border: '1.5px solid var(--border-subtle)', /* 1px -> 1.5px */
                 borderRadius: '8px',
                 padding: '7px 12px',
                 cursor: 'pointer',
@@ -221,7 +222,8 @@ function App() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                fontSize: '12px',
+                fontSize: '12.5px',
+                fontWeight: 700,
                 transition: 'all 0.16s'
               }}
               onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.08)')}
@@ -233,11 +235,11 @@ function App() {
 
             {/* API Key */}
             <div style={{
-              background: apiKey.trim().length > 10 ? 'rgba(13, 148, 136, 0.06)' : 'rgba(0,0,0,0.03)',
+              background: apiKey.trim().length > 10 ? 'rgba(15, 118, 110, 0.08)' : 'rgba(0,0,0,0.03)',
               padding: '7px 12px',
               borderRadius: '8px',
-              border: '1px solid',
-              borderColor: apiKey.trim().length > 10 ? 'rgba(13, 148, 136, 0.3)' : 'var(--border-subtle)',
+              border: '1.5px solid',
+              borderColor: apiKey.trim().length > 10 ? 'rgba(15, 118, 110, 0.45)' : 'var(--border-subtle)',
               display: 'flex', alignItems: 'center', gap: '10px',
               minWidth: mobile ? 'auto' : '260px',
               maxWidth: mobile ? '160px' : undefined,
@@ -248,7 +250,7 @@ function App() {
                 placeholder={mobile ? "API Key..." : "Dán Gemini API Key vào đây..."}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                style={{ flex: 1, padding: '2px 6px', fontSize: '12px', background: 'transparent', border: 'none', outline: 'none', color: apiKey.trim().length > 10 ? 'var(--color-teal)' : 'var(--text-primary)', minWidth: 0 }}
+                style={{ flex: 1, padding: '2px 6px', fontSize: '12px', background: 'transparent', border: 'none', outline: 'none', color: apiKey.trim().length > 10 ? 'var(--color-teal)' : 'var(--text-primary)', minWidth: 0, fontWeight: 600 }}
               />
               {apiKey.trim().length > 10 && <CheckCircle size={13} style={{ color: 'var(--color-teal)', flexShrink: 0 }} />}
             </div>

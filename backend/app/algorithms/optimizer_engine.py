@@ -224,6 +224,9 @@ class TestSuiteOptimizer:
         self.hall_of_fame = []
         self._max_hof_size = 20
 
+        # Static evaluations cache (caching validation, boundary, security scores)
+        self.static_cache = {}
+
     # ═══════════════════════════════════════════════════════════
     # ADAPTIVE RATE HELPERS
     # ═══════════════════════════════════════════════════════════
@@ -264,139 +267,162 @@ class TestSuiteOptimizer:
 
         UPGRADED: Near-boundary values receive partial credit (0.5 per near-hit).
         """
-        validation_score = 0.0
-        boundary_score = 0.0
-        security_score = 0.0
+        # Ensure static cache is initialized
+        if not hasattr(self, 'static_cache'):
+            self.static_cache = {}
 
-        num_fields = len(self.schema)
+        # Compute unique key for the test case values
+        tc_key = str(sorted((k, str(v)) for k, v in test_case.items()))
 
-        for field in self.schema:
-            name = field["name"]
-            val = test_case.get(name)
-            if val is None:
-                continue
+        if tc_key in self.static_cache:
+            v_score, b_score, s_score = self.static_cache[tc_key]
+        else:
+            validation_score = 0.0
+            boundary_score = 0.0
+            security_score = 0.0
 
-            val_str = str(val)
-            is_valid = True
-            is_boundary = False
-            is_near_boundary = False
-            is_security = False
+            num_fields = len(self.schema)
 
-            # --- 1. Kiểm tra tính đúng đắn (Validation) ---
-            if field.get("required") and (val is None or val_str == ""):
-                is_valid = False
+            for field in self.schema:
+                name = field["name"]
+                val = test_case.get(name)
+                if val is None:
+                    continue
 
-            if is_valid:
-                if field["type"] == "email":
-                    if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
-                        is_valid = False
-                elif field["type"] == "card":
-                    if not re.match(r"^\d{16}$", val_str):
-                        is_valid = False
-                elif field["type"] == "phone":
-                    if not re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
-                        is_valid = False
-                elif field["type"] == "number":
-                    try:
-                        float(val)
-                    except (ValueError, TypeError):
-                        is_valid = False
+                val_str = str(val)
+                is_boundary = False
+                is_near_boundary = False
+                is_security = False
 
-            if is_valid:
-                if field["type"] == "number":
-                    num = float(val)
-                    if field.get("minValue") is not None and num < field["minValue"]:
-                        is_valid = False
-                    if field.get("maxValue") is not None and num > field["maxValue"]:
-                        is_valid = False
+                # Split validations into Hard and Soft constraints
+                hard_passed = True
+                soft_passed = True
+
+                # --- 1. Hard Constraints ---
+                # Required check
+                if field.get("required") and (val is None or val_str.strip() == ""):
+                    hard_passed = False
+
+                # Data type compliance and structural rules
+                if hard_passed and val is not None and val_str.strip() != "":
+                    if field["type"] == "email":
+                        if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
+                            hard_passed = False
+                    elif field["type"] == "card":
+                        if not re.match(r"^\d{16}$", val_str):
+                            hard_passed = False
+                    elif field["type"] == "phone":
+                        if not re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
+                            hard_passed = False
+                    elif field["type"] == "number":
+                        try:
+                            float(val)
+                        except (ValueError, TypeError):
+                            hard_passed = False
+
+                    # allowedValues (enum checks)
+                    if hard_passed and field.get("allowedValues") and field["allowedValues"]:
+                        if val_str not in [str(av) for av in field["allowedValues"]]:
+                            hard_passed = False
+
+                # --- 2. Soft Constraints ---
+                if hard_passed and val is not None and val_str.strip() != "":
+                    # Ranges
+                    if field["type"] == "number":
+                        try:
+                            num = float(val)
+                            if field.get("minValue") is not None and num < field["minValue"]:
+                                soft_passed = False
+                            if field.get("maxValue") is not None and num > field["maxValue"]:
+                                soft_passed = False
+                        except (ValueError, TypeError):
+                            pass
+                    else:
+                        # minLength / maxLength
+                        if field.get("minLength") is not None and len(val_str) < field["minLength"]:
+                            soft_passed = False
+                        if field.get("maxLength") is not None and len(val_str) > field["maxLength"]:
+                            soft_passed = False
+
+                    # Regex match
+                    if soft_passed and field.get("regex"):
+                        try:
+                            if not re.search(field["regex"], val_str):
+                                soft_passed = False
+                        except Exception:
+                            pass
+
+                # Scoring validation
+                if not hard_passed:
+                    field_val_score = 0.0
+                elif not soft_passed:
+                    field_val_score = 0.70
                 else:
-                    if field.get("minLength") is not None and len(val_str) < field["minLength"]:
-                        is_valid = False
-                    if field.get("maxLength") is not None and len(val_str) > field["maxLength"]:
-                        is_valid = False
+                    field_val_score = 1.00
 
-            # Allowed values check (enum fields)
-            if is_valid and field.get("allowedValues") and field["allowedValues"]:
-                if val_str not in [str(av) for av in field["allowedValues"]]:
-                    is_valid = False
+                validation_score += field_val_score
 
-            # Regex check
-            if is_valid and field.get("regex"):
-                try:
-                    if not re.search(field["regex"], val_str):
-                        is_valid = False
-                except Exception:
-                    pass
+                # --- 3. Boundary Credit (only for structurally correct field_val_score == 1.0) ---
+                if field_val_score == 1.0:
+                    # [START: BOUNDARY_FITNESS_SCORING]
+                    if field["type"] == "number":
+                        try:
+                            num = float(val)
+                            min_v = field.get("minValue")
+                            max_v = field.get("maxValue")
 
-            if is_valid:
-                validation_score += 1
+                            if min_v is not None:
+                                if num == min_v:
+                                    is_boundary = True
+                                elif num == min_v + 1:
+                                    is_near_boundary = True
 
-                # [START: BOUNDARY_FITNESS_SCORING]
-                # =========================================================================
-                # [BVA] ĐÁNH GIÁ ĐỘ THÍCH NGHI ĐỘ PHỦ BIÊN (BOUNDARY FITNESS EVALUATION)
-                # GA cần tín hiệu hướng dẫn (fitness landscape) để tiến hóa về các giá trị sát biên.
-                # Do đó, ta thiết lập 2 cấp độ ghi điểm:
-                # - Điểm tuyệt đối (1.0) khi giá trị rơi chính xác vào điểm Biên (Boundary).
-                # - Điểm bộ phận (0.5) khi giá trị kề sát biên (Near-boundary) để tạo đà tiến hóa.
-                # =========================================================================
-                if field["type"] == "number":
-                    num = float(val)
-                    min_v = field.get("minValue")
-                    max_v = field.get("maxValue")
+                            if max_v is not None:
+                                if num == max_v:
+                                    is_boundary = True
+                                elif num == max_v - 1:
+                                    is_near_boundary = True
+                        except (ValueError, TypeError):
+                            pass
+                    else:
+                        min_l = field.get("minLength")
+                        max_l = field.get("maxLength")
 
-                    # Kiểm tra biên dưới số học
-                    if min_v is not None:
-                        if num == min_v:
-                            is_boundary = True  # Rơi đúng điểm biên Min
-                        elif num == min_v + 1:
-                            is_near_boundary = True  # Kề sát điểm biên Min (khoảng cách = 1)
+                        if min_l is not None:
+                            if len(val_str) == min_l:
+                                is_boundary = True
+                            elif len(val_str) == min_l + 1:
+                                is_near_boundary = True
 
-                    # Kiểm tra biên trên số học
-                    if max_v is not None:
-                        if num == max_v:
-                            is_boundary = True  # Rơi đúng điểm biên Max
-                        elif num == max_v - 1:
-                            is_near_boundary = True  # Kề sát điểm biên Max (khoảng cách = -1)
-                else:
-                    min_l = field.get("minLength")
-                    max_l = field.get("maxLength")
+                        if max_l is not None:
+                            if len(val_str) == max_l:
+                                is_boundary = True
+                            elif len(val_str) == max_l - 1:
+                                is_near_boundary = True
 
-                    # Kiểm tra biên dưới độ dài chuỗi ký tự
-                    if min_l is not None:
-                        if len(val_str) == min_l:
-                            is_boundary = True  # Độ dài chuỗi bằng đúng minLength
-                        elif len(val_str) == min_l + 1:
-                            is_near_boundary = True  # Độ dài chuỗi kề sát minLength (chênh lệch +1)
+                    if is_boundary:
+                        boundary_score += 1.0
+                    elif is_near_boundary:
+                        boundary_score += 0.5
+                    # [END: BOUNDARY_FITNESS_SCORING]
 
-                    # Kiểm tra biên trên độ dài chuỗi ký tự
-                    if max_l is not None:
-                        if len(val_str) == max_l:
-                            is_boundary = True  # Độ dài chuỗi bằng đúng maxLength
-                        elif len(val_str) == max_l - 1:
-                            is_near_boundary = True  # Độ dài chuỗi kề sát maxLength (chênh lệch -1)
+                # --- 4. Security Check (independent of structure validation) ---
+                security_keywords = ["' or", '" or', "--", "union", "select", "drop table", "<script", "onload=", "onerror="]
+                val_lower = val_str.lower()
+                if any(kw in val_lower for kw in security_keywords):
+                    is_security = True
+                if is_security:
+                    security_score += 1
 
-                # Cộng điểm thích nghi biên vào hàm mục tiêu (Fitness Function)
-                if is_boundary:
-                    boundary_score += 1.0  # Phần thưởng tối đa cho ca kiểm thử biên chuẩn
-                elif is_near_boundary:
-                    boundary_score += 0.5  # Điểm bộ phận khuyến khích thuật toán di chuyển gần hơn tới biên
-                # [END: BOUNDARY_FITNESS_SCORING]
+            # Normalize scores
+            v_score = validation_score / num_fields
+            b_score = min(boundary_score / num_fields, 1.0)
+            s_score = min(security_score / num_fields, 1.0)
 
-            # --- 3. Kiểm tra nhúng mã độc (Security Payloads) ---
-            security_keywords = ["' or", '" or', "--", "union", "select", "drop table", "<script", "onload=", "onerror="]
-            val_lower = val_str.lower()
-            if any(kw in val_lower for kw in security_keywords):
-                is_security = True
-            if is_security:
-                security_score += 1
+            # Store in cache
+            self.static_cache[tc_key] = (v_score, b_score, s_score)
 
-        # Chuẩn hóa điểm
-        v_score = validation_score / num_fields
-        b_score = min(boundary_score / num_fields, 1.0)
-        s_score = min(security_score / num_fields, 1.0)
-
-        # --- 4. Đo lường tính đa dạng (Diversity) ---
-        # UPGRADED: use larger sample (min(20, pop/2)) instead of fixed 5
+        # --- 4. Diversity (Dynamic, evaluated on the fly) ---
         sample_size = min(20, max(5, len(current_suite_values) // 2))
         if sample_size > 0 and len(current_suite_values) > 0:
             sample_subset = random.sample(current_suite_values, min(sample_size, len(current_suite_values)))
@@ -404,11 +430,11 @@ class TestSuiteOptimizer:
             sample_subset = []
         d_score = calculate_diversity_score(test_case, sample_subset)
 
-        # --- 5. Điểm phạt trùng lặp (Duplicate Penalty) ---
+        # --- 5. Duplicate Penalty (Dynamic, evaluated on the fly) ---
         dup_count = sum(1 for other in current_suite_values if all(str(test_case[k]) == str(other.get(k, "")) for k in test_case.keys()))
         penalty = min(0.15 * (dup_count - 1), 0.6) if dup_count > 1 else 0.0
 
-        # Tổng hợp điểm chất lượng dựa trên Trọng số cấu hình
+        # Calculate final fitness based on weights
         w = self.config["weights"]
         fitness = (w["validation"] * v_score) + (w["boundary"] * b_score) + (w["security"] * s_score) + (w["diversity"] * d_score) - penalty
         fitness = max(0.01, min(fitness, 1.0))

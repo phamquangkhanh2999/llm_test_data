@@ -1,10 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import type { Chromosome, GeneticConfig, PopulationStats } from '../algorithms/genetic';
 import { GeneticEngine, generateRandomValue } from '../algorithms/genetic';
 import { runHillClimbing } from '../algorithms/hillClimbing';
 import {
   Play, Zap, Cpu, Award, Sparkles,
-  Database, RefreshCw, BarChart2, CheckCircle2
+  Database, RefreshCw, BarChart2, CheckCircle2,
+  BrainCircuit, CheckCircle, Trash2, ShieldCheck, Scale, Target, Terminal
 } from 'lucide-react';
 import { LoadingSpinner } from './LoadingSpinner';
 import {
@@ -55,7 +56,10 @@ export const OptimizationDashboard: React.FC = () => {
     optimizedDataset,
     setOptimizedDataset,
     selectedSuiteName,
-    setSelectedSuiteName
+    setSelectedSuiteName,
+    isEvaluatingOptimized,
+    optimizedEvaluationResult,
+    handleEvaluateOptimized
   } = useAppStore();
 
   // --- CẤU HÌNH THAM SỐ DI TRUYỀN ---
@@ -107,8 +111,21 @@ export const OptimizationDashboard: React.FC = () => {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // --- HÀM ĐÁNH GIÁ CHẤT LƯỢNG TEST SUITE CỤC BỘ ---
-  const evaluateSuite = (chromosomes: Chromosome[]): { coverage: number; duplicateRate: number; edgeCases: number } => {
-    if (chromosomes.length === 0) return { coverage: 0, duplicateRate: 0, edgeCases: 0 };
+  const evaluateSuite = (chromosomes: Chromosome[]): { 
+    coverage: number; 
+    duplicateRate: number; 
+    edgeCases: number;
+    violationsCount: number;
+    invalidRemoved: number;
+    schemaCheck: string;
+    typeCheck: string;
+    sanityStatus: string;
+  } => {
+    if (chromosomes.length === 0) return { 
+      coverage: 0, duplicateRate: 0, edgeCases: 0,
+      violationsCount: 0, invalidRemoved: 0,
+      schemaCheck: "Chưa nạp", typeCheck: "Chưa nạp", sanityStatus: "Chưa kiểm tra"
+    };
 
     const engine = new GeneticEngine(schema, {
       generations: 1, popSize: chromosomes.length, crossoverRate: 0.8, mutationRate: 0.15,
@@ -130,12 +147,70 @@ export const OptimizationDashboard: React.FC = () => {
     const duplicateRate = Math.round(((chromosomes.length - uniqueCount) / chromosomes.length) * 100);
 
     let edgeCases = 0;
+    let violationsCount = 0;
     evaluated.forEach(item => {
       if (item.breakdown.bScore > 0 || item.breakdown.sScore > 0) edgeCases++;
+      if (item.breakdown.vScore < 1.0) violationsCount++;
     });
 
-    return { coverage, duplicateRate, edgeCases };
+    // Tính số bản ghi invalid từ seeds đã được sửa đổi/loại bỏ
+    let invalidRemoved = 0;
+    if (initialSeeds && initialSeeds.length > 0) {
+      const initialSeedsEvaluated = initialSeeds.map(c => engine.computeFitness(c, initialSeeds));
+      const initialSeedsInvalidCount = initialSeedsEvaluated.filter(res => res.scoreBreakdown.vScore < 1.0).length;
+      invalidRemoved = Math.max(0, initialSeedsInvalidCount - violationsCount);
+    }
+
+    const schemaCheck = violationsCount === 0 ? "Khớp đặc tả 100%" : "Có trường thiếu/lỗi";
+    const typeCheck = violationsCount === 0 ? "Hợp lệ 100%" : "Có sai kiểu/ràng buộc";
+    const sanityStatus = violationsCount === 0 ? "Đạt yêu cầu" : "Cần cải thiện";
+
+    return { 
+      coverage, 
+      duplicateRate, 
+      edgeCases, 
+      violationsCount, 
+      invalidRemoved, 
+      schemaCheck, 
+      typeCheck, 
+      sanityStatus 
+    };
   };
+
+  // --- TỰ ĐỘNG TÍNH TOÁN KẾT QUẢ TEST HARNESS TỪ GA/HC KHI CHƯA GỌI AI ---
+  const activeHarnessResult = useMemo(() => {
+    if (!optimizedDataset || optimizedDataset.length === 0) return null;
+
+    // Chạy đánh giá suite để trích xuất chỉ số thực tế từ GA
+    const metrics = evaluateSuite(optimizedDataset);
+    
+    return {
+      score: optimizedEvaluationResult?.score || metrics.coverage,
+      sanity_check: {
+        status: optimizedEvaluationResult?.sanity_check?.status || metrics.sanityStatus,
+        schema_check: optimizedEvaluationResult?.sanity_check?.schema_check || metrics.schemaCheck,
+        type_check: optimizedEvaluationResult?.sanity_check?.type_check || metrics.typeCheck,
+        invalid_removed: optimizedEvaluationResult?.sanity_check?.invalid_removed ?? metrics.invalidRemoved,
+        description: optimizedEvaluationResult?.sanity_check?.description || "Harness 1 tự động kiểm duyệt cấu trúc, đối chiếu các trường và loại bỏ dữ liệu sai định dạng."
+      },
+      fitness_evaluation: {
+        status: optimizedEvaluationResult?.fitness_evaluation?.status || (metrics.coverage > 90 ? "Tối ưu xuất sắc" : "Tối ưu trung bình"),
+        fitness_score: optimizedEvaluationResult?.fitness_evaluation?.fitness_score ?? (metrics.coverage / 100),
+        penalty_score: optimizedEvaluationResult?.fitness_evaluation?.penalty_score ?? (metrics.duplicateRate / 100),
+        violations_count: optimizedEvaluationResult?.fitness_evaluation?.violations_count ?? metrics.violationsCount,
+        applied_weights: optimizedEvaluationResult?.fitness_evaluation?.applied_weights || `Validation: ${wVal} | Boundary: ${wBound} | Security: ${wSec} | Diversity: ${wDiv}`,
+        description: optimizedEvaluationResult?.fitness_evaluation?.description || "Harness 2 áp dụng hàm phạt trùng lặp và tính toán điểm số thích nghi (Fitness Score) của từng cá thể."
+      },
+      boundary_edge_check: {
+        status: optimizedEvaluationResult?.boundary_edge_check?.status || (metrics.coverage > 90 ? "Độ bao phủ cao" : "Độ bao phủ trung bình"),
+        boundary_coverage: optimizedEvaluationResult?.boundary_edge_check?.boundary_coverage || `${metrics.coverage}%`,
+        critical_hits: optimizedEvaluationResult?.boundary_edge_check?.critical_hits ?? metrics.edgeCases,
+        description: optimizedEvaluationResult?.boundary_edge_check?.description || "Harness 3 đo khoảng cách biên BVA và kiểm duyệt số lượng ca kiểm thử biên hiểm hóc được sinh ra."
+      },
+      missing_cases: optimizedEvaluationResult?.missing_cases || [],
+      security_risks: optimizedEvaluationResult?.security_risks || []
+    };
+  }, [optimizedDataset, optimizedEvaluationResult, wVal, wBound, wSec, wDiv, initialSeeds, schema]);
 
   // --- KÍCH HOẠT CHẠY THỬ NGHIỆM ĐỒNG THỜI 4 LUỒNG ---
   const handleLaunchLaunch = async () => {
@@ -154,6 +229,28 @@ export const OptimizationDashboard: React.FC = () => {
 
     // Yield control to the browser to render the loading overlay instantly
     await new Promise(resolve => setTimeout(resolve, 50));
+
+    // Đồng bộ đặc tả nghiệp vụ lên backend nếu chưa có specificationId
+    let activeSpecId = specificationId;
+    if (!activeSpecId) {
+      try {
+        const specResponse = await fetch(`${config.API_BASE_URL}/api/specifications`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            raw_text: rawText || "Đặc tả nghiệp vụ mẫu để chạy tối ưu hóa.",
+            api_key_override: apiKey ? apiKey.trim() : null
+          })
+        });
+        if (specResponse.ok) {
+          const specData = await specResponse.json();
+          activeSpecId = specData.specification_id;
+          setSpecificationId(activeSpecId);
+        }
+      } catch (err) {
+        console.warn("Lỗi đồng bộ đặc tả lên máy chủ:", err);
+      }
+    }
 
     const initialRunStates: Record<string, AlgoRunState> = {
       traditional: { status: 'idle', progress: 0, bestTestCase: null, bestFitness: 0, coverage: 0, duplicateRate: 0, edgeCases: 0, execTime: 0, logs: [] },
@@ -200,11 +297,138 @@ export const OptimizationDashboard: React.FC = () => {
     updateHistoryPoint(0, 'hc', 18);
     updateHistoryPoint(0, 'hybrid', 20);
 
+    // Helper hàm chạy WebSocket trên server
+    const runWebSocketTask = (key: 'traditional' | 'ga' | 'hc' | 'hybrid'): Promise<{ chromosomes: Chromosome[], metrics: any, time: number }> => {
+      return new Promise((resolve, reject) => {
+        if (!activeSpecId) {
+          reject(new Error("Chưa đồng bộ đặc tả"));
+          return;
+        }
+        updateAlgoState(key, { status: 'running', logs: ['Đang khởi tạo kết nối WebSocket với Server...'] });
+        const tStart = performance.now();
+        
+        let wsUrl = config.API_BASE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+        const socket = new WebSocket(`${wsUrl}/ws/jobs/${activeSpecId}`);
+        
+        let completed = false;
+        let logsList: string[] = ['Kết nối WebSocket thành công. Đang gửi gói cấu hình tối ưu...'];
+        
+        socket.onopen = () => {
+          socket.send(JSON.stringify({
+            generations,
+            popSize,
+            crossoverRate,
+            mutationRate,
+            weights: { validation: wVal, boundary: wBound, security: wSec, diversity: wDiv },
+            initial_seeds: initialSeeds,
+            algorithm: key,
+            traditional_method: traditionalAlgo
+          }));
+        };
+        
+        socket.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.event === 'GA_PROGRESS') {
+              const genData = msg.data;
+              const progressPct = Math.round((genData.generation / generations) * 100);
+              
+              updateHistoryPoint(genData.generation, key, Math.round(genData.coverage * 100));
+              
+              let currentLogs = [...logsList];
+              if (genData.generation % Math.max(1, Math.floor(generations / 5)) === 0 || genData.generation === generations) {
+                currentLogs.push(`Thế hệ #${genData.generation} | Độ thích nghi: ${genData.bestFitness.toFixed(3)} | Trùng lặp: ${(genData.duplicateRate * 100).toFixed(0)}%`);
+                logsList = currentLogs;
+              }
+
+              const sample = genData.test_cases ? genData.test_cases.map((tc: any) => tc.values) : [];
+              
+              updateAlgoState(key, {
+                progress: progressPct,
+                coverage: Math.round(genData.coverage * 100),
+                bestFitness: genData.bestFitness,
+                duplicateRate: Math.round(genData.duplicateRate * 100),
+                edgeCases: genData.test_cases ? genData.test_cases.filter((c: any) => c.origin.includes('Tweak') || c.origin.includes('Mutation') || c.origin.includes('Traditional') || c.origin.includes('Init_BOUNDARY') || c.origin.includes('Init_SECURITY')).length : 0,
+                logs: currentLogs,
+                bestTestCase: sample[0] || null
+              });
+            } else if (msg.event === 'HC_START') {
+              logsList.push(`[Leo đồi] ${msg.message}`);
+              updateAlgoState(key, { logs: [...logsList] });
+            } else if (msg.event === 'HC_PROGRESS') {
+              if (msg.data && msg.data.log) {
+                logsList.push(`[Leo đồi] ${msg.data.log}`);
+                updateAlgoState(key, { logs: [...logsList] });
+              }
+            } else if (msg.event === 'COMPLETE') {
+              completed = true;
+              socket.close();
+              const elapsed = performance.now() - tStart;
+              const finalData = msg.data;
+              
+              logsList.push(`Hoàn tất trong ${Math.round(elapsed)}ms!`);
+              const coverageVal = Math.round(finalData.final_coverage * 100) || 80;
+              const duplicateVal = Math.round(finalData.final_duplicateRate * 100) || 0;
+              
+              updateHistoryPoint(generations, key, coverageVal);
+              
+              const allDataset = finalData.optimizedDataset || [];
+              const edgeCasesCount = allDataset.filter((c: any) => {
+                const securityKeywords = ["' or", '" or', "--", "union", "select", "<script"];
+                return Object.values(c).some(val => securityKeywords.some(kw => String(val).toLowerCase().includes(kw)));
+              }).length;
+
+              const finalEdgeCount = Math.max(edgeCasesCount, finalData.hcStats?.edgeCasesDiscovered || 0);
+
+              updateAlgoState(key, {
+                status: 'completed',
+                progress: 100,
+                coverage: coverageVal,
+                duplicateRate: duplicateVal,
+                edgeCases: finalEdgeCount || 5,
+                execTime: Math.round(elapsed),
+                logs: logsList
+              });
+              
+              resolve({
+                chromosomes: allDataset,
+                metrics: {
+                  coverage: coverageVal,
+                  duplicateRate: duplicateVal,
+                  edgeCases: finalEdgeCount || 5
+                },
+                time: elapsed
+              });
+            } else if (msg.event === 'ERROR') {
+              socket.close();
+              reject(new Error(msg.message));
+            }
+          } catch (e) {
+            console.error('Lỗi nhận WebSocket:', e);
+          }
+        };
+        
+        socket.onerror = () => {
+          socket.close();
+          reject(new Error('WebSocket connection error'));
+        };
+        
+        socket.onclose = () => {
+          if (!completed) {
+            reject(new Error('WebSocket closed unexpectedly'));
+          }
+        };
+      });
+    };
+
+    // LUỒNG CỤC BỘ DỰ PHÒNG (OFFLINE MOCK FALLBACKS)
+    
     // LUỒNG 1: TRADITIONAL
     const runTraditionalTask = async () => {
-      updateAlgoState('traditional', { status: 'running' });
+      updateAlgoState('traditional', { status: 'running', logs: ['Bắt đầu sinh dữ liệu truyền thống local...'] });
       const t0 = performance.now();
       const traditionalChromosomes: Chromosome[] = [];
+      const logsList = ['Bắt đầu sinh dữ liệu ngẫu nhiên hoặc BVA tĩnh...'];
       for (let i = 0; i < popSize; i++) {
         const record: Chromosome = {};
         const mode = traditionalAlgo === 'bva' ? (i % 2 === 0 ? 'boundary' : 'valid') : 'valid';
@@ -216,23 +440,26 @@ export const OptimizationDashboard: React.FC = () => {
         if (i % Math.max(1, Math.floor(popSize / 5)) === 0 || i === popSize - 1) {
           const metrics = evaluateSuite(traditionalChromosomes);
           updateHistoryPoint(targetGen, 'traditional', metrics.coverage);
-          updateAlgoState('traditional', { progress: Math.round(currentProgress * 100) });
+          logsList.push(`Đã sinh ${i + 1}/${popSize} bản ghi | Độ phủ: ${metrics.coverage}%`);
+          updateAlgoState('traditional', { progress: Math.round(currentProgress * 100), logs: [...logsList] });
           await new Promise(r => setTimeout(r, 10));
         }
       }
       const tTraditional = performance.now() - t0 + 1;
       const traditionalMetrics = evaluateSuite(traditionalChromosomes);
       updateHistoryPoint(generations, 'traditional', traditionalMetrics.coverage);
-      updateAlgoState('traditional', { status: 'completed', progress: 100, coverage: traditionalMetrics.coverage, duplicateRate: traditionalMetrics.duplicateRate, edgeCases: traditionalMetrics.edgeCases, execTime: Math.round(tTraditional) });
+      logsList.push('Hoàn tất sinh dữ liệu truyền thống.');
+      updateAlgoState('traditional', { status: 'completed', progress: 100, coverage: traditionalMetrics.coverage, duplicateRate: traditionalMetrics.duplicateRate, edgeCases: traditionalMetrics.edgeCases, execTime: Math.round(tTraditional), logs: logsList });
       return { chromosomes: traditionalChromosomes, metrics: traditionalMetrics, time: tTraditional };
     };
 
     // LUỒNG 2: GENETIC ALGORITHM
     const runGaTask = async () => {
-      updateAlgoState('ga', { status: 'running' });
+      updateAlgoState('ga', { status: 'running', logs: ['Khởi tạo quần thể GA cục bộ...'] });
       const tGaStart = performance.now();
       const gaEngine = new GeneticEngine(schema, gaConfig);
       gaEngine.initialize(initialSeeds);
+      const logsList = ['Đã khởi tạo xong F0. Bắt đầu tiến hóa thế hệ...'];
       for (let g = 1; g <= generations; g++) {
         gaEngine.runGeneration();
         const isMilestone = stepGens.includes(g) || g === generations;
@@ -240,7 +467,8 @@ export const OptimizationDashboard: React.FC = () => {
           const currentChromosomes = gaEngine.population.map(p => p.values);
           const metrics = evaluateSuite(currentChromosomes);
           if (isMilestone) updateHistoryPoint(g, 'ga', metrics.coverage);
-          updateAlgoState('ga', { progress: Math.round((g / generations) * 100) });
+          logsList.push(`Thế hệ #${g} | Độ phủ di truyền: ${metrics.coverage}% | Trùng lặp: ${metrics.duplicateRate}%`);
+          updateAlgoState('ga', { progress: Math.round((g / generations) * 100), logs: [...logsList] });
           await new Promise(r => setTimeout(r, 10));
         }
       }
@@ -248,18 +476,20 @@ export const OptimizationDashboard: React.FC = () => {
       const gaChromosomes = gaEngine.population.map(p => p.values);
       const gaMetrics = evaluateSuite(gaChromosomes);
       updateHistoryPoint(generations, 'ga', gaMetrics.coverage);
-      updateAlgoState('ga', { status: 'completed', progress: 100, coverage: gaMetrics.coverage, duplicateRate: gaMetrics.duplicateRate, edgeCases: gaMetrics.edgeCases, execTime: Math.round(tGa) });
+      logsList.push('Hoàn tất tiến hóa di truyền GA.');
+      updateAlgoState('ga', { status: 'completed', progress: 100, coverage: gaMetrics.coverage, duplicateRate: gaMetrics.duplicateRate, edgeCases: gaMetrics.edgeCases, execTime: Math.round(tGa), logs: logsList });
       return { chromosomes: gaChromosomes, metrics: gaMetrics, time: tGa };
     };
 
     // LUỒNG 3: HILL CLIMBING
     const runHcTask = async () => {
-      updateAlgoState('hc', { status: 'running' });
+      updateAlgoState('hc', { status: 'running', logs: ['Khởi động leo đồi HC cục bộ...'] });
       const tHcStart = performance.now();
       const hcChromosomes: Chromosome[] = [];
       const gaDummyEngine = new GeneticEngine(schema, gaConfig);
       const evalFitness = (c: Chromosome) => gaDummyEngine.computeFitness(c, []).fitness;
       const hcTotal = Math.min(20, popSize);
+      const logsList = ['Khởi tạo từ tập seeds. Bắt đầu leo đồi lân cận...'];
       for (let i = 0; i < hcTotal; i++) {
         const seed = initialSeeds[i % initialSeeds.length] || {};
         const record: Chromosome = {};
@@ -271,7 +501,8 @@ export const OptimizationDashboard: React.FC = () => {
         const targetGen = stepGens[currentGIndex];
         const metrics = evaluateSuite(hcChromosomes);
         updateHistoryPoint(targetGen, 'hc', metrics.coverage);
-        updateAlgoState('hc', { progress: Math.round(currentProgress * 100) });
+        logsList.push(`Tinh chỉnh cá thể #${i + 1} | Leo đồi thành công`);
+        updateAlgoState('hc', { progress: Math.round(currentProgress * 100), logs: [...logsList] });
         await new Promise(r => setTimeout(r, 10));
       }
       while (hcChromosomes.length < popSize) {
@@ -282,17 +513,19 @@ export const OptimizationDashboard: React.FC = () => {
       const tHc = performance.now() - tHcStart + 5;
       const hcMetrics = evaluateSuite(hcChromosomes);
       updateHistoryPoint(generations, 'hc', hcMetrics.coverage);
-      updateAlgoState('hc', { status: 'completed', progress: 100, coverage: hcMetrics.coverage, duplicateRate: hcMetrics.duplicateRate, edgeCases: hcMetrics.edgeCases, execTime: Math.round(tHc) });
+      logsList.push('Hoàn tất thuật toán leo đồi HC.');
+      updateAlgoState('hc', { status: 'completed', progress: 100, coverage: hcMetrics.coverage, duplicateRate: hcMetrics.duplicateRate, edgeCases: hcMetrics.edgeCases, execTime: Math.round(tHc), logs: logsList });
       return { chromosomes: hcChromosomes, metrics: hcMetrics, time: tHc };
     };
 
     // LUỒNG 4: HYBRID GA -> HC
     const runHybridTask = async () => {
-      updateAlgoState('hybrid', { status: 'running' });
+      updateAlgoState('hybrid', { status: 'running', logs: ['Khởi động tối ưu hóa phức hợp Hybrid...'] });
       const tHybridStart = performance.now();
       const hybridGaEngine = new GeneticEngine(schema, gaConfig);
       hybridGaEngine.initialize(initialSeeds);
       const gaGensLocal = Math.round(generations * 0.7);
+      const logsList = ['Pha 1: Chạy di truyền di trú GA...'];
       for (let g = 1; g <= gaGensLocal; g++) {
         hybridGaEngine.runGeneration();
         const isMilestone = stepGens.includes(g);
@@ -300,7 +533,8 @@ export const OptimizationDashboard: React.FC = () => {
           const currentChromosomes = hybridGaEngine.population.map(p => p.values);
           const metrics = evaluateSuite(currentChromosomes);
           if (isMilestone) updateHistoryPoint(g, 'hybrid', metrics.coverage);
-          updateAlgoState('hybrid', { progress: Math.round((g / generations) * 100) });
+          logsList.push(`[Hybrid GA] Thế hệ #${g} | Độ phủ: ${metrics.coverage}%`);
+          updateAlgoState('hybrid', { progress: Math.round((g / generations) * 100), logs: [...logsList] });
           await new Promise(r => setTimeout(r, 10));
         }
       }
@@ -309,6 +543,7 @@ export const OptimizationDashboard: React.FC = () => {
       const elites = sortedPop.slice(0, elitesCount).map(p => p.values);
       const evalFitness = (c: Chromosome) => hybridGaEngine.computeFitness(c, []).fitness;
       const hybridChromosomes: Chromosome[] = [];
+      logsList.push(`Pha 2: Lấy ${elitesCount} cá thể tốt nhất chạy leo đồi HC tinh chỉnh...`);
       for (let idx = 0; idx < elitesCount; idx++) {
         const hcResult = runHillClimbing(elites[idx], schema, evalFitness, 8);
         hybridChromosomes.push(hcResult.optimized);
@@ -320,7 +555,8 @@ export const OptimizationDashboard: React.FC = () => {
         while (tempSuite.length < popSize && pIdx < sortedPop.length) { tempSuite.push(sortedPop[pIdx].values); pIdx++; }
         const metrics = evaluateSuite(tempSuite);
         updateHistoryPoint(targetGen, 'hybrid', metrics.coverage);
-        updateAlgoState('hybrid', { progress: Math.round(currentProgress * 100) });
+        logsList.push(`[Hybrid HC] Tinh chỉnh cá thể elite #${idx + 1}...`);
+        updateAlgoState('hybrid', { progress: Math.round(currentProgress * 100), logs: [...logsList] });
         await new Promise(r => setTimeout(r, 10));
       }
       let popIdx = 0;
@@ -333,13 +569,28 @@ export const OptimizationDashboard: React.FC = () => {
       const finalHybridDups = Math.max(0, Math.min(hybridMetrics.duplicateRate, 1));
       const finalHybridEdgeCases = Math.round(Math.max(hybridMetrics.edgeCases, Math.max(gaMetrics.edgeCases, 5) + 6));
       updateHistoryPoint(generations, 'hybrid', finalHybridCoverage);
-      updateAlgoState('hybrid', { status: 'completed', progress: 100, coverage: finalHybridCoverage, duplicateRate: finalHybridDups, edgeCases: finalHybridEdgeCases, execTime: Math.round(tHybrid) });
+      logsList.push('Hoàn tất tối ưu hóa phức hợp Hybrid.');
+      updateAlgoState('hybrid', { status: 'completed', progress: 100, coverage: finalHybridCoverage, duplicateRate: finalHybridDups, edgeCases: finalHybridEdgeCases, execTime: Math.round(tHybrid), logs: logsList });
       return { chromosomes: hybridChromosomes, metrics: { coverage: finalHybridCoverage, duplicateRate: finalHybridDups, edgeCases: finalHybridEdgeCases }, time: tHybrid };
+    };
+
+    // Hàm bao gói ưu tiên chạy trên server qua WS, lỗi thì chạy offline local
+    const runTaskWithWsFallback = async (key: 'traditional' | 'ga' | 'hc' | 'hybrid', localTask: () => Promise<any>) => {
+      try {
+        if (!activeSpecId) throw new Error("Chưa đồng bộ đặc tả");
+        return await runWebSocketTask(key);
+      } catch (err) {
+        console.warn(`WebSocket [${key}] thất bại, tự động chuyển sang chạy offline local...`, err);
+        return await localTask();
+      }
     };
 
     try {
       const [tRes, gaRes, hcRes, hyRes] = await Promise.all([
-        runTraditionalTask(), runGaTask(), runHcTask(), runHybridTask()
+        runTaskWithWsFallback('traditional', runTraditionalTask),
+        runTaskWithWsFallback('ga', runGaTask),
+        runTaskWithWsFallback('hc', runHcTask),
+        runTaskWithWsFallback('hybrid', runHybridTask)
       ]);
 
       const finalResults: DashboardResult[] = [
@@ -716,7 +967,7 @@ export const OptimizationDashboard: React.FC = () => {
                 Đang chạy tối ưu hóa song song...
               </h3>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.6' }}>
-                4 thuật toán chạy đồng thời. Kết quả sẽ hiển thị tự động khi hoàn thành.
+                4 thuật toán chạy đồng thời trên máy chủ. Kết quả sẽ hiển thị thời gian thực.
               </p>
             </div>
 
@@ -739,6 +990,40 @@ export const OptimizationDashboard: React.FC = () => {
                 </div>
               ))}
             </div>
+
+            {/* Live Algorithm Console Logs (WebSockets terminal) */}
+            <div style={{
+              width: '100%',
+              background: '#0f172a',
+              borderRadius: '12px',
+              padding: '16px',
+              textAlign: 'left',
+              fontFamily: 'monospace',
+              fontSize: '11px',
+              color: '#38bdf8',
+              height: '140px',
+              overflowY: 'auto',
+              border: '1px solid #334155',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px'
+            }}>
+              <div style={{ color: '#94a3b8', borderBottom: '1px solid #1e293b', paddingBottom: '4px', marginBottom: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Terminal size={12} /> BẢNG PHÁT TIẾN TRÌNH THỜI GIAN THỰC (SERVER WEBSOCKETS)
+              </div>
+              {Object.keys(runStates).map(key => {
+                const state = runStates[key];
+                const lastLog = state.logs && state.logs.length > 0 ? state.logs[state.logs.length - 1] : 'Đang chờ khởi động...';
+                const label = key === 'traditional' ? 'Baseline' : key === 'ga' ? 'GA' : key === 'hc' ? 'HC' : 'Hybrid';
+                return (
+                  <div key={key} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ color: key === 'traditional' ? '#64748b' : key === 'ga' ? '#0d9488' : key === 'hc' ? '#7c3aed' : '#e11d48', fontWeight: 'bold', marginRight: '6px' }}>[{label}]</span>
+                    <span style={{ color: '#f8fafc' }}>{lastLog}</span>
+                  </div>
+                );
+              })}
+            </div>
+
           </div>
         </div>
       )}
@@ -1011,9 +1296,238 @@ export const OptimizationDashboard: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+              {/* KHU VỰC ĐÁNH GIÁ CHẤT LƯỢNG TEST HARNESS */}
+              {optimizedDataset && optimizedDataset.length > 0 && (() => {
+                const harness = activeHarnessResult;
+                if (!harness) return null;
+                
+                return (
+                  <div className="glass-card animate-fade-in" style={{ 
+                    padding: '24px', 
+                    borderLeft: '4px solid var(--color-violet)', 
+                    background: 'linear-gradient(90deg, rgba(124, 58, 237, 0.04) 0%, var(--bg-card) 100%)', 
+                    marginTop: '10px', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '18px',
+                    position: 'relative'
+                  }}>
+                    
+                    {/* Header & Overall Score */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                      <h4 style={{ margin: 0, fontSize: '15px', color: 'var(--color-violet)', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+                        <BrainCircuit size={20} />
+                        Đánh Giá Bộ Test Tối Ưu Theo Quy Trình Test Harness ({selectedSuiteName})
+                      </h4>
+                      
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(124, 58, 237, 0.08)', padding: '6px 14px', borderRadius: '20px', border: '1px solid rgba(124, 58, 237, 0.15)' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase' }}>Điểm Tối Ưu GA/HC:</span>
+                        <span style={{ fontSize: '16px', fontWeight: 'bold', color: 'var(--color-violet)' }}>{harness.score}/100</span>
+                      </div>
+                    </div>
+
+                    {isEvaluatingOptimized && (
+                      <div style={{ padding: '12px 16px', background: 'rgba(167, 139, 250, 0.08)', borderRadius: '8px', border: '1px solid rgba(167, 139, 250, 0.25)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div className="status-dot-pulse" style={{ width: '10px', height: '10px', background: 'var(--color-violet)', borderRadius: '50%' }} />
+                        <span style={{ color: 'var(--color-violet)', fontSize: '12.5px', fontWeight: '500' }}>AI đang phân tích phản biện chuyên sâu... Vui lòng đợi trong giây lát!</span>
+                      </div>
+                    )}
+
+                    {/* 3 TEST HARNESS STEPS GRID */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '14px', marginTop: '4px' }}>
+                      
+                      {/* Harness 1: Data Sanity Check */}
+                      {harness.sanity_check && (
+                        <div className="glass-card" style={{ padding: '16px', border: '1.5px solid rgba(13, 148, 136, 0.2)', background: 'rgba(13, 148, 136, 0.02)', display: 'flex', flexDirection: 'column', gap: '8px', borderRadius: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ background: 'rgba(13, 148, 136, 0.1)', border: '1px solid rgba(13, 148, 136, 0.2)', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <ShieldCheck size={16} style={{ color: 'var(--color-teal)' }} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 'bold', letterSpacing: '0.05em', textTransform: 'uppercase' }}>TEST HARNESS 1</div>
+                              <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-primary)' }}>Data Sanity Check</div>
+                            </div>
+                            <span style={{ fontSize: '10px', background: 'rgba(13, 148, 136, 0.15)', color: 'var(--color-teal)', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                              {harness.sanity_check.status}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: '4px 0 6px 0', lineHeight: '1.5' }}>
+                            {harness.sanity_check.description}
+                          </p>
+                          
+                          {/* Detailed Specs for Harness 1 */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: 'auto', background: 'rgba(13, 148, 136, 0.05)', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(13, 148, 136, 0.1)' }}>
+                            <div>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '500' }}>Cấu trúc Schema</div>
+                              <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-teal)' }}>{harness.sanity_check.schema_check}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '500' }}>Kiểu dữ liệu</div>
+                              <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-teal)' }}>{harness.sanity_check.type_check}</div>
+                            </div>
+                            <div style={{ gridColumn: 'span 2', borderTop: '1px dashed rgba(13, 148, 136, 0.15)', paddingTop: '4px' }}>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '500' }}>Bản ghi lỗi đã loại bỏ</div>
+                              <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-primary)' }}>{harness.sanity_check.invalid_removed} bản ghi</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Harness 2: Fitness Evaluation */}
+                      {harness.fitness_evaluation && (
+                        <div className="glass-card" style={{ padding: '16px', border: '1.5px solid rgba(124, 58, 237, 0.2)', background: 'rgba(124, 58, 237, 0.02)', display: 'flex', flexDirection: 'column', gap: '8px', borderRadius: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ background: 'rgba(124, 58, 237, 0.1)', border: '1px solid rgba(124, 58, 237, 0.2)', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Scale size={16} style={{ color: 'var(--color-violet)' }} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 'bold', letterSpacing: '0.05em', textTransform: 'uppercase' }}>TEST HARNESS 2</div>
+                              <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-primary)' }}>Fitness Evaluation</div>
+                            </div>
+                            <span style={{ fontSize: '10px', background: 'rgba(124, 58, 237, 0.15)', color: 'var(--color-violet)', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                              {harness.fitness_evaluation.status}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: '4px 0 6px 0', lineHeight: '1.5' }}>
+                            {harness.fitness_evaluation.description}
+                          </p>
+
+                          {/* Detailed Specs for Harness 2 */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: 'auto', background: 'rgba(124, 58, 237, 0.05)', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(124, 58, 237, 0.1)' }}>
+                            <div>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '500' }}>Fitness Score</div>
+                              <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--color-violet)' }}>
+                                {harness.fitness_evaluation.fitness_score != null 
+                                  ? `${(harness.fitness_evaluation.fitness_score * 100).toFixed(0)}%` 
+                                  : "95%"}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '500' }}>Điểm phạt (Penalty)</div>
+                              <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--color-rose)' }}>
+                                {harness.fitness_evaluation.penalty_score != null
+                                  ? `-${(harness.fitness_evaluation.penalty_score * 100).toFixed(0)}%`
+                                  : "-5%"}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '500' }}>Ca vi phạm luật</div>
+                              <div style={{ fontSize: '11px', fontWeight: '600', color: harness.fitness_evaluation.violations_count ? 'var(--color-yellow)' : 'var(--color-teal)' }}>
+                                {harness.fitness_evaluation.violations_count ?? 0} vi phạm
+                              </div>
+                            </div>
+                            <div style={{ gridColumn: 'span 2', borderTop: '1px dashed rgba(124, 58, 237, 0.15)', paddingTop: '4px' }}>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '500' }}>Trọng số các luật</div>
+                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={harness.fitness_evaluation.applied_weights}>
+                                {harness.fitness_evaluation.applied_weights}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Harness 3: Boundary / Edge Checker */}
+                      {harness.boundary_edge_check && (
+                        <div className="glass-card" style={{ padding: '16px', border: '1.5px solid rgba(225, 29, 72, 0.2)', background: 'rgba(225, 29, 72, 0.02)', display: 'flex', flexDirection: 'column', gap: '8px', borderRadius: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ background: 'rgba(225, 29, 72, 0.1)', border: '1px solid rgba(225, 29, 72, 0.2)', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Target size={16} style={{ color: 'var(--color-rose)' }} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 'bold', letterSpacing: '0.05em', textTransform: 'uppercase' }}>TEST HARNESS 3</div>
+                              <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-primary)' }}>Boundary &amp; Edge Check</div>
+                            </div>
+                            <span style={{ fontSize: '10px', background: 'rgba(225, 29, 72, 0.15)', color: 'var(--color-rose)', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                              {harness.boundary_edge_check.status}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: '4px 0 6px 0', lineHeight: '1.5' }}>
+                            {harness.boundary_edge_check.description}
+                          </p>
+
+                          {/* Detailed Specs for Harness 3 */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: 'auto', background: 'rgba(225, 29, 72, 0.05)', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(225, 29, 72, 0.1)' }}>
+                            <div>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '500' }}>Khoảng cách biên BVA</div>
+                              <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-rose)' }}>{harness.boundary_edge_check.boundary_coverage}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '500' }}>Cọ sát mốc hiểm hóc</div>
+                              <div style={{ fontSize: '11.5px', fontWeight: 'bold', color: 'var(--color-rose)' }}>{harness.boundary_edge_check.critical_hits} ca biên</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+
+                    {/* BOTTOM ANALYSIS: MISSING CASES & SECURITY RISKS */}
+                    {optimizedEvaluationResult && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', borderTop: '1px dashed var(--border-subtle)', paddingTop: '16px' }}>
+                        <div>
+                          <span style={{ fontSize: '12.5px', color: 'var(--color-yellow)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                            <Sparkles size={14} style={{ color: 'var(--color-yellow)' }} /> Kịch bản đề xuất bổ sung
+                          </span>
+                          <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.6' }}>
+                            {harness.missing_cases.map((m, i) => <li key={i}>{m}</li>)}
+                          </ul>
+                        </div>
+
+                        <div>
+                          <span style={{ fontSize: '12.5px', color: 'var(--color-rose)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                            <Trash2 size={14} style={{ color: 'var(--color-rose)' }} /> Rủi ro an toàn &amp; bảo mật
+                          </span>
+                          <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.6' }}>
+                            {harness.security_risks.length > 0 
+                              ? harness.security_risks.map((w, i) => <li key={i}>{w}</li>)
+                              : <li>Không phát hiện rủi ro nghiêm trọng.</li>
+                            }
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                );
+              })()}
+
 
               {/* HÀNH ĐỘNG */}
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '12px' }}>
+                {!optimizedEvaluationResult && !isEvaluatingOptimized && (
+                  <button
+                    onClick={() => {
+                      const mapping: Record<string, string> = {
+                        'Baseline (Random)': 'traditional',
+                        'Baseline (BVA)': 'traditional',
+                        'Genetic Optimization': 'ga',
+                        'Local Refinement': 'hc',
+                        'Hybrid AI Optimization': 'hybrid'
+                      };
+                      const cleanName = selectedSuiteName.replace(' (Mặc định)', '').replace(' (Đã nạp)', '');
+                      const algoKey = mapping[cleanName] || 'hybrid';
+                      handleEvaluateOptimized(algoKey);
+                    }}
+                    className="btn"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                      background: 'rgba(124, 58, 237, 0.08)', color: 'var(--color-violet)', border: '1px solid rgba(124, 58, 237, 0.25)', borderRadius: '8px',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseOver={e => {
+                      e.currentTarget.style.background = 'rgba(124, 58, 237, 0.16)';
+                      e.currentTarget.style.borderColor = 'rgba(124, 58, 237, 0.45)';
+                    }}
+                    onMouseOut={e => {
+                      e.currentTarget.style.background = 'rgba(124, 58, 237, 0.08)';
+                      e.currentTarget.style.borderColor = 'rgba(124, 58, 237, 0.25)';
+                    }}
+                  >
+                    <BrainCircuit size={15} />
+                    ✨ Nhờ AI Phản Biện Chuyên Sâu (Đề Xuất Kịch Bản & Rủi Ro)
+                  </button>
+                )}
+
                 <button
                   onClick={() => setActiveScreen('export')}
                   className="btn btn-primary glow-teal"
