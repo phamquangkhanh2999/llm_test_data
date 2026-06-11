@@ -1289,7 +1289,7 @@ export const SpecInput: React.FC = () => {
             )}
 
             {/* Nút Phân Tích & Sinh F0 */}
-            <button
+            {/* <button
               onClick={handleParseAndGenerateSeeds}
               disabled={isParsing || !rawText.trim()}
               className={`btn btn-primary ${isParsing || !rawText.trim() ? 'btn-disabled' : ''}`}
@@ -1316,7 +1316,7 @@ export const SpecInput: React.FC = () => {
                   {parsedSchema.length > 0 ? 'Phân Tích Lại' : 'Phân Tích & Sinh F0'}
                 </>
               )}
-            </button>
+            </button> */}
 
             {/* Nút Tiếp Theo: Tối Ưu & So Sánh */}
             {parsedSchema.length > 0 && initialSeeds.length > 0 && (

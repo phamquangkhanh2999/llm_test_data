@@ -93,19 +93,23 @@ def parse_spec_with_openai_v2(raw_text: str, api_key_override: Optional[str] = N
     YÊU CẦU DỮ LIỆU MẪU:
     - Mỗi bản ghi trong initialPopulation phải chứa tất cả các trường bạn đã định nghĩa.
     - Phải có thêm 2 trường: 'method' (tên phương pháp sinh: 'random', 'bva', 'ep', 'decision') và 'scenario' (mô tả ngắn kịch bản bằng tiếng Việt).
+
+    Trả về JSON object có dạng:
+    {{"fields": [ {{"name": ..., "type": ..., "required": ..., "description": ...}} ], "initialPopulation": [ {{...}} ]}}
     """
 
     try:
-        completion = local_client.beta.chat.completions.parse(
+        # NOTE: initialPopulation có key động nên không dùng được Pydantic strict mode
+        # (strict yêu cầu additionalProperties=false). Dùng json_object mode + parse thủ công.
+        completion = local_client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": "Bạn là chuyên gia phân tích hệ thống chuyên nghiệp."},
+                {"role": "system", "content": "Bạn là chuyên gia phân tích hệ thống chuyên nghiệp. Luôn trả về JSON hợp lệ."},
                 {"role": "user", "content": prompt},
             ],
-            response_format=SpecOutputSchema,
+            response_format={"type": "json_object"},
         )
-        result = completion.choices[0].message.parsed
-        res_dict = result.model_dump()
+        res_dict = json.loads(completion.choices[0].message.content)
         
         log_ai_call(db, "/api/specifications", "OpenAI", model_name, raw_text, json.dumps(res_dict, ensure_ascii=False), "SUCCESS")
         return res_dict
@@ -136,18 +140,24 @@ def generate_seeds_openai(fields: List[Dict], test_method: str, raw_text: str = 
     Mỗi bản ghi phải có các trường tương ứng và thêm:
     - method: '{test_method}'
     - scenario: Mô tả kịch bản kiểm thử
+
+    Trả về JSON object có dạng: {{"initialPopulation": [ {{...}}, ... ]}}
     """
 
     try:
-        completion = local_client.beta.chat.completions.parse(
+        # NOTE: Không thể dùng structured-output (Pydantic strict) cho seeds vì mỗi bản ghi
+        # có các key động (tên field thay đổi theo spec), trong khi strict mode yêu cầu
+        # additionalProperties=false. Dùng json_object mode + parse thủ công.
+        completion = local_client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": "Bạn là chuyên gia sinh dữ liệu kiểm thử."},
+                {"role": "system", "content": "Bạn là chuyên gia sinh dữ liệu kiểm thử. Luôn trả về JSON hợp lệ."},
                 {"role": "user", "content": prompt},
             ],
-            response_format=SeedOutputSchema,
+            response_format={"type": "json_object"},
         )
-        seeds = completion.choices[0].message.parsed.initialPopulation
+        parsed_result = json.loads(completion.choices[0].message.content)
+        seeds = parsed_result.get("initialPopulation", [])
         log_ai_call(db, "/api/generate-seeds", "OpenAI", model_name, user_prompt, json.dumps(seeds, ensure_ascii=False), "SUCCESS")
         return seeds
     except Exception as e:

@@ -198,7 +198,7 @@ function App() {
       </div>
 
       {/* API Key */}
-      <div
+      {/* <div
         style={{
           background: apiKey.trim().length > 10 ? 'rgba(15, 118, 110, 0.08)' : 'rgba(0,0,0,0.03)',
           padding: '7px 12px',
@@ -239,7 +239,7 @@ function App() {
         {apiKey.trim().length > 10 && (
           <CheckCircle2 size={13} style={{ color: 'var(--color-teal)', flexShrink: 0 }} />
         )}
-      </div>
+      </div> */}
     </div>
   );
 
