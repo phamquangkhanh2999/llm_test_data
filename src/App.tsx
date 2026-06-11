@@ -250,7 +250,7 @@ function App() {
       menuItems={menuItems}
       headerTitle={headerTitle}
       headerRight={headerRight}
-      user={{ name: 'Quang Khánh', role: 'QA Engineer Manager', avatarInitials: 'QK' }}
+      user={{ name: 'Minh Thu', role: 'QA Engineer Manager', avatarInitials: 'MT' }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
         {/* ══════════ BƯỚC 1: CHUẨN BỊ DỮ LIỆU ══════════ */}
