@@ -55,6 +55,7 @@ export const SpecInput: React.FC = () => {
     setBoundaryCount,
     partitionCount,
     setPartitionCount,
+    llmProvider,
   } = useAppStore();
 
   const hasApiKey = apiKey.trim().length > 10;
@@ -342,6 +343,7 @@ export const SpecInput: React.FC = () => {
             partition_count: partitionCount,
             api_key_override: apiKey ? apiKey.trim() : null,
             raw_text: rawText,
+            llm_provider: llmProvider,
           }),
         });
 
@@ -463,6 +465,7 @@ export const SpecInput: React.FC = () => {
             partition_count: partitionCount,
             api_key_override: apiKey ? apiKey.trim() : null,
             raw_text: rawText,
+            llm_provider: llmProvider,
           }),
         });
 

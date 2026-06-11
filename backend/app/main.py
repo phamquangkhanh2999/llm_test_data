@@ -146,7 +146,7 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
         }
 
     try:
-        # 1. Gọi AI API (hoặc bộ dự phòng Fallback) xử lý phân tích ngữ nghĩa
+        # 1. Gọi OpenAI API (hoặc bộ dự phòng Fallback) xử lý phân tích ngữ nghĩa
         if req.llm_provider == "openai":
             ai_result = openai_service.parse_spec_with_openai_v2(req.raw_text, req.api_key_override, db=db)
         else:
@@ -221,65 +221,66 @@ def api_generate_seeds(req: SeedGenerationRequest, db: Session = Depends(get_db)
             if "minValue" in field and field["minValue"] is not None:
                 try:
                     val = float(field["minValue"])
-                    field["minValue"] = int(val) if val.is_integer(nteger() else val
+                    field["minValue"] = int(val) if val.is_integer() else val
                 except (ValueError, TypeError):
                     pass
             if "maxValue" in field and field["maxValue"] is not None:
                 try:
-             val = float(field["maxValue"])
+                    val = float(field["maxValue"])
                     field["maxValue"] = int(val) if val.is_integer() else val
-                       except (ValueError, TypeError):
+                except (ValueError, TypeError):
                     pass
 
         if req.llm_provider == "openai":
-           = openai_service.generate_seeds_openai(
+            seeds = openai_service.generate_seeds_openai(
                 fields=fields,
                 test_method=req.test_method,
-                       raw_text=req.raw_text or "",
-                api_rride=req.api_key_override
+                raw_text=req.raw_text or "",
+                api_key_override=req.api_key_override,
+                db=db
             )
         else:
             seeds = generate_seeds(
                 fields=fields,
- lds,
                 test_method=req.test_method,
-            ndary_count=req.boundary_count,
+                boundary_count=req.boundary_count,
                 partition_count=req.partition_count,
                 api_key=req.api_key_override,
                 raw_text=req.raw_text or "",
                 db=db
             )
         return {
-            "initialinitialPopulation": seeds,
+            "initialPopulation": seeds,
             "is_mock": is_mock
         }
     except ValueError as ve:
         if str(ve).startswith("API_KEY_ERROR"):
             print(f">>> ERROR: {str(ve)}")
             raise HTTPException(status_code=400, detail=f"Lỗi API Key: {str(ve).replace('API_KEY_ERROR: ', '')}")
-        rTPException(status_code=500, detail=str(ve))
+        raise HTTPException(status_code=500, detail=str(ve))
     except Exception as e:
-        print(f">>> ERROR in api_generate_seeds: {str(: {str(e)}")
-        raise HTTPon(status_code=500, detail=str(e))
+        print(f">>> ERROR in api_generate_seeds: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/evaluate-seeds")
-def api_evaluate_seeds(rseeds(req: EvaluateRequest, db: Session = Depends(get_db)):
+def api_evaluate_seeds(req: EvaluateRequest, db: Session = Depends(get_db)):
     """
-    ENDPOINT: Đánh giá chất lượng tập dữ liệitial Seeds.
+    ENDPOINT: Đánh giá chất lượng tập dữ liệu F0 Initial Seeds.
     Nhận tập seeds, schemas và gửi cho AI (Gemini/OpenAI) để chấm điểm và đánh giá ưu/nhược điểm.
     """
     try:
         if req.llm_provider == "openai":
-            evaluation = openai_service.evaluate_test_qutest_quality_openai(
+            evaluation = openai_service.evaluate_test_quality_openai(
                 fields=req.fields,
                 seeds=req.seeds,
-                test_method=req.test,
+                test_method=req.test_method,
                 raw_text=req.raw_text,
-                api_k  api_key_override=req.api_key_override
+                api_key_override=req.api_key_override,
+                db=db
             )
-              )
         else:
-            evaluation = evaluate_test_q                fields=req.fields,
+            evaluation = evaluate_test_quality_with_ai(
+                fields=req.fields,
                 seeds=req.seeds,
                 test_method=req.test_method,
                 raw_text=req.raw_text,
@@ -310,7 +311,8 @@ def api_evaluate_optimized(req: EvaluateOptimizedRequest, db: Session = Depends(
                 dataset=req.dataset,
                 algorithm=req.algorithm,
                 raw_text=req.raw_text,
-                api_key_override=req.api_key_override
+                api_key_override=req.api_key_override,
+                db=db
             )
         else:
             evaluation = evaluate_optimized_dataset_with_ai(
@@ -385,7 +387,6 @@ def api_get_specifications(db: Session = Depends(get_db)):
         result.append({
             "id": spec.id,
             "raw_text": spec.raw_text,
-            xt,
             "fields": fields,
             "initialPopulation": initial_seeds,
             "created_at": spec.created_at.isoformat()
@@ -397,12 +398,12 @@ def api_get_specifications(db: Session = Depends(get_db)):
 def api_delete_specification(specification_id: str, db: Session = Depends(get_db)):
     """
     ENDPOINT 4: Xóa một Đặc tả nghiệp vụ khỏi CSDL SQLite.
-   db.query(models.Specification).filter(models.Specification.id == specification_id).first()
+    """
+    spec = db.query(models.Specification).filter(models.Specification.id == specification_id).first()
     if not spec:
         raise HTTPException(status_code=404, detail="Không tìm thấy đặc tả nghiệp vụ!")
     db.delete(spec)
     db.commit()
-    rb.commit()
     return {"status": "success", "message": "Đã xóa đặc tả nghiệp vụ thành công!"}
 
 
@@ -411,7 +412,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
     """
     ENDPOINT 2: Thực thi tiến hóa và tinh chỉnh biên tối ưu hóa bộ Test Cases.
     Nhận cấu hình, chạy thuật toán GA trên Server qua N thế hệ, kích hoạt leo đồi HC
-    ch để sinh biên độc hại sâu sắc, lưu kết quả tối ưu vào SQLite và trả về.
+    cho ca tốt nhất để sinh biên độc hại sâu sắc, lưu kết quả tối ưu vào SQLite và trả về.
     """
     # 1. Truy vấn JSON Schema quy tắc trường từ cơ sở dữ liệu
     db_spec = db.query(models.Specification).filter(models.Specification.id == req.specification_id).first()
@@ -702,19 +703,17 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
                     val = float(field["maxValue"])
                     field["maxValue"] = int(val) if val.is_integer() else val
                 except (ValueError, TypeError):
-or, TypeError):
                     pass
 
         config_dict = {
             "generations": generations,
             "popSize": pop_size,
             "crossoverRate": crossover_rate,
- ionRate": mutation_rate,
+            "mutationRate": mutation_rate,
             "weights": weights_data
         }
 
         # 3. Tạo bản ghi Job để lưu vết
- ể lưu vết
         db_job = models.Job(
             specification_id=specification_id,
             status="RUNNING",
@@ -725,30 +724,32 @@ or, TypeError):
         db.refresh(db_job)
 
         # 4. Khởi tạo bộ tối ưu hóa TestSuiteOptimizer
-        optimizer = TestSuiteOptimizer(schema_rules,      progress_history = []
+        optimizer = TestSuiteOptimizer(schema_rules, config_dict)
+        progress_history = []
         hc_tweak_stats = None
 
         # =========================================================================
         # [BƯỚC 2: PHÂN TÍCH THUẬT TOÁN - ĐIỀU PHỐI LUỒNG CHẠY WEBSOCKET SONG SONG]
-        # Phát trực tiếp tiến trình tối ưu theo thời gian theo thời gian thực về Client:
+        # Phát trực tiếp tiến trình tối ưu theo thời gian thực về Client:
         #   - Luồng 1 (traditional): Phản hồi nhanh tập test baseline truyền thống.
         #   - Luồng 2 (ga): Gửi gói tin tiến trình GA qua từng thế hệ tiến hóa.
-        #   - Luồng 3dò biên leo đồi độc lập cho từng cá thể.
-        #   - Luồng 4 (hybrid): Chạy di truyền GA trước rồi A trước rồi gửi chi tiết các bước leo đồi HC của elite.
-        # ========================================================
+        #   - Luồng 3 (hc): Gửi log dò biên leo đồi độc lập cho từng cá thể.
+        #   - Luồng 4 (hybrid): Chạy di truyền GA trước rồi gửi chi tiết các bước leo đồi HC của elite.
+        # =========================================================================
         if algorithm == "traditional":
             await websocket.send_json({
                 "event": "HC_START",
                 "message": "Bắt đầu khởi tạo dữ liệu truyền thống..."
             })
-            await            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.3)
             # Sinh truyền thống
             test_suite = []
             for i in range(pop_size):
                 record = {}
                 mode = "valid"
                 if traditional_method == "bva":
-                    mode = "boundary" if i % 2 == 0              for field in schema_rules:
+                    mode = "boundary" if i % 2 == 0 else "valid"
+                for field in schema_rules:
                     record[field["name"]] = generate_random_field_value(field, mode)
                 test_suite.append({
                     "values": record,
@@ -806,8 +807,8 @@ or, TypeError):
                         job_id=db_job.id,
                         generation=gen_stats["generation"],
                         max_fitness=gen_stats["bestFitness"],
-                                         avg_fitness=gen_stats["avgFitness"],
-       coverage_score=gen_stats["coverage"],
+                        avg_fitness=gen_stats["avgFitness"],
+                        coverage_score=gen_stats["coverage"],
                         duplicate_rate=gen_stats["duplicateRate"],
                         mutation_rate=optimizer.get_adaptive_mutation_rate(),
                         population_diversity=float(gen_stats.get("selected", 0)) / max(1, optimizer.config["popSize"]),
@@ -853,7 +854,6 @@ or, TypeError):
                 best_candidate = ind["values"]
                 raw_suite_values = [p["values"] for p in optimizer.test_suite]
                 fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
-          lues)
                 hc_optimized, stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator, max_iterations=10)
                 ind["values"] = hc_optimized
                 ind["fitness"] = stats.optimized_fitness
@@ -882,12 +882,11 @@ or, TypeError):
             f0_stats = {
                 "generation": 0,
                 "bestFitness": f0_best,
-         s": f0_avg,
+                "avgFitness": f0_avg,
                 "coverage": 0.2,
                 "duplicateRate": 0.1,
                 "test_cases": [{"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]} for p in optimizer.test_suite[:10]]
             }
-            pro
             progress_history.append(f0_stats)
             await websocket.send_json({"event": "GA_PROGRESS", "data": f0_stats})
             await asyncio.sleep(0.05)
@@ -929,7 +928,7 @@ or, TypeError):
                     "event": "HC_PROGRESS",
                     "data": {
                         "status": "ACTIVE",
-           ": detail
+                        "log": detail
                     }
                 })
                 await asyncio.sleep(0.03)
@@ -988,4 +987,4 @@ or, TypeError):
             pass
     finally:
         db.close()
-     db.close()
+

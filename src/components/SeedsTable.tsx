@@ -24,7 +24,6 @@ interface SeedsTableProps {
 export const SeedsTable: React.FC<SeedsTableProps> = ({
   data = [],
   fields = [],
-  onAnalyze,
   onDownload,
 }) => {
   // Compute dynamic columns based on parsed fields constraints, falling back to data keys
