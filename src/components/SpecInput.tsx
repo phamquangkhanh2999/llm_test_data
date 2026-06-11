@@ -43,6 +43,7 @@ export const SpecInput: React.FC = () => {
     setSchemaName,
     setOptimizedDataset,
     handleClearSpecData,
+    clearParsedData,
     methodSeeds,
     setMethodSeeds,
     setActiveScreen,
@@ -153,7 +154,7 @@ export const SpecInput: React.FC = () => {
         if (event.target?.result) {
           setRawText(event.target.result as string);
           setSelectedPresetId('');
-          handleClearSpecData();
+          clearParsedData();
           setIsConnected(false);
           setProcessingStep(0);
         }
@@ -168,7 +169,7 @@ export const SpecInput: React.FC = () => {
           const result = await mammoth.extractRawText({ arrayBuffer });
           setRawText(result.value);
           setSelectedPresetId('');
-          handleClearSpecData();
+          clearParsedData();
           setIsConnected(false);
           setProcessingStep(0);
         } catch (error) {
@@ -951,13 +952,7 @@ export const SpecInput: React.FC = () => {
               onChange={(e) => {
                 setRawText(e.target.value);
                 setSelectedPresetId('');
-                handleClearSpecData();
-                setMethodSeeds({
-                  random: [],
-                  bva: [],
-                  ep: [],
-                  decision: [],
-                });
+                clearParsedData();
                 setIsConnected(false);
                 setProcessingStep(0);
               }}
@@ -1289,7 +1284,7 @@ export const SpecInput: React.FC = () => {
             )}
 
             {/* Nút Phân Tích & Sinh F0 */}
-            {/* <button
+            <button
               onClick={handleParseAndGenerateSeeds}
               disabled={isParsing || !rawText.trim()}
               className={`btn btn-primary ${isParsing || !rawText.trim() ? 'btn-disabled' : ''}`}
@@ -1316,7 +1311,7 @@ export const SpecInput: React.FC = () => {
                   {parsedSchema.length > 0 ? 'Phân Tích Lại' : 'Phân Tích & Sinh F0'}
                 </>
               )}
-            </button> */}
+            </button>
 
             {/* Nút Tiếp Theo: Tối Ưu & So Sánh */}
             {parsedSchema.length > 0 && initialSeeds.length > 0 && (

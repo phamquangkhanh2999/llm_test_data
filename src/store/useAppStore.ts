@@ -110,6 +110,7 @@ interface AppState {
   handleSwitchScreen: (screen: string) => void;
   setParseError: (error: string | null) => void;
   handleClearSpecData: () => void;
+  clearParsedData: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => {
@@ -466,10 +467,30 @@ export const useAppStore = create<AppState>((set, get) => {
         specificationId: '',
         optimizedDataset: [],
         optimizedEvaluationResult: null,
+        evaluationResult: null,
         selectedPresetId: '',
         selectedMethods: ['random'],
         boundaryCount: 3,
         partitionCount: 3,
+        methodSeeds: {
+          random: [],
+          bva: [],
+          ep: [],
+          decision: []
+        }
+      });
+    },
+
+    clearParsedData: () => {
+      set({
+        parsedSchema: [],
+        initialSeeds: [],
+        schemaName: '',
+        specificationId: '',
+        optimizedDataset: [],
+        optimizedEvaluationResult: null,
+        evaluationResult: null,
+        selectedPresetId: '',
         methodSeeds: {
           random: [],
           bva: [],
