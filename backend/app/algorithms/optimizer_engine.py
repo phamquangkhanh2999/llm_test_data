@@ -759,6 +759,7 @@ class TestSuiteOptimizer:
         - Stagnation detection & restart
         - Hall of fame integration
         - Full-population coverage + pairwise tracking
+        - Selected/Crossover/Mutation counters for real-time UI reporting
         """
         self.generation += 1
         next_suite = []
@@ -778,6 +779,10 @@ class TestSuiteOptimizer:
                 "origin": "Elite"
             })
 
+        # Track operation counts per generation
+        crossover_count = 0
+        mutation_count = 0
+
         # 2. Sinh các Test Cases con thông qua Crossover & Mutation
         while len(next_suite) < self.config["popSize"]:
             p1 = self.select_parent()
@@ -787,6 +792,11 @@ class TestSuiteOptimizer:
             c1_mut, m1 = self.tweak_values(c1)
             c2_mut, m2 = self.tweak_values(c2)
 
+            if not m1:
+                crossover_count += 1
+            else:
+                mutation_count += 1
+
             next_suite.append({
                 "values": c1_mut,
                 "fitness": 0.0,
@@ -794,6 +804,10 @@ class TestSuiteOptimizer:
             })
 
             if len(next_suite) < self.config["popSize"]:
+                if not m2:
+                    crossover_count += 1
+                else:
+                    mutation_count += 1
                 next_suite.append({
                     "values": c2_mut,
                     "fitness": 0.0,
@@ -816,17 +830,25 @@ class TestSuiteOptimizer:
         dup_rate = self._compute_duplicate_rate()
         coverage = self._compute_full_coverage()
 
+        # Số cá thể thích nghi tốt được giữ lại (fitness >= ngưỡng thích nghi)
+        threshold = 0.40 + min(self.generation / self.max_generations, 1.0) * 0.20
+        selected_count = sum(1 for ind in self.test_suite if ind["fitness"] >= threshold)
+
         return {
             "generation": self.generation,
             "bestFitness": best_fit,
             "avgFitness": avg_fit,
             "coverage": coverage,
             "duplicateRate": dup_rate,
+            "selected": selected_count,
+            "crossover": crossover_count,
+            "mutation": mutation_count,
             "test_cases": [
                 {"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]}
                 for p in self.test_suite[:10]
             ]
         }
+
 
     # ═══════════════════════════════════════════════════════════
     # COVERAGE CALCULATION (full population + pairwise)

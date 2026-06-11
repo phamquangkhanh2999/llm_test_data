@@ -774,6 +774,7 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
                         coverage_score=gen_stats["coverage"],
                         duplicate_rate=gen_stats["duplicateRate"],
                         mutation_rate=optimizer.get_adaptive_mutation_rate(),
+                        population_diversity=float(gen_stats.get("selected", 0)) / max(1, optimizer.config["popSize"]),
                     )
                     db.add(evo_stat)
                 except Exception:
@@ -867,6 +868,7 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
                         coverage_score=gen_stats["coverage"],
                         duplicate_rate=gen_stats["duplicateRate"],
                         mutation_rate=optimizer.get_adaptive_mutation_rate(),
+                        population_diversity=float(gen_stats.get("selected", 0)) / max(1, optimizer.config["popSize"]),
                     )
                     db.add(evo_stat)
                 except Exception:
