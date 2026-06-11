@@ -35,6 +35,8 @@ function App() {
     initialSeeds,
     historyRuns,
     optimizedDataset,
+    llmProvider,
+    setLlmProvider,
   } = useAppStore();
 
   const hasInputData = parsedSchema.length > 0 && initialSeeds.length > 0;
@@ -139,31 +141,64 @@ function App() {
 
   const headerRight = (
     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-      {/* <button
-        onClick={() => setIsAILogsOpen(true)}
+      {/* LLM Provider Selector */}
+      <div
         style={{
-          background: 'rgba(0,0,0,0.05)',
-          border: '1.5px solid var(--border-subtle)',
-          borderRadius: '8px',
-          padding: '7px 12px',
-          cursor: 'pointer',
-          color: 'var(--text-primary)',
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
-          fontSize: '12.5px',
-          fontWeight: 700,
-          transition: 'all 0.16s'
+          background: 'rgba(0,0,0,0.03)',
+          border: '1.5px solid var(--border-subtle)',
+          borderRadius: '8px',
+          padding: '2px',
+          gap: '2px',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.08)')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.05)')}
       >
-        <Terminal size={14} style={{ color: 'var(--color-teal)' }} />
-        <span>Nhật Ký AI</span>
-      </button> */}
+        <button
+          onClick={() => setLlmProvider('gemini')}
+          style={{
+            padding: '5px 10px',
+            borderRadius: '6px',
+            fontSize: '11px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            border: 'none',
+            transition: 'all 0.2s',
+            background: llmProvider === 'gemini' ? '#fff' : 'transparent',
+            color: llmProvider === 'gemini' ? 'var(--color-teal)' : 'var(--text-muted)',
+            boxShadow: llmProvider === 'gemini' ? '0 2px 4px rgba(0,0,0,0.08)' : 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px'
+          }}
+        >
+          <Sparkles size={12} style={{ color: llmProvider === 'gemini' ? 'var(--color-teal)' : 'inherit' }} />
+          Gemini
+        </button>
+        <button
+          onClick={() => setLlmProvider('openai')}
+          style={{
+            padding: '5px 10px',
+            borderRadius: '6px',
+            fontSize: '11px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            border: 'none',
+            transition: 'all 0.2s',
+            background: llmProvider === 'openai' ? '#fff' : 'transparent',
+            color: llmProvider === 'openai' ? '#10a37f' : 'var(--text-muted)',
+            boxShadow: llmProvider === 'openai' ? '0 2px 4px rgba(0,0,0,0.08)' : 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px'
+          }}
+        >
+          <Zap size={12} style={{ color: llmProvider === 'openai' ? '#10a37f' : 'inherit' }} />
+          OpenAI
+        </button>
+      </div>
 
       {/* API Key */}
-      {/* <div
+      <div
         style={{
           background: apiKey.trim().length > 10 ? 'rgba(15, 118, 110, 0.08)' : 'rgba(0,0,0,0.03)',
           padding: '7px 12px',
@@ -177,7 +212,7 @@ function App() {
           minWidth: '220px',
         }}
       >
-        <Key
+        <Activity
           size={13}
           style={{
             color: apiKey.trim().length > 10 ? 'var(--color-teal)' : 'var(--text-muted)',
@@ -186,7 +221,7 @@ function App() {
         />
         <input
           type='password'
-          placeholder='Gemini API Key...'
+          placeholder={llmProvider === 'gemini' ? 'Gemini API Key...' : 'OpenAI API Key...'}
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           style={{
@@ -202,9 +237,9 @@ function App() {
           }}
         />
         {apiKey.trim().length > 10 && (
-          <CheckCircle size={13} style={{ color: 'var(--color-teal)', flexShrink: 0 }} />
+          <CheckCircle2 size={13} style={{ color: 'var(--color-teal)', flexShrink: 0 }} />
         )}
-      </div> */}
+      </div>
     </div>
   );
 

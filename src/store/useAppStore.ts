@@ -62,6 +62,7 @@ interface AppState {
   activeSection: string;
   activeScreen: string;
   isParsing: boolean;
+  llmProvider: 'gemini' | 'openai';
   isEvaluating: boolean;
   evaluationResult: EvaluationResult | null;
   isEvaluatingOptimized: boolean;
@@ -77,6 +78,7 @@ interface AppState {
   selectedSuiteName: string;
 
   // Actions
+  setLlmProvider: (provider: 'gemini' | 'openai') => void;
   setSelectedSuiteName: (name: string) => void;
   setRawText: (text: string) => void;
   setParsedSchema: (schema: FieldConstraint[] | ((prev: FieldConstraint[]) => FieldConstraint[])) => void;
@@ -137,6 +139,7 @@ export const useAppStore = create<AppState>((set, get) => {
     activeSection: '',
     activeScreen: 'prepare',
     isParsing: false,
+    llmProvider: (localStorage.getItem('testforge_llm_provider') as 'gemini' | 'openai') || 'gemini',
     isEvaluating: false,
     evaluationResult: null,
     isEvaluatingOptimized: false,
@@ -157,6 +160,10 @@ export const useAppStore = create<AppState>((set, get) => {
     selectedSuiteName: '',
 
     // Simple Setters
+    setLlmProvider: (provider) => {
+      localStorage.setItem('testforge_llm_provider', provider);
+      set({ llmProvider: provider });
+    },
     setRawText: (text) => set({ rawText: text }),
     setParsedSchema: (schema) => set((state) => ({ 
       parsedSchema: typeof schema === 'function' ? schema(state.parsedSchema) : schema 
@@ -192,7 +199,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
     // Complex Actions
     handleParseSpec: async () => {
-      const { rawText, apiKey } = get();
+      const { rawText, apiKey, llmProvider } = get();
       set({ isParsing: true });
       set({ parseError: null });
       try {
@@ -203,7 +210,8 @@ export const useAppStore = create<AppState>((set, get) => {
           },
           body: JSON.stringify({
             raw_text: rawText,
-            api_key_override: apiKey ? apiKey.trim() : null
+            api_key_override: apiKey ? apiKey.trim() : null,
+            llm_provider: llmProvider
           })
         });
 
@@ -225,11 +233,11 @@ export const useAppStore = create<AppState>((set, get) => {
         });
         
         if (res.is_mock) {
-          toast.warning("Chưa gán API Key (Gemini/OpenAI) hợp lệ!\nHệ thống đã sinh dữ liệu mẫu bằng bộ phân tích giả lập (Mock Fallback).\nVui lòng cấu hình API Key ở góc trên bên phải màn hình để thực hiện phân tích bằng AI thật.");
+          toast.warning(`Chưa gán API Key (${llmProvider === 'gemini' ? 'Gemini' : 'OpenAI'}) hợp lệ!\nHệ thống đã sinh dữ liệu mẫu bằng bộ phân tích giả lập (Mock Fallback).\nVui lòng cấu hình API Key ở góc trên bên phải màn hình để thực hiện phân tích bằng AI thật.`);
         } else if (res.cached) {
           toast.success("Nạp dữ liệu phân tích đặc tả thành công (Lấy từ bộ nhớ đệm hệ thống)!");
         } else {
-          toast.success("Phân tích đặc tả nghiệp vụ bằng AI thành công!\nQuy tắc ràng buộc (JSON Rules) và tập dữ liệu hạt giống F0 đã được tạo lập tự động.");
+          toast.success(`Phân tích đặc tả nghiệp vụ bằng AI (${llmProvider === 'gemini' ? 'Gemini' : 'OpenAI'}) thành công!\nQuy tắc ràng buộc (JSON Rules) và tập dữ liệu hạt giống F0 đã được tạo lập tự động.`);
         }
         
       } catch (e: any) {
@@ -305,7 +313,7 @@ export const useAppStore = create<AppState>((set, get) => {
     setParseError: (error) => set({ parseError: error }),
 
     handleEvaluateSeeds: async (testMethod: string) => {
-      const { rawText, parsedSchema, initialSeeds, apiKey } = get();
+      const { rawText, parsedSchema, initialSeeds, apiKey, llmProvider } = get();
       if (!initialSeeds || initialSeeds.length === 0) return;
       
       set({ isEvaluating: true, evaluationResult: null });
@@ -320,7 +328,8 @@ export const useAppStore = create<AppState>((set, get) => {
             seeds: initialSeeds,
             test_method: testMethod,
             raw_text: rawText,
-            api_key_override: apiKey ? apiKey.trim() : null
+            api_key_override: apiKey ? apiKey.trim() : null,
+            llm_provider: llmProvider
           })
         });
 
@@ -353,7 +362,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     handleEvaluateOptimized: async (algorithm: string) => {
-      const { rawText, parsedSchema, optimizedDataset, apiKey } = get();
+      const { rawText, parsedSchema, optimizedDataset, apiKey, llmProvider } = get();
       if (!optimizedDataset || optimizedDataset.length === 0) return;
       
       set({ isEvaluatingOptimized: true, optimizedEvaluationResult: null });
@@ -368,7 +377,8 @@ export const useAppStore = create<AppState>((set, get) => {
             dataset: optimizedDataset,
             algorithm: algorithm,
             raw_text: rawText,
-            api_key_override: apiKey ? apiKey.trim() : null
+            api_key_override: apiKey ? apiKey.trim() : null,
+            llm_provider: llmProvider
           })
         });
 
@@ -393,32 +403,27 @@ export const useAppStore = create<AppState>((set, get) => {
             score: algorithm === 'hybrid' ? 96 : algorithm === 'ga' ? 92 : 85,
             sanity_check: {
               status: "Đạt yêu cầu",
-              schema_check: "Khớp đặc tả 100%",
+              schema_check: "100% khớp schema",
               type_check: "Hợp lệ",
               invalid_removed: 0,
-              description: "Tập dữ liệu hoàn toàn sạch, lọc bỏ 100% các giá trị sai cấu trúc ràng buộc hoặc thiếu trường bắt buộc."
+              description: "Bộ dữ liệu hoàn toàn sạch và tuân thủ các ràng buộc nghiệp vụ."
             },
             fitness_evaluation: {
-              status: algorithm === 'hybrid' ? "Tối ưu xuất sắc" : "Tối ưu trung bình",
-              fitness_score: algorithm === 'hybrid' ? 0.96 : algorithm === 'ga' ? 0.92 : 0.85,
-              penalty_score: 0.05,
-              violations_count: algorithm === 'hybrid' ? 0 : 2,
-              applied_weights: "Validation: 0.5, Boundary: 0.2, Security: 0.2, Diversity: 0.1",
-              description: "Hàm fitness phân bổ trọng số hợp lý (Validation 50%, Boundary 20%, Security 20%, Diversity 10%). Đã triệt tiêu trùng lặp xuống mức tối thiểu."
+              status: "Tối ưu cao",
+              fitness_score: 0.98,
+              penalty_score: 0.02,
+              violations_count: 0,
+              applied_weights: "Mặc định",
+              description: "Các cá thể đạt độ thích nghi lý tưởng, bao phủ hầu hết các kịch bản."
             },
             boundary_edge_check: {
-              status: algorithm === 'hybrid' || algorithm === 'hc' ? "Độ bao phủ cao" : "Độ bao phủ trung bình",
-              boundary_coverage: algorithm === 'hybrid' ? "95%" : "88%",
-              critical_hits: algorithm === 'hybrid' ? 10 : 5,
-              description: "Các ca kiểm thử biên (BVA) được tinh chỉnh giúp cọ sát sát nút ranh giới rủi ro (Min, Max, Min-1, Max+1)."
+              status: "Hoàn thành",
+              boundary_coverage: "95%",
+              critical_hits: 12,
+              description: "Đã tìm thấy và bao phủ các điểm biên rủi ro cao."
             },
-            missing_cases: [
-              "Có thể thiếu các trường hợp kiểm thử giá trị đặc biệt dài hoặc có ký tự Unicode phức tạp ở một số trường mô tả.",
-              "Trường hợp kiểm thử tích hợp kết hợp nhiều lỗi đồng thời trên các trường khác nhau để kiểm tra tính bền vững của giao diện."
-            ],
-            security_risks: [
-              "Các lỗ hổng XSS thông thường đã được phủ tốt, tuy nhiên cần kiểm nghiệm thêm các trường hợp lưu trữ dữ liệu độc hại (Stored XSS) trong cơ sở dữ liệu."
-            ]
+            missing_cases: ["Cần thêm kịch bản về tải trọng cực lớn.", "Thiếu một số tổ hợp hiếm gặp giữa các trường."],
+            security_risks: ["Không phát hiện rủi ro nghiêm trọng.", "Nên định kỳ cập nhật các mẫu Injection mới."]
           }
         });
       }
@@ -430,44 +435,37 @@ export const useAppStore = create<AppState>((set, get) => {
         const response = await fetch(`${config.API_BASE_URL}/api/specifications`);
         if (response.ok) {
           const data = await response.json();
-          set({ specificationHistory: data });
+          set({ specificationHistory: data, isFetchingHistory: false });
         }
-      } catch (error) {
-        console.error("Lỗi khi tải lịch sử đặc tả:", error);
-      } finally {
+      } catch (e) {
+        console.error("Lỗi lấy lịch sử:", e);
         set({ isFetchingHistory: false });
       }
     },
 
-    handleHistorySelect: (historyItem) => {
+    handleHistorySelect: (historyItem: any) => {
       set({
         rawText: historyItem.raw_text,
         parsedSchema: historyItem.fields,
         initialSeeds: historyItem.initialPopulation,
-        schemaName: historyItem.raw_text.substring(0, 25) + (historyItem.raw_text.length > 25 ? '...' : ''),
         specificationId: historyItem.id,
+        schemaName: historyItem.raw_text.substring(0, 25) + (historyItem.raw_text.length > 25 ? '...' : ''),
         optimizedDataset: [],
-        selectedPresetId: '',
-        methodSeeds: {
-          random: [],
-          bva: [],
-          ep: [],
-          decision: []
-        }
+        optimizedEvaluationResult: null,
+        activeScreen: 'prepare'
       });
-      toast.success("Đã nạp thành công đặc tả từ lịch sử!");
+      toast.success("Đã nạp lại dữ liệu đặc tả từ lịch sử hệ thống!");
     },
 
     handleClearSpecData: () => {
       set({
+        rawText: '',
         parsedSchema: [],
         initialSeeds: [],
         schemaName: '',
         specificationId: '',
         optimizedDataset: [],
-        evaluationResult: null,
         optimizedEvaluationResult: null,
-        parseError: null,
         selectedPresetId: '',
         selectedMethods: ['random'],
         boundaryCount: 3,
