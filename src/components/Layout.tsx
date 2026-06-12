@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Menu, 
-  X, 
-  Layers, 
-  LayoutDashboard, 
-  Zap, 
-  Database, 
-  Download, 
+import {
+  Database,
+  Download,
+  HelpCircle,
+  Layers,
+  LayoutDashboard,
+  Menu,
   Settings,
-  HelpCircle
+  X,
+  Zap
 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import './Layout.css';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ export const Layout: React.FC<LayoutProps> = ({
   headerRight,
   headerTitle = "Hệ thống Tối ưu hóa",
   children,
-  user = { name: "Quang Khánh", role: "QA Engineer Manager", avatarInitials: "QK" }
+  user = { name: "Minh Thu", role: "QA Engineer Manager", avatarInitials: "MT" }
 }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);

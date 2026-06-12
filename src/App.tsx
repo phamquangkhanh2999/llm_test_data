@@ -27,8 +27,6 @@ function App() {
   const {
     schemaName,
     parsedSchema,
-    apiKey,
-    setApiKey,
     activeScreen,
     setActiveScreen,
     completedScreens,
@@ -198,7 +196,7 @@ function App() {
       </div>
 
       {/* API Key */}
-      <div
+      {/* <div
         style={{
           background: apiKey.trim().length > 10 ? 'rgba(15, 118, 110, 0.08)' : 'rgba(0,0,0,0.03)',
           padding: '7px 12px',
@@ -239,7 +237,7 @@ function App() {
         {apiKey.trim().length > 10 && (
           <CheckCircle2 size={13} style={{ color: 'var(--color-teal)', flexShrink: 0 }} />
         )}
-      </div>
+      </div> */}
     </div>
   );
 
@@ -250,7 +248,7 @@ function App() {
       menuItems={menuItems}
       headerTitle={headerTitle}
       headerRight={headerRight}
-      user={{ name: 'Quang Khánh', role: 'QA Engineer Manager', avatarInitials: 'QK' }}
+      user={{ name: 'Minh Thu', role: 'QA Engineer Manager', avatarInitials: 'MT' }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
         {/* ══════════ BƯỚC 1: CHUẨN BỊ DỮ LIỆU ══════════ */}
