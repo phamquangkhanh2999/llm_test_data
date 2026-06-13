@@ -563,24 +563,25 @@ class TestSuiteOptimizer:
             self.hall_of_fame = self.hall_of_fame[:self._max_hof_size]
 
     # ═══════════════════════════════════════════════════════════
-    # SELECTION (with crowding distance tiebreaker)
+    # SELECTION (with Niche Density Distance tiebreaker)
     # ═══════════════════════════════════════════════════════════
 
     def select_parent(self):
         """
-        Tournament Selection with crowding distance tiebreaker.
-        Khi 2 cá thể có fitness gần bằng nhau, ưu tiên cá thể ở vùng thưa.
+        Tournament Selection với Niche Density Distance tiebreaker (thay thế Crowding Distance chuẩn).
+        Khi 2 cá thể có fitness gần bằng nhau, ưu tiên cá thể ở vùng mật độ thưa thớt hơn trong không gian biến.
         """
         tour_size = 3
         candidates = random.sample(self.test_suite, tour_size)
-        candidates.sort(key=lambda x: (-x["fitness"], -self._crowding_distance(x)))
+        candidates.sort(key=lambda x: (-x["fitness"], -self._niche_density_distance(x)))
         return candidates[0]["values"]
 
-    def _crowding_distance(self, individual):
+    def _niche_density_distance(self, individual):
         """
-        Tính crowding distance đơn giản:
-        Khoảng cách trung bình tới 3 cá thể gần nhất trong quần thể.
-        Giá trị càng cao = cá thể càng nằm ở vùng thưa.
+        Tính toán Niche Density Distance (Khoảng cách mật độ kiểu hình trong không gian biến).
+        Được dùng thay thế Crowding Distance (NSGA-II chuẩn vốn tính trên không gian hàm mục tiêu).
+        Tính khoảng cách trung bình tới 3 cá thể gần nhất trong tập mẫu so sánh ngẫu nhiên.
+        Giá trị càng cao thể hiện cá thể nằm ở khu vực thưa thớt hơn.
         """
         # Lấy mẫu 10 cá thể ngẫu nhiên để so sánh
         sample = random.sample(self.test_suite, min(10, len(self.test_suite)))
@@ -605,7 +606,7 @@ class TestSuiteOptimizer:
         if not distances:
             return 0.0
 
-        # Trả về trung bình của 3 khoảng cách gần nhất (crowding estimate)
+        # Trả về trung bình của 3 khoảng cách gần nhất (niche density estimate)
         distances.sort(reverse=True)
         top_k = distances[:3]
         return sum(top_k) / len(top_k)
@@ -952,9 +953,9 @@ class TestSuiteOptimizer:
 
     def _compute_pairwise_coverage(self, raw_values):
         """
-        Compute pairwise combination coverage across fields.
-        Counts how many unique (field_i=value_category, field_j=value_category)
-        pairs are covered by the test suite.
+        Tính toán độ bao phủ cặp đôi thực tế (Pairwise Coverage).
+        Đếm số lượng tổ hợp cặp (field_i = category_i, field_j = category_j) 
+        được bao phủ bởi quần thể hiện tại, đối chiếu với tổng số cặp phân loại khả thi (Cartesian Product).
         """
         if len(self.schema) < 2:
             return 1.0
@@ -998,6 +999,22 @@ class TestSuiteOptimizer:
                     return 'invalid_long'
                 return 'valid'
 
+        # Xác định tập danh mục phân loại khả thi của một trường ràng buộc nghiệp vụ
+        def get_possible_categories(field):
+            cats = ["empty", "valid", "sqli", "xss"]
+            if field["type"] == "number":
+                cats.append("invalid")
+                if field.get("minValue") is not None:
+                    cats.extend(["boundary_min", "invalid_low"])
+                if field.get("maxValue") is not None:
+                    cats.extend(["boundary_max", "invalid_high"])
+            else:
+                if field.get("minLength") is not None:
+                    cats.extend(["boundary_min", "invalid_short"])
+                if field.get("maxLength") is not None:
+                    cats.extend(["boundary_max", "invalid_long"])
+            return cats
+
         # Collect all pairs covered
         covered_pairs = set()
         total_possible_pairs = 0
@@ -1012,10 +1029,12 @@ class TestSuiteOptimizer:
                     cat_j = categorize_value(fj, tc.get(fj["name"], ""))
                     covered_pairs.add((fi["name"], cat_i, fj["name"], cat_j))
 
-        # Count total unique field pairs
-        num_field_pairs = len(self.schema) * (len(self.schema) - 1) / 2
-        # Rough estimate: each field pair has ~9 category combinations (3x3)
-        total_possible_pairs = num_field_pairs * 9
+        # Tính toán chính xác tổng số cặp phân loại khả thi dựa trên tích Đề-các (Cartesian Product)
+        for i in range(len(self.schema)):
+            for j in range(i + 1, len(self.schema)):
+                cats_i = get_possible_categories(self.schema[i])
+                cats_j = get_possible_categories(self.schema[j])
+                total_possible_pairs += len(cats_i) * len(cats_j)
 
         return min(len(covered_pairs) / max(total_possible_pairs, 1), 1.0)
 

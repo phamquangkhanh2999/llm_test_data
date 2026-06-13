@@ -11,7 +11,7 @@ import {
   Zap,
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { generateRandomValue } from '../algorithms/genetic';
+import { generateRandomValue, GeneticEngine } from '../algorithms/genetic';
 import type { FieldConstraint } from '../algorithms/presets';
 import { PRESETS } from '../algorithms/presets';
 import { useAppStore } from '../store/useAppStore';
@@ -97,28 +97,45 @@ export const SpecInput: React.FC = () => {
   }, [initialSeeds]);
 
   const fitnessRecords = React.useMemo(() => {
-    return initialSeeds.map((_, idx) => {
-      const coverage = 0.55 + (idx % 5) * 0.08;
-      const diversity = 0.6 + (idx % 3) * 0.12;
-      const priority = 0.7 + (idx % 2) * 0.2;
-      const boundary = 0.4 + (idx % 6) * 0.1;
-      const finalFitness = Math.min(0.999, (coverage + diversity + priority + boundary) / 4);
+    if (!parsedSchema || parsedSchema.length === 0 || !initialSeeds || initialSeeds.length === 0) {
+      return [];
+    }
 
-      let note = 'Trung bình';
-      if (finalFitness >= 0.88) note = 'Edge case tốt';
-      else if (finalFitness >= 0.75) note = 'Độ bao phủ cao';
+    try {
+      const engine = new GeneticEngine(parsedSchema, {
+        generations: 50,
+        popSize: initialSeeds.length,
+        crossoverRate: 0.8,
+        mutationRate: 0.15,
+        weights: { validation: 0.5, boundary: 0.2, security: 0.2, diversity: 0.1 }
+      });
 
-      return {
-        testId: `F0-${idx + 1}`,
-        coverage,
-        diversity,
-        priority,
-        boundary,
-        finalFitness,
-        note,
-      };
-    });
-  }, [initialSeeds]);
+      const rawPop = initialSeeds;
+      return initialSeeds.map((seed, idx) => {
+        const result = engine.computeFitness(seed, rawPop);
+        const { vScore, bScore, sScore, dScore } = result.scoreBreakdown;
+        const finalFitness = result.fitness;
+
+        let note = 'Trung bình';
+        if (finalFitness >= 0.85) note = 'Edge case tốt';
+        else if (finalFitness >= 0.70) note = 'Độ bao phủ cao';
+        else if (finalFitness < 0.40) note = 'Happy path';
+
+        return {
+          testId: `F0-${idx + 1}`,
+          validation: vScore,
+          diversity: dScore,
+          security: sScore,
+          boundary: bScore,
+          finalFitness,
+          note,
+        };
+      });
+    } catch (e) {
+      console.error("Lỗi tính toán fitness thực tế cho F0:", e);
+      return [];
+    }
+  }, [initialSeeds, parsedSchema]);
 
   // --- CẢI TIẾN DRAG-AND-DROP & HIGHLIGHTING ---
   const [isDragging, setIsDragging] = useState(false);
@@ -2698,7 +2715,7 @@ export const SpecInput: React.FC = () => {
                       }}
                     >
                       {selectedHistoryItem.initialPopulation &&
-                      selectedHistoryItem.initialPopulation.length > 0 ? (
+                        selectedHistoryItem.initialPopulation.length > 0 ? (
                         <table
                           style={{
                             width: '100%',

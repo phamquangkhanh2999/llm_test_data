@@ -533,10 +533,10 @@ export class GeneticEngine {
   }
 
   // ═══════════════════════════════════════════════
-  // CROWDING DISTANCE
+  // NICHE DENSITY DISTANCE
   // ═══════════════════════════════════════════════
 
-  private crowdingDistance(individual: { values: Chromosome; fitness: number }): number {
+  private nicheDensityDistance(individual: { values: Chromosome; fitness: number }): number {
     const sample = [];
     const popLen = this.population.length;
     // Sample up to 10 random individuals
@@ -570,7 +570,7 @@ export class GeneticEngine {
   }
 
   // ═══════════════════════════════════════════════
-  // SELECTION (with crowding tiebreaker)
+  // SELECTION (with Niche Density tiebreaker)
   // ═══════════════════════════════════════════════
 
   selectParent(): Chromosome {
@@ -580,10 +580,10 @@ export class GeneticEngine {
       const idx = Math.floor(Math.random() * this.population.length);
       candidates.push(this.population[idx]);
     }
-    // Sort by fitness descending, then crowding distance descending
+    // Sort by fitness descending, then niche density distance descending
     candidates.sort((a, b) => {
       if (b.fitness !== a.fitness) return b.fitness - a.fitness;
-      return this.crowdingDistance(b) - this.crowdingDistance(a);
+      return this.nicheDensityDistance(b) - this.nicheDensityDistance(a);
     });
     return candidates[0].values;
   }
@@ -931,8 +931,28 @@ export class GeneticEngine {
       return 'valid';
     };
 
+    const getPossibleCategories = (field: FieldConstraint): string[] => {
+      const cats = ['empty', 'valid', 'sqli', 'xss'];
+      if (field.type === 'number') {
+        cats.push('invalid');
+        if (field.minValue !== undefined) {
+          cats.push('boundary_min', 'invalid_low');
+        }
+        if (field.maxValue !== undefined) {
+          cats.push('boundary_max', 'invalid_high');
+        }
+      } else {
+        if (field.minLength !== undefined) {
+          cats.push('boundary_min', 'invalid_short');
+        }
+        if (field.maxLength !== undefined) {
+          cats.push('boundary_max', 'invalid_long');
+        }
+      }
+      return cats;
+    };
+
     const coveredPairs = new Set<string>();
-    const numFieldPairs = this.schema.length * (this.schema.length - 1) / 2;
 
     for (let i = 0; i < this.schema.length; i++) {
       for (let j = i + 1; j < this.schema.length; j++) {
@@ -946,7 +966,15 @@ export class GeneticEngine {
       }
     }
 
-    const totalPossible = numFieldPairs * 9;
+    let totalPossible = 0;
+    for (let i = 0; i < this.schema.length; i++) {
+      for (let j = i + 1; j < this.schema.length; j++) {
+        const catsI = getPossibleCategories(this.schema[i]);
+        const catsJ = getPossibleCategories(this.schema[j]);
+        totalPossible += catsI.length * catsJ.length;
+      }
+    }
+
     return Math.min(coveredPairs.size / Math.max(totalPossible, 1), 1.0);
   }
 

@@ -3,9 +3,9 @@ import { Award, Calculator } from 'lucide-react';
 
 export interface FitnessRecord {
   testId: string;
-  coverage: number;
+  validation: number;
   diversity: number;
-  priority: number;
+  security: number;
   boundary: number;
   finalFitness: number;
   note: string;
@@ -27,7 +27,7 @@ export const FitnessEvaluation: React.FC<FitnessEvaluationProps> = ({
           Fitness Evaluation - Đánh giá độ thích nghi
         </h2>
         <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px', marginBottom: 0 }}>
-          Độ đo chất lượng của từng cá thể dựa trên các thuộc tính bao phủ biên, tính đa dạng và độ ưu tiên.
+          Độ đo chất lượng của từng cá thể dựa trên các thuộc tính bao phủ biên, tính đa dạng, tính hợp lệ và bảo mật.
         </p>
       </div>
 
@@ -45,7 +45,7 @@ export const FitnessEvaluation: React.FC<FitnessEvaluationProps> = ({
         fontWeight: '600'
       }}>
         <Calculator size={16} />
-        <span>Công thức tính điểm: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-violet)', background: 'rgba(124, 58, 237, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>Fitness = Coverage + Diversity + Priority + Boundary - Penalty</code></span>
+        <span>Công thức tính điểm: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-violet)', background: 'rgba(124, 58, 237, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>Fitness = (0.5 × Validation) + (0.2 × Boundary) + (0.2 × Security) + (0.1 × Diversity) - Penalty</code></span>
       </div>
 
       {/* Evaluation Table */}
@@ -54,9 +54,9 @@ export const FitnessEvaluation: React.FC<FitnessEvaluationProps> = ({
           <thead>
             <tr style={{ borderBottom: '2px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
               <th style={{ padding: '8px 12px', fontWeight: 'bold', width: '100px' }}>Test ID</th>
-              <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Coverage</th>
+              <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Validation</th>
               <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Diversity</th>
-              <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Priority</th>
+              <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Security</th>
               <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Boundary</th>
               <th style={{ padding: '8px 12px', fontWeight: 'bold', width: '120px' }}>Final Fitness</th>
               <th style={{ padding: '8px 12px', fontWeight: 'bold', width: '150px' }}>Ghi chú</th>
@@ -91,13 +91,13 @@ export const FitnessEvaluation: React.FC<FitnessEvaluationProps> = ({
                       {record.testId}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      {(record.coverage * 100).toFixed(0)}%
+                      {(record.validation * 100).toFixed(0)}%
                     </td>
                     <td style={{ padding: '10px 12px' }}>
                       {(record.diversity * 100).toFixed(0)}%
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      {(record.priority * 100).toFixed(0)}%
+                      {(record.security * 100).toFixed(0)}%
                     </td>
                     <td style={{ padding: '10px 12px' }}>
                       {(record.boundary * 100).toFixed(0)}%

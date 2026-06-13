@@ -285,30 +285,32 @@ Trong đó, điểm thành phần $v_i(x_i)$ của trường $f_i$ được đá
 - Các trường hợp khớp hoàn toàn định dạng: $v_i(x_i) = 1.0$.
 
 #### 2. Điểm bao phủ giá trị biên (Boundary Score)
-Được thiết kế để thưởng cho các ca kiểm thử chạm cận biên nghiệp vụ để phát hiện lỗi lập trình "lệch 1 đơn vị":
-$$BoundaryScore(X) = \frac{1}{n} \sum_{i=1}^{n} b_i(x_i)$$
+Được thiết kế để thưởng cho các ca kiểm thử chạm cận biên nghiệp vụ để phát hiện lỗi lập trình "lệch 1 đơn vị" (lưu ý điểm biên chỉ tính cho các trường có điểm cấu trúc hợp lệ $v_i(x_i) = 1.0$):
+$$BoundaryScore(X) = \min\left( \frac{1}{n} \sum_{i=1}^{n} b_i(x_i),\ 1.0 \right)$$
 
 Đối với mỗi trường $f_i$:
 - Nếu $f_i$ là kiểu `number` có giới hạn $[minValue_i, maxValue_i]$:
   - Nếu $x_i = minValue_i$ hoặc $x_i = maxValue_i$: $b_i(x_i) = 1.0$.
-  - Nếu $x_i = minValue_i + 1$ hoặc $x_i = maxValue_i - 1$: $b_i(x_i) = 0.8$.
-  - Nếu $x_i = minValue_i - 1$ hoặc $x_i = maxValue_i + 1$: $b_i(x_i) = 0.9$ (biên ngoài không hợp lệ).
+  - Nếu $x_i = minValue_i + 1$ hoặc $x_i = maxValue_i - 1$: $b_i(x_i) = 0.5$ (cận biên trong).
+  - Các trường hợp khác: $b_i(x_i) = 0.0$ (các biên ngoài như $minValue_i - 1$ được đánh giá trực tiếp thông qua điểm Soft Validation là $0.70$).
 - Nếu $f_i$ là kiểu `string` có giới hạn độ dài $[minLength_i, maxLength_i]$:
   - Nếu $len(x_i) = minLength_i$ hoặc $len(x_i) = maxLength_i$: $b_i(x_i) = 1.0$.
-  - Nếu $len(x_i) = minLength_i \pm 1$ hoặc $len(x_i) = maxLength_i \pm 1$: $b_i(x_i) = 0.8$.
+  - Nếu $len(x_i) = minLength_i + 1$ hoặc $len(x_i) = maxLength_i - 1$: $b_i(x_i) = 0.5$ (cận biên trong).
+  - Các trường hợp khác: $b_i(x_i) = 0.0$.
 
 #### 3. Điểm an toàn thông tin (Security Score)
 Nhằm kiểm tra khả năng phòng chống tấn công chèn mã độc của ứng dụng:
-$$SecurityScore(X) = \frac{1}{n} \sum_{i=1}^{n} s_i(x_i)$$
+$$SecurityScore(X) = \min\left( \frac{1}{n} \sum_{i=1}^{n} s_i(x_i),\ 1.0 \right)$$
 
 Trong đó:
 - $s_i(x_i) = 1.0$ nếu trường $f_i$ chứa các mẫu tiêm nhiễm SQL Injection như `' OR 1=1 --`, `' UNION SELECT`, hoặc thẻ tấn công XSS như `<script>`, `<svg/onload=...`.
 - $s_i(x_i) = 0.0$ cho các trường hợp bình thường.
 
 #### 4. Điểm đa dạng quần thể (Diversity Score)
-Tránh việc quần thể bị hội tụ sớm vào một vài giá trị tối ưu duy nhất bằng cách đo lường khoảng cách khoảng các chuỗi văn bản của cá thể $X$ với toàn bộ quần thể hiện tại $P$:
-$$DiversityScore(X) = \frac{1}{|P|-1} \sum_{Y \in P, Y \neq X} H(X, Y)$$
-trong đó $H(X, Y)$ là khoảng cách Hamming chuẩn hóa đo tỷ lệ các trường có giá trị khác nhau giữa $X$ và $Y$.
+Tránh việc quần thể bị hội tụ sớm vào một vài giá trị tối ưu duy nhất bằng cách đo lường khoảng cách kiểu hình trong không gian quyết định (Decision Space) của cá thể $X$ với một tập mẫu ngẫu nhiên $P_{sub}$ lấy từ quần thể hiện tại $P$ (kích thước mẫu $M = \min(20, \max(5, \lfloor |P| / 2 \rfloor))$ để tối ưu tài nguyên tính toán):
+$$DiversityScore(X) = \frac{1}{M} \sum_{Y \in P_{sub}} \frac{1}{n} \sum_{i=1}^{n} d(x_i, y_i)$$
+Trong đó, khoảng cách hai chuỗi dữ liệu $d(x_i, y_i)$ được xấp xỉ bằng Levenshtein chuẩn hóa nếu độ dài hai chuỗi đều $\le 12$, và bằng cơ chế Prefix Matching (đo ký tự trùng đầu tiên, tối đa 4) đối với chuỗi dài để tăng tốc độ tính toán:
+$$d(x, y) = \begin{cases} \dfrac{\text{Lev}(x, y)}{\max(|x|, |y|, 1)} & \text{nếu } |x| \le 12 \text{ và } |y| \le 12 \\ 1.0 - 0.15 \cdot c & \text{ngược lại (với } c \text{ là số ký tự prefix trùng)} \end{cases}$$
 
 ---
 
@@ -347,7 +349,7 @@ Output: Quần thể thế hệ mới P_next
 23. return P_next
 ```
 
-- **Tournament Selection với Crowding Distance**: Lựa chọn 3 cá thể ngẫu nhiên. Nếu 2 cá thể có điểm thích nghi chênh lệch nhỏ hơn $0.05$, cá thể có khoảng cách lân cận (Crowding Distance) lớn hơn (nằm ở vùng thưa thớt hơn trong không gian tìm kiếm) sẽ được lựa chọn để duy trì tính đa dạng.
+- **Tournament Selection với Niche Density Distance**: Lựa chọn 3 cá thể ngẫu nhiên. Nếu 2 cá thể có điểm thích nghi chênh lệch nhỏ hơn $0.05$, cá thể có khoảng cách mật độ kiểu hình trong không gian quyết định (Niche Density Distance) lớn hơn (nằm ở vùng thưa thớt hơn trong không gian biến) sẽ được lựa chọn để duy trì tính đa dạng kiểu hình.
 
 #### 2. Thuật toán tinh chỉnh biên Leo đồi (HC) nâng cấp
 Để tránh rơi vào các "thung lũng" cực trị cục bộ khi tinh chỉnh biên, hệ thống tích hợp giải thuật **Leo đồi kết hợp Mô phỏng luyện kim (Simulated Annealing - SA)** và **Tìm kiếm cấm (Tabu Search)**.
