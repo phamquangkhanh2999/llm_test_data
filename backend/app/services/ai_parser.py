@@ -49,8 +49,7 @@ def log_ai_call(db: Session, endpoint: str, provider: str, model: str, input_sum
 load_dotenv()
 
 # Hàm phụ trợ: Bộ sinh dữ liệu giả lập thông minh (Smart Mock Parser)
-# Được kích hoạt tự động làm cơ chế dự phòng (Fallback) nếu bạn không cấu hình OpenAI API Key.
-# Đảm bảo hệ thống luôn chạy mượt mà và không bao giờ bị sập.
+# Được kích hoạt tự động làm cơ chế dự phòng (Fallback) nếu bạn không cấu hình
 def get_mock_fallback_data(raw_text: str):
     text_lower = raw_text.lower()
     
@@ -67,8 +66,8 @@ def get_mock_fallback_data(raw_text: str):
                 {"username": "admin99", "password": "Password123!", "email": "admin@test.vn", "age": 25},
                 {"username": "sarah_k", "password": "SecurePass9!", "email": "sarah.k@yahoo.com", "age": 31},
                 {"username": "guest", "password": "Password@2026", "email": "guest@outlook.com", "age": 18}, # giá trị biên
-                {"username": "hack' OR '1'='1", "password": "inject' --", "email": "sql@inject.org", "age": 29}, # payload tấn công SQLi
-                {"username": "<script>alert(1)</script>", "password": "XssPassword!", "email": "xss@payload.com", "age": 30} # payload tấn công XSS
+                {"username": "usr_longname", "password": "Password@B1", "email": "long@test.com", "age": 100}, # biên tuổi max
+                {"username": "short", "password": "Short!", "email": "short@test.com", "age": 17} # lỗi tuổi/pass ngắn
             ]
         }
     
@@ -84,7 +83,7 @@ def get_mock_fallback_data(raw_text: str):
             "initialPopulation": [
                 {"cardNumber": "4111222233334444", "cvv": "123", "amount": 150, "currency": "USD"},
                 {"cardNumber": "5555666677778888", "cvv": "999", "amount": 50000, "currency": "EUR"}, # giá trị biên
-                {"cardNumber": "4111222233334444' OR cvv='999", "cvv": "999", "amount": 100, "currency": "USD"} # payload tấn công SQLi
+                {"cardNumber": "111122223333444", "cvv": "12", "amount": 0, "currency": "USD"} # lỗi độ dài/amount
             ]
         }
         
@@ -101,11 +100,11 @@ def get_mock_fallback_data(raw_text: str):
                 {"username": "john.doe@gmail.com", "password": "JohnDoe2026!", "rememberMe": "false"},
                 {"username": "", "password": "short", "rememberMe": "true"}, # lỗi empty + short
                 {"username": "a" * 33, "password": "ValidPass1!", "rememberMe": "maybe"}, # lỗi max length + invalid enum
-                {"username": "admin' OR '1'='1", "password": "' OR 1=1 --", "rememberMe": "true"}, # SQLi
+                {"username": "valid_user", "password": "LongPasswordVal", "rememberMe": "true"},
                 {"username": "test_user", "password": "PassW0rd!", "rememberMe": "false"},
             ]
         }
-
+ 
     # 4. Preset API Search Endpoint
     if any(kw in text_lower for kw in ["search", "tìm kiếm", "query", "api"]) and ("limit" in text_lower or "page" in text_lower or "sort" in text_lower or "filter" in text_lower):
         return {
@@ -121,11 +120,11 @@ def get_mock_fallback_data(raw_text: str):
                 {"query": "", "limit": 0, "page": 0, "sortBy": "invalid", "order": "asc"}, # lỗi validation
                 {"query": "phone", "limit": 100, "page": 1, "sortBy": "price", "order": "asc"}, # biên limit max
                 {"query": "x" * 201, "limit": 101, "page": 1001, "sortBy": "name", "order": "desc"}, # lỗi biên
-                {"query": "laptop' UNION SELECT * FROM users --", "limit": 50, "page": 1, "sortBy": "date", "order": "desc"}, # SQLi
-                {"query": "<script>alert(document.cookie)</script>", "limit": 10, "page": 1, "sortBy": "relevance", "order": "asc"}, # XSS
+                {"query": "tablet", "limit": 1, "page": 1000, "sortBy": "date", "order": "desc"}, # biên limit min
+                {"query": "smart watch", "limit": 50, "page": 500, "sortBy": "price", "order": "asc"},
             ]
         }
-
+ 
     # 5. Preset E-Commerce Checkout
     if any(kw in text_lower for kw in ["checkout", "thanh toán", "đặt hàng", "order", "mua hàng", "cart", "giỏ hàng", "shipping", "giao hàng"]):
         return {
@@ -143,13 +142,13 @@ def get_mock_fallback_data(raw_text: str):
                 {"fullName": "Trần Thị Mai", "email": "mai.tran@yahoo.com", "phone": "0388888888", "address": "456 Lê Lợi, Đà Nẵng", "quantity": 1, "paymentMethod": "EWallet", "promoCode": ""},
                 {"fullName": "A", "email": "not_an_email", "phone": "12345", "address": "Short", "quantity": 0, "paymentMethod": "Cash", "promoCode": "TOOLONGCODE12345"}, # lỗi validation
                 {"fullName": "Lê Hoàng Nam" * 5, "email": "nam.le@domain.com", "phone": "0555555555", "address": "789 Trần Hưng Đạo, Hà Nội", "quantity": 20, "paymentMethod": "CreditCard", "promoCode": "BLACKFRIDAY"}, # biên
-                {"fullName": "Phạm Thị Hương", "email": "huong.pham@company.vn", "phone": "0777777777", "address": "12/34 Nguyễn Trãi, Q.5, TP.HCM", "quantity": 5, "paymentMethod": "BankTransfer", "promoCode": "<script>alert(1)</script>"}, # XSS
-                {"fullName": "' OR 1=1 --", "email": "hacker@evil.com", "phone": "0999999999", "address": "DROP TABLE orders; --", "quantity": 1, "paymentMethod": "COD", "promoCode": "XSS"}, # SQLi
+                {"fullName": "Phạm Thị Hương", "email": "huong.pham@company.vn", "phone": "0777777777", "address": "12/34 Nguyễn Trãi, Q.5, TP.HCM", "quantity": 5, "paymentMethod": "BankTransfer", "promoCode": "SALE50"},
+                {"fullName": "Trần Văn B", "email": "tran.b@evil.com", "phone": "0999999999", "address": "Địa chỉ hợp lệ 2", "quantity": 1, "paymentMethod": "COD", "promoCode": "PROMO123"},
                 {"fullName": "Hoàng Văn Bình", "email": "binh.hoang@outlook.com", "phone": "0333333333", "address": "56 Hai Bà Trưng, Huế", "quantity": 3, "paymentMethod": "COD", "promoCode": "WELCOME10"},
                 {"fullName": "Đỗ Minh Tuấn", "email": "tuan.do@test.com", "phone": "0866666666", "address": "Xã A, Huyện B, Tỉnh C — địa chỉ vùng sâu vùng xa có Unicode ©®™", "quantity": 10, "paymentMethod": "CreditCard", "promoCode": "VIP50"},
             ]
         }
-
+ 
     # 6. Fallback mặc định nếu không khớp preset nào
     return {
         "fields": [
@@ -158,9 +157,10 @@ def get_mock_fallback_data(raw_text: str):
         "initialPopulation": [
             {"inputText": "User123"},
             {"inputText": "admin"},
-            {"inputText": "' OR 1=1 --"} # payload tấn công SQLi
+            {"inputText": "BoundaryValue30Characters123456"} # biên max
         ]
     }
+
 
 
 def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Session = None) -> dict:
@@ -228,11 +228,10 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
         
         "CRITICAL REQUIREMENTS FOR THE F0 INITIAL DATASET:\n"
         "Generate exactly 8-10 smart test case records. Incorporate a wide variety of testing scenarios:\n"
-        "- At least 3 valid cases (correct format, normal values).\n"
-        "- At least 2 boundary cases (values matching exact minimum/maximum limits or string lengths).\n"
-        "- At least 2 security attack injection payloads (such as SQL Injection e.g. \"' OR 1=1 --\" or XSS scripts e.g. \"<script>alert(1)</script>\") to verify robustness.\n"
-        "- At least 1 invalid case (out of bounds or broken formats).\n"
-        "For each test case record in \"initialPopulation\", you MUST include the fields \"method\" (which method was used, e.g. \"random\", \"bva\", \"ep\", \"decision\") and \"scenario\" (a short explanation in Vietnamese explaining the exact test scenario, e.g. \"Kiểm tra SQL Injection\", \"Mật khẩu ngắn hơn độ dài tối thiểu\")."
+        "- At least 4 valid cases (correct format, normal values).\n"
+        "- At least 3 boundary cases (values matching exact minimum/maximum limits or string lengths).\n"
+        "- At least 2 invalid cases (out of bounds or broken formats).\n"
+        "For each test case record in \"initialPopulation\", you MUST include the fields \"method\" (which method was used, e.g. \"random\", \"bva\", \"ep\", \"decision\") and \"scenario\" (a short explanation in Vietnamese explaining the exact test scenario, e.g. \"Kiểm tra giá trị hợp lệ\", \"Mật khẩu ngắn hơn độ dài tối thiểu\")."
     )
 
     try:
@@ -348,23 +347,7 @@ def check_record_expected_result(record, fields):
     import re
     errors = []
     
-    # 1. Kiểm tra payload tấn công bảo mật trước tiên
-    security_fields = []
-    for f in fields:
-        name = f["name"]
-        val = record.get(name)
-        if val is not None:
-            val_str = str(val).lower()
-            if ("' or" in val_str or 
-                "--" in val_str or 
-                "<script" in val_str or 
-                "union select" in val_str or 
-                "drop table" in val_str or
-                "select * from" in val_str):
-                security_fields.append(name)
-                
-    if security_fields:
-        return f"Chặn tấn công: Phát hiện payload bảo mật ở trường {', '.join(security_fields)}"
+    # 1. Kiểm tra ràng buộc hợp lệ thông thường
 
     # 2. Kiểm tra ràng buộc hợp lệ thông thường
     for f in fields:
@@ -675,9 +658,7 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
                     scenario = "Kịch bản thành công (Happy path) - Tất cả các trường hợp hợp lệ"
                 elif i == num_records - 1:
                     record[name] = get_default_value(f, mode='valid')
-                    if f.get("type") in ["string", "email"]:
-                        record[name] = "' OR '1'='1"
-                    scenario = "Kiểm tra an toàn hệ thống (SQL Injection / XSS injection)"
+                    scenario = "Kiểm thử kịch bản thành công bổ sung"
                 elif i == num_records - 2:
                     record[name] = get_default_value(f, mode='invalid')
                     scenario = "Kiểm thử biên lỗi kết hợp"
@@ -693,7 +674,7 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
 
     # Random/Hybrid
     else:
-        modes = ['valid', 'valid', 'valid', 'boundary', 'boundary', 'security', 'security', 'invalid', 'valid', 'boundary']
+        modes = ['valid', 'valid', 'valid', 'boundary', 'boundary', 'invalid', 'valid', 'boundary']
         for i in range(10):
             record = {}
             mode = modes[i % len(modes)]
@@ -704,7 +685,6 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
             mode_desc = {
                 'valid': "Dữ liệu hợp lệ ngẫu nhiên",
                 'boundary': "Dữ liệu biên ngẫu nhiên",
-                'security': "Payload tấn công bảo mật",
                 'invalid': "Định dạng không hợp lệ"
             }.get(mode, "Kiểm thử ngẫu nhiên")
             
@@ -808,7 +788,6 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             "- Standard valid case where all fields are valid.\n"
             "- Cases where exactly one field is invalid, and all other fields are valid (to test single-field validations).\n"
             "- Cases where multiple fields are invalid.\n"
-            "- At least 2 security payloads (SQLi, XSS) combined with other valid fields.\n"
             "The generated values must look realistic.\n\n"
             
             "Your response must be a single JSON object matching this structure:\n"
@@ -831,10 +810,9 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             
             "CRITICAL REQUIREMENTS:\n"
             "Generate exactly 8-10 smart test case records. Incorporate a wide variety of testing scenarios:\n"
-            "- At least 3 valid cases (correct format, normal values).\n"
-            "- At least 2 boundary cases (values matching exact minimum/maximum limits or string lengths).\n"
-            "- At least 2 security attack injection payloads (such as SQL Injection e.g. \"' OR 1=1 --\" or XSS scripts e.g. \"<script>alert(1)</script>\") to verify robustness.\n"
-            "- At least 1 invalid case (out of bounds or broken formats).\n\n"
+            "- At least 4 valid cases (correct format, normal values).\n"
+            "- At least 3 boundary cases (values matching exact minimum/maximum limits or string lengths).\n"
+            "- At least 2 invalid cases (out of bounds or broken formats).\n\n"
             
             "Your response must be a single JSON object matching this structure:\n"
             "{\n"
@@ -842,7 +820,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             "    {\n"
             "      \"field_name_1\": value1,\n"
             "      \"method\": \"random\",\n"
-            "      \"scenario\": \"Kịch bản kiểm thử ngẫu nhiên payload bảo mật\"\n"
+            "      \"scenario\": \"Kịch bản kiểm thử ngẫu nhiên\"\n"
             "    },\n"
             "    ...\n"
             "  ]\n"
@@ -1004,7 +982,7 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
         "strengths": ["Điểm mạnh 1", "Điểm mạnh 2"], // Mảng các chuỗi
         "weaknesses": ["Điểm yếu 1", "Điểm yếu 2"], // Mảng các chuỗi
         "missing_cases": ["Trường hợp thiếu 1", "Trường hợp thiếu 2"], // Mảng các chuỗi
-        "security_risks": ["Rủi ro 1", "Rủi ro 2"] // Mảng các chuỗi, nếu an toàn thì để mảng rỗng
+        "security_risks": [] // Mảng các chuỗi, luôn để rỗng [] vì tính năng kiểm tra bảo mật đã bị loại bỏ
     }
     Lưu ý: TRẢ VỀ ĐÚNG FORMAT JSON OBJECT. Tối đa 3 item cho mỗi mảng để giữ sự ngắn gọn. Viết bằng Tiếng Việt.
     """
@@ -1040,9 +1018,7 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
             "Thiếu kiểm thử giá trị rỗng (Null/Empty) ở một số trường phụ.",
             "Thiếu chuỗi Unicode đặc biệt hoặc Emoji."
         ],
-        "security_risks": [
-            "Cần bổ sung thêm mẫu XSS nâng cao."
-        ]
+        "security_risks": []
     }
     
     if not active_key:
@@ -1162,17 +1138,17 @@ def evaluate_optimized_dataset_with_ai(fields: list, dataset: list, algorithm: s
             "fitness_score": 0.96, // Điểm thích nghi trung bình hoặc cao nhất của quần thể tối ưu (0-1)
             "penalty_score": 0.05, // Điểm phạt áp dụng cho vi phạm trùng lặp hoặc vi phạm luật (0-1)
             "violations_count": 0, // Số lượng ca vi phạm luật ràng buộc còn sót lại (kiểu int)
-            "applied_weights": "Validation: 0.5, Boundary: 0.2, Security: 0.2, Diversity: 0.1", // Trọng số các luật áp dụng trong hàm thích nghi
+            "applied_weights": "Coverage: 0.4, Boundary: 0.3, Priority: 0.1, Diversity: 0.2", // Trọng số các luật áp dụng trong hàm thích nghi
             "description": "Nhận xét về điểm thích nghi, áp dụng hàm phạt, đối chiếu với các luật trong đặc tả (Test Harness 2)"
         },
         "boundary_edge_check": {
             "status": "Độ bao phủ cao" | "Độ bao phủ trung bình" | "Chưa bao phủ tốt",
             "boundary_coverage": "95%", // Tỉ lệ bao phủ biên (ví dụ: '92%' hoặc 'Tốt')
-            "critical_hits": 8, // Số lượng ca test biên hiểm hóc / độc hại được sinh ra chạm biên thành công (kiểu int)
+            "critical_hits": 8, // Số lượng ca test biên hiểm hóc được sinh ra chạm biên thành công (kiểu int)
             "description": "Nhận xét về đo khoảng cách đến các ranh giới biên, kiểm tra các trường hợp biên hiểm hóc, độ cọ sát (Test Harness 3)"
         },
-        "missing_cases": ["Trường hợp biên/nghiệp vụ cụ thể còn thiếu 1", "Trường hợp biên/nghiệp vụ cụ thể còn thiếu 2"], // Mảng các chuỗi, tối đa 3 phần tử
-        "security_risks": ["Rủi ro bảo mật hoặc ghi nhận an toàn 1", "Rủi ro bảo mật hoặc ghi nhận an toàn 2"] // Mảng các chuỗi, tối đa 3 phần tử, nếu an toàn hoàn toàn thì để mảng rỗng
+        "missing_cases": ["Trường hợp biên nghiệp vụ cụ thể còn thiếu 1", "Trường hợp biên nghiệp vụ cụ thể còn thiếu 2"], // Mảng các chuỗi, tối đa 3 phần tử
+        "security_risks": [] // Mảng các chuỗi, luôn để rỗng [] vì tính năng kiểm tra bảo mật đã bị loại bỏ
     }
     Lưu ý: TRẢ VỀ ĐÚNG FORMAT JSON OBJECT. Các trường mô tả viết ngắn gọn, súc tích bằng Tiếng Việt.
     """
@@ -1211,8 +1187,8 @@ def evaluate_optimized_dataset_with_ai(fields: list, dataset: list, algorithm: s
             "fitness_score": round(random.uniform(0.92, 0.98), 2) if algorithm in ["ga", "hybrid"] else round(random.uniform(0.75, 0.85), 2),
             "penalty_score": round(random.uniform(0.01, 0.08), 2),
             "violations_count": random.randint(0, 1) if algorithm in ["ga", "hybrid"] else random.randint(2, 4),
-            "applied_weights": "Validation: 0.5, Boundary: 0.2, Security: 0.2, Diversity: 0.1",
-            "description": f"Hàm fitness phân bổ trọng số hợp lý (Validation 50%, Boundary 20%, Security 20%, Diversity 10%). Đã triệt tiêu trùng lặp xuống dưới {random.randint(1, 4)}%."
+            "applied_weights": "Coverage: 0.4, Boundary: 0.3, Priority: 0.1, Diversity: 0.2",
+            "description": f"Hàm fitness phân bổ trọng số hợp lý (Coverage 40%, Boundary 30%, Priority 10%, Diversity 20%). Đã triệt tiêu trùng lặp xuống dưới {random.randint(1, 4)}%."
         },
         "boundary_edge_check": {
             "status": "Độ bao phủ cao" if algorithm in ["hc", "hybrid"] else "Độ bao phủ trung bình",
@@ -1224,9 +1200,7 @@ def evaluate_optimized_dataset_with_ai(fields: list, dataset: list, algorithm: s
             "Thiếu các trường hợp lỗi kết hợp đồng thời trên nhiều trường nghiệp vụ chéo.",
             "Cần thêm các chuỗi Unicode đặc biệt chứa ký tự điều khiển hoặc biểu tượng Emoji."
         ],
-        "security_risks": [
-            "Các mẫu tấn công SQL Injection và XSS cơ bản đã được bao phủ đầy đủ. Khuyến nghị bổ sung thêm kiểm thử an toàn cho cấu trúc tải lên tệp tin nếu có."
-        ]
+        "security_risks": []
     }
     
     if not active_key:

@@ -64,10 +64,10 @@ export const OptimizationDashboard: React.FC = () => {
   const [mutationRate, setMutationRate] = useState(0.15);
 
   // Trọng số đánh giá
-  const [wVal, setWVal] = useState(0.5);
-  const [wBound, setWBound] = useState(0.2);
-  const [wSec, setWSec] = useState(0.2);
-  const [wDiv, setWDiv] = useState(0.1);
+  const [wVal, setWVal] = useState(0.4);
+  const [wBound, setWBound] = useState(0.3);
+  const [wSec, setWSec] = useState(0.0);
+  const [wDiv, setWDiv] = useState(0.2);
 
   // Thuật toán truyền thống làm Baseline
   const [traditionalAlgo, setTraditionalAlgo] = useState<'random' | 'bva'>('bva');
@@ -82,29 +82,21 @@ export const OptimizationDashboard: React.FC = () => {
       setPopSize(60);
       setCrossoverRate(0.7);
       setMutationRate(0.1);
-      setWVal(0.6);
-      setWBound(0.2);
-      setWSec(0.1);
-      setWDiv(0.1);
     } else if (profile === 'balanced') {
       setGenerations(60);
       setPopSize(100);
       setCrossoverRate(0.8);
       setMutationRate(0.15);
-      setWVal(0.5);
-      setWBound(0.2);
-      setWSec(0.2);
-      setWDiv(0.1);
     } else {
       setGenerations(120);
       setPopSize(120);
       setCrossoverRate(0.85);
       setMutationRate(0.25);
-      setWVal(0.3);
-      setWBound(0.3);
-      setWSec(0.3);
-      setWDiv(0.1);
     }
+    setWVal(0.4);
+    setWBound(0.3);
+    setWSec(0.0);
+    setWDiv(0.2);
   };
 
   // --- TRẠNG THÁI HOẠT ĐỘNG SONG SONG ---
@@ -194,7 +186,7 @@ export const OptimizationDashboard: React.FC = () => {
       popSize: chromosomes.length,
       crossoverRate: 0.8,
       mutationRate: 0.15,
-      weights: { validation: 0.5, boundary: 0.2, security: 0.2, diversity: 0.1 },
+      weights: { validation: 0.4, boundary: 0.3, security: 0.1, diversity: 0.2 },
     });
 
     const evaluated = chromosomes.map((c) => {
@@ -217,7 +209,7 @@ export const OptimizationDashboard: React.FC = () => {
     let edgeCases = 0;
     let violationsCount = 0;
     evaluated.forEach((item) => {
-      if (item.breakdown.bScore > 0 || item.breakdown.sScore > 0) edgeCases++;
+      if (item.breakdown.bScore > 0 || item.breakdown.pScore > 0.4) edgeCases++;
       if (item.breakdown.vScore < 1.0) violationsCount++;
     });
 
@@ -377,7 +369,7 @@ export const OptimizationDashboard: React.FC = () => {
       popSize,
       crossoverRate,
       mutationRate,
-      weights: { validation: wVal, boundary: wBound, security: wSec, diversity: wDiv },
+      weights: { validation: 0.4, boundary: 0.3, security: 0.1, diversity: 0.2 },
     };
 
     const gaGens = Math.round(generations * 0.7);
@@ -513,8 +505,7 @@ export const OptimizationDashboard: React.FC = () => {
                         c.origin.includes('Tweak') ||
                         c.origin.includes('Mutation') ||
                         c.origin.includes('Traditional') ||
-                        c.origin.includes('Init_BOUNDARY') ||
-                        c.origin.includes('Init_SECURITY'),
+                        c.origin.includes('Init_BOUNDARY'),
                     ).length
                   : 0,
                 logs: currentLogs,
@@ -541,15 +532,28 @@ export const OptimizationDashboard: React.FC = () => {
               updateHistoryPoint(generations, key, coverageVal);
 
               const allDataset = finalData.optimizedDataset || [];
-              const edgeCasesCount = allDataset.filter((c: any) => {
-                const securityKeywords = ["' or", '" or', '--', 'union', 'select', '<script'];
-                return Object.values(c).some((val) =>
-                  securityKeywords.some((kw) => String(val).toLowerCase().includes(kw)),
-                );
-              }).length;
+              let boundaryCasesCount = 0;
+              allDataset.forEach((tc: any) => {
+                let isBound = false;
+                schema.forEach((field) => {
+                  const val = tc[field.name];
+                  if (val !== undefined && val !== null) {
+                    const valStr = String(val);
+                    if (field.type === 'number') {
+                      const num = Number(val);
+                      if (field.minValue !== undefined && num === field.minValue) isBound = true;
+                      if (field.maxValue !== undefined && num === field.maxValue) isBound = true;
+                    } else {
+                      if (field.minLength !== undefined && valStr.length === field.minLength) isBound = true;
+                      if (field.maxLength !== undefined && valStr.length === field.maxLength) isBound = true;
+                    }
+                  }
+                });
+                if (isBound) boundaryCasesCount++;
+              });
 
               const finalEdgeCount = Math.max(
-                edgeCasesCount,
+                boundaryCasesCount,
                 finalData.hcStats?.edgeCasesDiscovered || 0,
               );
 
@@ -1323,7 +1327,7 @@ export const OptimizationDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Weights */}
+            {/* Informative Read-Only Weights Card */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div
                 style={{
@@ -1336,56 +1340,45 @@ export const OptimizationDashboard: React.FC = () => {
                 }}
               >
                 <BarChart2 size={13} style={{ color: 'var(--color-violet)' }} />
-                Trọng số Fitness
+                Hàm Thích Nghi & Trọng Số (Cố định)
               </div>
-              {[
-                {
-                  label: `Đúng đặc tả: ${Math.round(wVal * 100)}%`,
-                  val: wVal,
-                  set: setWVal,
-                  color: 'var(--color-teal)',
-                },
-                {
-                  label: `Biên BVA: ${Math.round(wBound * 100)}%`,
-                  val: wBound,
-                  set: setWBound,
-                  color: 'var(--color-violet)',
-                },
-                {
-                  label: `An ninh: ${Math.round(wSec * 100)}%`,
-                  val: wSec,
-                  set: setWSec,
-                  color: 'var(--color-rose)',
-                },
-              ].map((w) => (
-                <div key={w.label}>
-                  <div
-                    style={{
-                      fontSize: '9.5px',
-                      color: 'var(--text-secondary)',
-                      marginBottom: '3px',
-                    }}
-                  >
-                    {w.label}
-                  </div>
-                  <input
-                    type='range'
-                    min='0'
-                    max='1'
-                    stroke-dashoffset='0.05'
-                    step='0.05'
-                    value={w.val}
-                    onChange={(e) => w.set(parseFloat(e.target.value))}
-                    disabled={isRunning}
-                    style={{
-                      height: '3px',
-                      cursor: 'pointer',
-                      accentColor: w.color,
-                      width: '100%',
-                    }}
-                  />
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '8px',
+                padding: '12px',
+                fontSize: '11px',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}>
+                <div style={{ fontWeight: 'bold', color: 'var(--color-violet)', fontSize: '11.5px', fontFamily: 'var(--font-mono)' }}>
+                  Fitness = 0.4*Cov + 0.3*Bound + 0.1*Prio + 0.2*Div - 0.5*Penalty
                 </div>
-              ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Coverage (Bao phủ)</span>
+                    <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>40% (0.4)</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Boundary (Biên dữ liệu)</span>
+                    <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>30% (0.3)</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Priority (Độ ưu tiên)</span>
+                    <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>10% (0.1)</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Diversity (Đa dạng)</span>
+                    <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>20% (0.2)</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
+                    <span>Penalty (Phạt trùng lặp)</span>
+                    <span style={{ fontWeight: 'bold', color: 'var(--color-rose)' }}>-0.5 max</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Baseline algorithms */}

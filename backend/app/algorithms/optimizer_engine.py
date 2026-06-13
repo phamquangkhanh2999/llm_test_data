@@ -78,23 +78,6 @@ def calculate_diversity_score(test_case, subset):
 # =========================================================================
 def generate_random_field_value(field, mode="valid"):
     special_chars = ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "_", "+", "=", "[", "]", "{", "}", ";", ":", "'", '"', "<", ">", "/", "?", "\\", "|", "`", "~"]
-    security_payloads = [
-        "' OR '1'='1",
-        "' OR 1=1 --",
-        "admin' --",
-        "' UNION SELECT NULL --",
-        "<script>alert(1)</script>",
-        "<svg/onload=alert(1)>",
-        "\" onerror=\"alert(1)",
-        "../../etc/passwd",
-        "1; DROP TABLE users; --"
-    ]
-
-    if mode == "security":
-        if field["type"] in ["string", "email"]:
-            return random.choice(security_payloads)
-        if field["type"] == "number":
-            return 999999 # gây tràn số biên
 
     # Sinh dữ liệu theo kiểu
     f_type = field["type"]
@@ -275,11 +258,10 @@ class TestSuiteOptimizer:
         tc_key = str(sorted((k, str(v)) for k, v in test_case.items()))
 
         if tc_key in self.static_cache:
-            v_score, b_score, s_score = self.static_cache[tc_key]
+            v_score, b_score = self.static_cache[tc_key]
         else:
             validation_score = 0.0
             boundary_score = 0.0
-            security_score = 0.0
 
             num_fields = len(self.schema)
 
@@ -292,7 +274,6 @@ class TestSuiteOptimizer:
                 val_str = str(val)
                 is_boundary = False
                 is_near_boundary = False
-                is_security = False
 
                 # Split validations into Hard and Soft constraints
                 hard_passed = True
@@ -406,21 +387,12 @@ class TestSuiteOptimizer:
                         boundary_score += 0.5
                     # [END: BOUNDARY_FITNESS_SCORING]
 
-                # --- 4. Security Check (independent of structure validation) ---
-                security_keywords = ["' or", '" or', "--", "union", "select", "drop table", "<script", "onload=", "onerror="]
-                val_lower = val_str.lower()
-                if any(kw in val_lower for kw in security_keywords):
-                    is_security = True
-                if is_security:
-                    security_score += 1
-
             # Normalize scores
             v_score = validation_score / num_fields
             b_score = min(boundary_score / num_fields, 1.0)
-            s_score = min(security_score / num_fields, 1.0)
 
             # Store in cache
-            self.static_cache[tc_key] = (v_score, b_score, s_score)
+            self.static_cache[tc_key] = (v_score, b_score)
 
         # --- 4. Diversity (Dynamic, evaluated on the fly) ---
         sample_size = min(20, max(5, len(current_suite_values) // 2))
@@ -434,9 +406,18 @@ class TestSuiteOptimizer:
         dup_count = sum(1 for other in current_suite_values if all(str(test_case[k]) == str(other.get(k, "")) for k in test_case.keys()))
         penalty = min(0.15 * (dup_count - 1), 0.6) if dup_count > 1 else 0.0
 
+        # --- 6. Priority (Dynamic, evaluated on the fly) ---
+        category = self._categorize_testcase(test_case)
+        if category == "boundary":
+            p_score = 1.0
+        elif category == "negative":
+            p_score = 0.7
+        else:
+            p_score = 0.4
+
         # Calculate final fitness based on weights
-        w = self.config["weights"]
-        fitness = (w["validation"] * v_score) + (w["boundary"] * b_score) + (w["security"] * s_score) + (w["diversity"] * d_score) - penalty
+        w1, w2, w3, w4, w5 = 0.4, 0.2, 0.1, 0.3, 0.5
+        fitness = (w1 * v_score) + (w2 * d_score) + (w3 * p_score) + (w4 * b_score) - (w5 * penalty)
         fitness = max(0.01, min(fitness, 1.0))
 
         return fitness
@@ -463,8 +444,8 @@ class TestSuiteOptimizer:
                 "origin": "Seed"
             })
 
-        # 2. Nhân bản ngẫu nhiên thêm các bộ test biên/bảo mật để lấp đầy kích thước (PopSize)
-        modes = ["valid", "boundary", "security", "valid"]
+        # 2. Nhân bản ngẫu nhiên thêm các bộ test biên/lỗi để lấp đầy kích thước (PopSize)
+        modes = ["valid", "boundary", "invalid", "valid"]
         while len(self.test_suite) < self.config["popSize"]:
             record = {}
             mode = modes[len(self.test_suite) % len(modes)]
@@ -502,7 +483,7 @@ class TestSuiteOptimizer:
             })
 
         # 2. Expand if below popSize
-        modes = ["valid", "boundary", "security", "valid"]
+        modes = ["valid", "boundary", "invalid", "valid"]
         while len(self.test_suite) < self.config["popSize"]:
             record = {}
             mode = modes[len(self.test_suite) % len(modes)]
@@ -669,10 +650,10 @@ class TestSuiteOptimizer:
                                 mutated_tc[name] = max(field["minValue"] - 2, mutated_tc[name])
                             if field.get("maxValue") is not None:
                                 mutated_tc[name] = min(field["maxValue"] + 2, mutated_tc[name])
-                        elif rand < 0.65:
+                        elif rand < 0.70:
                             mutated_tc[name] = generate_random_field_value(field, "boundary")
                         else:
-                            mutated_tc[name] = generate_random_field_value(field, "security")
+                            mutated_tc[name] = generate_random_field_value(field, "invalid")
                     except (ValueError, TypeError):
                         mutated_tc[name] = generate_random_field_value(field, "valid")
 
@@ -683,10 +664,10 @@ class TestSuiteOptimizer:
                             mutated_tc[name] = val_str[:idx] + val_str[idx+1:]
                         else:
                             mutated_tc[name] = generate_random_field_value(field, "valid")
-                    elif rand < 0.7:
+                    elif rand < 0.75:
                         mutated_tc[name] = generate_random_field_value(field, "boundary")
                     else:
-                        mutated_tc[name] = generate_random_field_value(field, "security")
+                        mutated_tc[name] = generate_random_field_value(field, "invalid")
 
                 else: # string
                     # ENUM-AWARE: nếu field có allowedValues, chỉ mutate trong danh sách
@@ -705,10 +686,10 @@ class TestSuiteOptimizer:
                     elif rand < 0.6:
                         # đảo hoa thường
                         mutated_tc[name] = val_str.upper() if random.random() > 0.5 else val_str.lower()
-                    elif rand < 0.8:
+                    elif rand < 0.85:
                         mutated_tc[name] = generate_random_field_value(field, "boundary")
                     else:
-                        mutated_tc[name] = generate_random_field_value(field, "security")
+                        mutated_tc[name] = generate_random_field_value(field, "invalid")
 
         return mutated_tc, is_mutated
 
@@ -734,7 +715,7 @@ class TestSuiteOptimizer:
         preserved = self.test_suite[:preserve_count]
 
         new_individuals = []
-        modes = ["valid", "boundary", "security", "valid"]
+        modes = ["valid", "boundary", "invalid", "valid"]
         while len(new_individuals) < (self.config["popSize"] - preserve_count):
             record = {}
             mode = modes[len(new_individuals) % len(modes)]
@@ -880,7 +861,6 @@ class TestSuiteOptimizer:
         # --- 1. Individual field coverage (full population) ---
         total_valid = 0
         boundaries_checked = set()
-        security_checked = set()
 
         for tc in raw_values:
             for field in self.schema:
@@ -919,10 +899,7 @@ class TestSuiteOptimizer:
                         if field.get("maxLength") is not None and len(val_str) == field["maxLength"] - 1:
                             boundaries_checked.add(f"{name}_max_near")
 
-                # Security check
-                security_keywords = ["' or", '" or', "--", "union", "select", "<script"]
-                if any(kw in val_str.lower() for kw in security_keywords):
-                    security_checked.add(f"{name}_security")
+
 
         total_cases = len(raw_values)
         max_valid = total_cases * len(self.schema)
@@ -931,16 +908,13 @@ class TestSuiteOptimizer:
         possible_bounds = len(self.schema) * 4  # 2 exact + 2 near per field
         bound_factor = len(boundaries_checked) / possible_bounds if possible_bounds > 0 else 0
 
-        possible_sec = len(self.schema)
-        sec_factor = len(security_checked) / possible_sec if possible_sec > 0 else 0
-
         # --- 2. Pairwise combination coverage ---
         pairwise_coverage = self._compute_pairwise_coverage(raw_values)
 
         # --- 3. Composite coverage ---
-        # 55% validation + 15% boundary + 10% security + 20% pairwise
+        # 60% validation + 20% boundary + 20% pairwise
         coverage = min(
-            (val_factor * 0.55) + (bound_factor * 0.15) + (sec_factor * 0.10) + (pairwise_coverage * 0.20),
+            (val_factor * 0.60) + (bound_factor * 0.20) + (pairwise_coverage * 0.20),
             1.0
         )
 
@@ -965,10 +939,6 @@ class TestSuiteOptimizer:
             val_str = str(val)
             if val is None or val_str == '' or val_str == 'None':
                 return 'empty'
-            if val_str.startswith("' OR") or val_str.startswith("' or"):
-                return 'sqli'
-            if '<script' in val_str.lower() or 'onload' in val_str.lower():
-                return 'xss'
             if field["type"] == "number":
                 try:
                     num = float(val)
@@ -1001,7 +971,7 @@ class TestSuiteOptimizer:
 
         # Xác định tập danh mục phân loại khả thi của một trường ràng buộc nghiệp vụ
         def get_possible_categories(field):
-            cats = ["empty", "valid", "sqli", "xss"]
+            cats = ["empty", "valid"]
             if field["type"] == "number":
                 cats.append("invalid")
                 if field.get("minValue") is not None:
@@ -1058,15 +1028,15 @@ class TestSuiteOptimizer:
             cat = self._categorize_testcase(tc)
             categorized.append({"tc": tc, "idx": idx, "category": cat})
 
-        priority = {"security": 0, "boundary": 1, "negative": 2, "positive": 3, "happy": 3}
-        categorized.sort(key=lambda x: priority.get(x["category"], 4))
+        priority = {"boundary": 0, "negative": 1, "positive": 2, "happy": 2}
+        categorized.sort(key=lambda x: priority.get(x["category"], 3))
 
         selected = []
         selected_idx = set()
         fingerprints = set()
 
         # Pass 1: ensure at least one per category
-        for cat in ["security", "boundary", "negative", "positive", "happy"]:
+        for cat in ["boundary", "negative", "positive", "happy"]:
             for c in categorized:
                 if c["category"] == cat and c["idx"] not in selected_idx:
                     fp = str(sorted(c["tc"].items()))
@@ -1111,10 +1081,7 @@ class TestSuiteOptimizer:
                         if not any(len(str(s.get(name, ""))) == field["maxLength"] for s in selected):
                             adds = True
 
-                sec_kw = ["' or", '" or', "--", "union", "<script"]
-                if any(kw in val_str.lower() for kw in sec_kw):
-                    if not any(any(kw in str(s.get(name, "")).lower() for kw in sec_kw) for s in selected):
-                        adds = True
+
 
             if adds:
                 fingerprints.add(fp)
@@ -1143,12 +1110,7 @@ class TestSuiteOptimizer:
         }
 
     def _categorize_testcase(self, tc):
-        """Phân loại test case: security, boundary, negative, positive."""
-        sec_kw = ["' or", '" or', "'or", '"or', "--", "union", "select", "<script", "onload="]
-        for val in tc.values():
-            if any(kw in str(val).lower() for kw in sec_kw):
-                return "security"
-
+        """Phân loại test case: boundary, negative, positive."""
         has_invalid = False
         has_boundary = False
 
@@ -1213,7 +1175,6 @@ class TestSuiteOptimizer:
         """Tính coverage cho một tập test case bất kỳ."""
         total_valid = 0
         boundaries_checked = set()
-        security_checked = set()
 
         for tc in test_cases:
             for field in self.schema:
@@ -1241,10 +1202,6 @@ class TestSuiteOptimizer:
                         if field.get("maxLength") is not None and len(val_str) == field["maxLength"]:
                             boundaries_checked.add(f"{name}_max")
 
-                sec_kw = ["' or", '" or', "--", "union", "select", "<script"]
-                if any(kw in val_str.lower() for kw in sec_kw):
-                    security_checked.add(f"{name}_security")
-
         total_cases = len(test_cases)
         max_valid = total_cases * len(self.schema)
         val_factor = total_valid / max_valid if max_valid > 0 else 0
@@ -1252,7 +1209,4 @@ class TestSuiteOptimizer:
         possible_bounds = len(self.schema) * 2
         bound_factor = len(boundaries_checked) / possible_bounds if possible_bounds > 0 else 0
 
-        possible_sec = len(self.schema)
-        sec_factor = len(security_checked) / possible_sec if possible_sec > 0 else 0
-
-        return min((val_factor * 0.6) + (bound_factor * 0.25) + (sec_factor * 0.15), 1.0)
+        return min((val_factor * 0.7) + (bound_factor * 0.3), 1.0)

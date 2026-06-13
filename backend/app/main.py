@@ -446,10 +446,10 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
         "crossoverRate": req.crossoverRate,
         "mutationRate": req.mutationRate,
         "weights": {
-            "validation": req.weights.validation,
-            "boundary": req.weights.boundary,
-            "security": req.weights.security,
-            "diversity": req.weights.diversity
+            "validation": 0.4,
+            "boundary": 0.3,
+            "security": 0.0,
+            "diversity": 0.2
         }
     }
 
@@ -604,15 +604,11 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
     db.commit()
     db.refresh(db_job)
 
-    # 6. Lưu toàn bộ các Test Cases tối ưu hóa vừa sinh ra vào bảng generated_data trong CSDL SQLite
-    # Đánh dấu các ca test được nhúng mã độc hoặc chạm đúng biên
-    security_keywords = ["' or", '" or', "--", "union", "select", "<script"]
     for ind in optimizer.test_suite:
         tc_values = ind["values"]
         
-        # Nhận diện xem có phải ca biên đặc biệt / độc hại không
-        is_security = any(any(kw in str(val).lower() for kw in security_keywords) for val in tc_values.values())
-        is_edge = is_security or (ind["fitness"] > 0.85 and "Tweak" in ind["origin"])
+        # Nhận diện xem có phải ca biên đặc biệt không
+        is_edge = (ind["fitness"] > 0.85 and "Tweak" in ind["origin"])
 
         db_data = models.GeneratedData(
             job_id=db_job.id,
@@ -671,7 +667,7 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
         pop_size = int(req_data.get("popSize", 100))
         crossover_rate = float(req_data.get("crossoverRate", 0.8))
         mutation_rate = float(req_data.get("mutationRate", 0.15))
-        weights_data = req_data.get("weights", {"validation": 0.5, "boundary": 0.2, "security": 0.2, "diversity": 0.1})
+        weights_data = {"validation": 0.4, "boundary": 0.3, "security": 0.0, "diversity": 0.2}
         initial_seeds = req_data.get("initial_seeds", [])
         
         # Đón cấu hình giải thuật chạy qua WebSockets
@@ -946,12 +942,9 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
         db.commit()
         db.refresh(db_job)
 
-        # 7. Lưu tất cả các Test Cases tối ưu hóa vào bảng generated_data
-        security_keywords = ["' or", '\" or', "--", "union", "select", "<script"]
         for ind in optimizer.test_suite:
             tc_values = ind["values"]
-            is_security = any(any(kw in str(val).lower() for kw in security_keywords) for val in tc_values.values())
-            is_edge = is_security or (ind["fitness"] > 0.85 and "Tweak" in ind["origin"])
+            is_edge = (ind["fitness"] > 0.85 and "Tweak" in ind["origin"])
 
             db_data = models.GeneratedData(
                 job_id=db_job.id,

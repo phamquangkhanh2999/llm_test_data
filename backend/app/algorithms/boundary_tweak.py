@@ -161,7 +161,6 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
 
     # Định nghĩa lân cận (Neighborhood)
     special_chars = ["!", "@", "#", "$", "%", "^", "&", "*", "'", '"', "<", ">", "/", "\\", ";", "-", " "]
-    security_tags = ["' OR 1=1 --", "<script>alert(1)</script>", "<svg/onload=alert(1)>"]
 
     if restart_idx == 0:
         details.append(f"Khởi động tối ưu hóa biên SA+Tabu (điểm gốc): {original_fitness:.4f}")
@@ -234,10 +233,7 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
                     neighbors.append(str_val[1:])
                     neighbors.append("")
 
-                # Nhúng payload kiểm thử an toàn thông tin
-                for tag in security_tags[:2]:
-                    neighbors.append(str_val + tag)
-                    neighbors.append(tag)
+
 
                 # --- [BVA] Tinh chỉnh độ dài chuỗi tiệm cận biên đặc tả ---
                 if field.get("minLength") is not None:
@@ -322,7 +318,6 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
                     )
 
                     # Theo dõi phát hiện các ca biên
-                    is_sec = any(tag.lower() in str(best_neighbor).lower() for tag in security_tags)
                     is_bound = False
                     if field_type == "number":
                         try:
@@ -335,7 +330,7 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
                             (field.get("maxLength") is not None and len(str(best_neighbor)) == field["maxLength"])
                         )
 
-                    if is_sec or is_bound or str(best_neighbor) == "":
+                    if is_bound or str(best_neighbor) == "":
                         edge_cases_discovered += 1
 
     # --- Kiểm tra trì trệ: nếu không cải thiện được, ghi chú vào log ---

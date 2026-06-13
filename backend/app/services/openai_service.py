@@ -35,7 +35,7 @@ class EvaluationOutputSchema(BaseModel):
     strengths: List[str] = Field(..., description="Các điểm mạnh của bộ dữ liệu")
     weaknesses: List[str] = Field(..., description="Các điểm yếu cần khắc phục")
     missing_cases: List[str] = Field(..., description="Các kịch bản kiểm thử còn thiếu")
-    security_risks: List[str] = Field(..., description="Các rủi ro bảo mật tiềm ẩn (XSS, Injection, SQLi)")
+    security_risks: List[str] = Field(default_factory=list, description="[Deprecated] Luôn trả về danh sách rỗng []")
 
 class SanityCheckSchema(BaseModel):
     status: str
@@ -64,7 +64,7 @@ class OptimizedEvaluationOutputSchema(BaseModel):
     fitness_evaluation: FitnessEvaluationSchema
     boundary_edge_check: BoundaryEdgeCheckSchema
     missing_cases: List[str]
-    security_risks: List[str]
+    security_risks: List[str] = Field(default_factory=list, description="[Deprecated] Luôn trả về danh sách rỗng []")
 
 # --- SERVICE FUNCTIONS ---
 
@@ -183,6 +183,7 @@ def evaluate_test_quality_openai(fields: List[Dict], seeds: List[Dict], test_met
     Tập dữ liệu cần đánh giá: {json.dumps(seeds, ensure_ascii=False)}
     
     Hãy đánh giá khách quan bộ dữ liệu này.
+    Lưu ý: Không phân tích bảo mật, đặt trường security_risks là [] (danh sách rỗng).
     """
 
     try:
@@ -221,8 +222,10 @@ def evaluate_optimized_openai(fields: List[Dict], dataset: List[Dict], algorithm
     
     Hãy thực hiện đánh giá chuyên sâu bao gồm:
     1. Sanity Check (Độ sạch dữ liệu)
-    2. Fitness Evaluation (Độ tối ưu và đa dạng)
+    2. Fitness Evaluation (Độ tối ưu và đa dạng dựa trên các trọng số cố định: Coverage: 0.4, Boundary: 0.3, Priority: 0.1, Diversity: 0.2)
     3. Boundary Edge Check (Độ bao phủ biên rủi ro)
+    
+    Lưu ý: Không phân tích bảo mật, đặt trường security_risks là [] (danh sách rỗng).
     """
 
     try:

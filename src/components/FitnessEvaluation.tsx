@@ -27,10 +27,10 @@ export const FitnessEvaluation: React.FC<FitnessEvaluationProps> = ({
           Fitness Evaluation - Đánh giá độ thích nghi
         </h2>
         <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px', marginBottom: 0 }}>
-          Độ đo chất lượng của từng cá thể dựa trên các thuộc tính bao phủ biên, tính đa dạng, tính hợp lệ và bảo mật.
+          Độ đo chất lượng của từng cá thể dựa trên các thuộc tính bao phủ biên, tính đa dạng, độ bao phủ yêu cầu (Coverage) và mức độ ưu tiên (Priority).
         </p>
       </div>
-
+ 
       {/* Formula Alert Bar */}
       <div style={{
         display: 'flex',
@@ -45,18 +45,18 @@ export const FitnessEvaluation: React.FC<FitnessEvaluationProps> = ({
         fontWeight: '600'
       }}>
         <Calculator size={16} />
-        <span>Công thức tính điểm: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-violet)', background: 'rgba(124, 58, 237, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>Fitness = (0.5 × Validation) + (0.2 × Boundary) + (0.2 × Security) + (0.1 × Diversity) - Penalty</code></span>
+        <span>Công thức tính điểm: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-violet)', background: 'rgba(124, 58, 237, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>Fitness = (0.4 × Coverage) + (0.3 × Boundary) + (0.1 × Priority) + (0.2 × Diversity) - Penalty</code></span>
       </div>
-
+ 
       {/* Evaluation Table */}
       <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
               <th style={{ padding: '8px 12px', fontWeight: 'bold', width: '100px' }}>Test ID</th>
-              <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Validation</th>
+              <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Coverage</th>
               <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Diversity</th>
-              <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Security</th>
+              <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Priority</th>
               <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Boundary</th>
               <th style={{ padding: '8px 12px', fontWeight: 'bold', width: '120px' }}>Final Fitness</th>
               <th style={{ padding: '8px 12px', fontWeight: 'bold', width: '150px' }}>Ghi chú</th>

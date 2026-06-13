@@ -195,10 +195,10 @@ erDiagram
       "crossoverRate": 0.8,
       "mutationRate": 0.15,
       "weights": {
-        "validation": 0.5,
-        "boundary": 0.2,
-        "security": 0.2,
-        "diversity": 0.1
+        "validation": 0.4,
+        "boundary": 0.3,
+        "security": 0.0,
+        "diversity": 0.2
       },
       "initial_seeds": [{"username": "admin123", "expectedResult": "Hợp lệ"}]
     }
@@ -270,7 +270,14 @@ Nhằm hỗ trợ quá trình tối ưu hóa, module sinh mẫu F0 sử dụng c
 ---
 
 ### 3.3.3. Module đánh giá test case (Toán học hóa các điểm thành phần)
-Hàm thích nghi (Fitness) đa mục tiêu của một cá thể nhiễm sắc thể $X$ được lượng hóa chi tiết theo các công thức thành phần:
+Hàm thích nghi (Fitness) đa mục tiêu của một cá thể nhiễm sắc thể $X$ được lượng hóa chi tiết theo các công thức thành phần. Hàm thích nghi tổng quát của một ca kiểm thử $X$ trong quần thể được tính bằng sự kết hợp có trọng số của các điểm thành phần:
+$$Fitness(X) = w_1 \cdot ValidationScore(X) + w_2 \cdot DiversityScore(X) + w_3 \cdot PriorityScore(X) + w_4 \cdot BoundaryScore(X) - w_5 \cdot Penalty(X)$$
+Trong đó, các trọng số cố định của hệ thống được quy định như sau:
+- $w_1$ (Coverage/Validation): $0.4$
+- $w_2$ (Diversity): $0.2$
+- $w_3$ (Priority): $0.1$
+- $w_4$ (Boundary): $0.3$
+- $w_5$ (Penalty): $0.5$ (với Penalty là điểm phạt trùng lặp, tối đa $0.6$)
 
 #### 1. Điểm định dạng nghiệp vụ (Validation Score)
 Xét nhiễm sắc thể $X$ biểu diễn một test case. Điểm Validation Score được tính bằng trung bình cộng điểm hợp lệ của từng trường dữ liệu:
@@ -298,13 +305,9 @@ $$BoundaryScore(X) = \min\left( \frac{1}{n} \sum_{i=1}^{n} b_i(x_i),\ 1.0 \right
   - Nếu $len(x_i) = minLength_i + 1$ hoặc $len(x_i) = maxLength_i - 1$: $b_i(x_i) = 0.5$ (cận biên trong).
   - Các trường hợp khác: $b_i(x_i) = 0.0$.
 
-#### 3. Điểm an toàn thông tin (Security Score)
-Nhằm kiểm tra khả năng phòng chống tấn công chèn mã độc của ứng dụng:
-$$SecurityScore(X) = \min\left( \frac{1}{n} \sum_{i=1}^{n} s_i(x_i),\ 1.0 \right)$$
-
-Trong đó:
-- $s_i(x_i) = 1.0$ nếu trường $f_i$ chứa các mẫu tiêm nhiễm SQL Injection như `' OR 1=1 --`, `' UNION SELECT`, hoặc thẻ tấn công XSS như `<script>`, `<svg/onload=...`.
-- $s_i(x_i) = 0.0$ cho các trường hợp bình thường.
+#### 3. Điểm mức độ ưu tiên (Priority Score)
+Nhằm tập trung kiểm thử các ca quan trọng trước, điểm ưu tiên (Priority Score) của một ca kiểm thử $X$ được tính dựa trên phân loại của ca kiểm thử đó:
+$$PriorityScore(X) = \begin{cases} 1.0 & \text{nếu } X \text{ là ca kiểm thử biên (boundary)} \\ 0.7 & \text{nếu } X \text{ là ca kiểm thử lỗi validation (negative)} \\ 0.4 & \text{ngược lại (ca kiểm thử hợp lệ - positive)} \end{cases}$$
 
 #### 4. Điểm đa dạng quần thể (Diversity Score)
 Tránh việc quần thể bị hội tụ sớm vào một vài giá trị tối ưu duy nhất bằng cách đo lường khoảng cách kiểu hình trong không gian quyết định (Decision Space) của cá thể $X$ với một tập mẫu ngẫu nhiên $P_{sub}$ lấy từ quần thể hiện tại $P$ (kích thước mẫu $M = \min(20, \max(5, \lfloor |P| / 2 \rfloor))$ để tối ưu tài nguyên tính toán):
@@ -396,7 +399,7 @@ Output: Ca kiểm thử tối ưu biên cục bộ 'best_optimized'
 Giao diện người dùng được thiết kế dựa trên các nguyên tắc mỹ thuật công nghiệp hiện đại:
 - **Ngôn ngữ thiết kế Glassmorphism**: Sử dụng lớp phủ kính mờ (`backdrop-filter: blur(12px)`) kết hợp với tông màu đen sâu chủ đạo của vũ trụ (`#020617`), các đường viền mờ ảo `rgba(255,255,255,0.05)`.
 - **Phân tách luồng thông tin 2 bước**:
-  - *Bước 1 (Phân tích & Chuẩn bị)*: Người dùng nhập đặc tả nghiệp vụ thô. Bảng dữ liệu F0 hiển thị trực quan các ca kiểm thử mẫu kèm theo cột **Kết quả mong đợi (Expected Result)** được phân loại mã màu rõ rệt: Xanh Teal (Hợp lệ), Đỏ Rose (Lỗi validation nghiệp vụ), Tím Violet (Cảnh báo chặn bảo mật độc hại).
+  - *Bước 1 (Phân tích & Chuẩn bị)*: Người dùng nhập đặc tả nghiệp vụ thô. Bảng dữ liệu F0 hiển thị trực quan các ca kiểm thử mẫu kèm theo cột **Kết quả mong đợi (Expected Result)** được phân loại mã màu rõ rệt: Xanh Teal (Hợp lệ), Đỏ Rose (Lỗi validation nghiệp vụ), Tím Violet (Ca kiểm thử ưu tiên cao/biên).
   - *Bước 2 (Tiến hóa & Đánh giá)*: Hiển thị đồ thị tiến hóa Recharts vẽ động mức biến thiên của điểm Fitness lớn nhất và Fitness trung bình. Ma trận quần thể gồm 100 ô vuông tương tác nhấp nháy liên tục thể hiện các thao tác đột biến. Cung cấp chức năng tải dữ liệu dưới dạng JSON/CSV.
 
 ---

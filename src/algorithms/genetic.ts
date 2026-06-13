@@ -204,8 +204,8 @@ export class GeneticEngine {
   hallOfFame: { values: Chromosome; fitness: number; origin: string }[] = [];
   private maxHofSize: number = 20;
 
-  // Static evaluations cache (caching validation, boundary, security scores)
-  private staticCache: Map<string, { vScore: number; bScore: number; sScore: number }> = new Map();
+  // Static evaluations cache (caching validation, boundary scores)
+  private staticCache: Map<string, { vScore: number; bScore: number }> = new Map();
 
   constructor(schema: FieldConstraint[], config: GeneticConfig) {
     this.schema = schema;
@@ -259,7 +259,7 @@ export class GeneticEngine {
     });
 
     // 2. Expand with variations to hit popSize
-    const modes: ('valid' | 'invalid' | 'boundary' | 'security')[] = ['valid', 'boundary', 'security', 'valid'];
+    const modes: ('valid' | 'invalid' | 'boundary')[] = ['valid', 'boundary', 'invalid', 'valid'];
     while (this.population.length < this.config.popSize) {
       const record: Chromosome = {};
       const mode = modes[this.population.length % modes.length];
@@ -298,7 +298,7 @@ export class GeneticEngine {
     });
 
     // Expand if below popSize
-    const modes: ('valid' | 'invalid' | 'boundary' | 'security')[] = ['valid', 'boundary', 'security', 'valid'];
+    const modes: ('valid' | 'invalid' | 'boundary')[] = ['valid', 'boundary', 'invalid', 'valid'];
     while (this.population.length < this.config.popSize) {
       const record: Chromosome = {};
       const mode = modes[this.population.length % modes.length];
@@ -334,7 +334,6 @@ export class GeneticEngine {
   computeFitness(c: Chromosome, currentPop: Chromosome[]): { fitness: number; scoreBreakdown: Record<string, number> } {
     let vScore = 0;
     let bScore = 0;
-    let sScore = 0;
 
     // Generate unique key for caching
     const tcKey = JSON.stringify(Object.entries(c).sort());
@@ -343,11 +342,9 @@ export class GeneticEngine {
       const cached = this.staticCache.get(tcKey)!;
       vScore = cached.vScore;
       bScore = cached.bScore;
-      sScore = cached.sScore;
     } else {
       let validationScore = 0;
       let boundaryScore = 0;
-      let securityScore = 0;
 
       this.schema.forEach(field => {
         const val = c[field.name];
@@ -356,7 +353,6 @@ export class GeneticEngine {
         const strVal = String(val);
         let isBoundary = false;
         let isNearBoundary = false;
-        let isSecurity = false;
 
         let hardPassed = true;
         let softPassed = true;
@@ -444,24 +440,15 @@ export class GeneticEngine {
           if (isBoundary) boundaryScore += 1;
           else if (isNearBoundary) boundaryScore += 0.5;
         }
-
-        // --- 4. Security Payload Check ---
-        const securityKeywords = ["' or", '" or', "'or", '"or', '--', 'union', 'select', 'drop table', '<script', 'onload=', 'onerror=', 'javascript:'];
-        const strLower = strVal.toLowerCase();
-        if (securityKeywords.some(kw => strLower.includes(kw))) {
-          isSecurity = true;
-        }
-        if (isSecurity) securityScore += 1;
       });
 
       // Normalize Scores
       const numFields = this.schema.length;
       vScore = validationScore / numFields;
       bScore = Math.min(boundaryScore / numFields, 1);
-      sScore = Math.min(securityScore / numFields, 1);
 
       // Save to staticCache
-      this.staticCache.set(tcKey, { vScore, bScore, sScore });
+      this.staticCache.set(tcKey, { vScore, bScore });
     }
 
     // --- 4. Diversity Score (larger sample) ---
@@ -488,14 +475,27 @@ export class GeneticEngine {
 
     const penalty = dupCount > 1 ? Math.min(0.15 * (dupCount - 1), 0.6) : 0;
 
-    // Weighted Fitness Calculation
-    const w = this.config.weights;
-    let fitness = (w.validation * vScore) + (w.boundary * bScore) + (w.security * sScore) + (w.diversity * dScore) - penalty;
+    // --- 6. Priority Score ---
+    const category = this.categorizeTestCase(c);
+    let pScore = 0.4;
+    if (category === 'boundary') {
+      pScore = 1.0;
+    } else if (category === 'negative') {
+      pScore = 0.7;
+    }
+
+    // Fixed weights: w1=0.4, w2=0.2, w3=0.1, w4=0.3, w5=0.5
+    const w1 = 0.4; // Coverage (vScore)
+    const w2 = 0.2; // Diversity (dScore)
+    const w3 = 0.1; // Priority (pScore)
+    const w4 = 0.3; // Boundary (bScore)
+    const w5 = 0.5; // Penalty
+    let fitness = (w1 * vScore) + (w2 * dScore) + (w3 * pScore) + (w4 * bScore) - (w5 * penalty);
     fitness = Math.max(0.01, Math.min(fitness, 1.0));
 
     return {
       fitness,
-      scoreBreakdown: { vScore, bScore, sScore, dScore, penalty }
+      scoreBreakdown: { vScore, bScore, pScore, dScore, penalty }
     };
   }
 
@@ -640,31 +640,27 @@ export class GeneticEngine {
           if (isNaN(num)) {
             mutatedRecord[field.name] = generateRandomValue(field, 'valid');
           } else {
-            if (rand < 0.35) {
+            if (rand < 0.5) {
               // Gaussian perturbation
               const sigma = Math.max(0.5, (this.maxGenerations - this.generation) / this.maxGenerations * 5);
               let newVal = num + gaussRandom(0, sigma);
               if (field.minValue !== undefined) newVal = Math.max(field.minValue - 2, newVal);
               if (field.maxValue !== undefined) newVal = Math.min(field.maxValue + 2, newVal);
               mutatedRecord[field.name] = newVal;
-            } else if (rand < 0.65) {
-              mutatedRecord[field.name] = generateRandomValue(field, 'boundary');
             } else {
-              mutatedRecord[field.name] = generateRandomValue(field, 'security');
+              mutatedRecord[field.name] = generateRandomValue(field, 'boundary');
             }
           }
         } else if (field.type === 'email' || field.type === 'card' || field.type === 'phone') {
-          if (rand < 0.4) {
+          if (rand < 0.5) {
             if (valStr.length > 3) {
               const idx = Math.floor(Math.random() * valStr.length);
               mutatedRecord[field.name] = valStr.substring(0, idx) + valStr.substring(idx + 1);
             } else {
               mutatedRecord[field.name] = generateRandomValue(field, 'valid');
             }
-          } else if (rand < 0.7) {
-            mutatedRecord[field.name] = generateRandomValue(field, 'boundary');
           } else {
-            mutatedRecord[field.name] = generateRandomValue(field, 'security');
+            mutatedRecord[field.name] = generateRandomValue(field, 'boundary');
           }
         } else {
           // ENUM-AWARE: mutate within allowedValues if present
@@ -683,10 +679,8 @@ export class GeneticEngine {
             mutatedRecord[field.name] = valStr.substring(0, idx) + char + valStr.substring(idx);
           } else if (rand < 0.6) {
             mutatedRecord[field.name] = Math.random() > 0.5 ? valStr.toUpperCase() : valStr.toLowerCase();
-          } else if (rand < 0.8) {
-            mutatedRecord[field.name] = generateRandomValue(field, 'boundary');
           } else {
-            mutatedRecord[field.name] = generateRandomValue(field, 'security');
+            mutatedRecord[field.name] = generateRandomValue(field, 'boundary');
           }
         }
       }
@@ -710,7 +704,7 @@ export class GeneticEngine {
     const preserveCount = Math.max(1, Math.floor(this.config.popSize * 0.2));
     const preserved = this.population.slice(0, preserveCount);
 
-    const modes: ('valid' | 'invalid' | 'boundary' | 'security')[] = ['valid', 'boundary', 'security', 'valid'];
+    const modes: ('valid' | 'invalid' | 'boundary')[] = ['valid', 'boundary', 'invalid', 'valid'];
     const newIndividuals: typeof this.population = [];
     while (newIndividuals.length < (this.config.popSize - preserveCount)) {
       const record: Chromosome = {};
@@ -837,7 +831,6 @@ export class GeneticEngine {
     // --- Individual field coverage (full population) ---
     let totalValid = 0;
     const boundariesChecked = new Set<string>();
-    const securityChecked = new Set<string>();
 
     for (const tc of rawValues) {
       for (const field of this.schema) {
@@ -869,12 +862,6 @@ export class GeneticEngine {
             if (field.maxLength !== undefined && valStr.length === field.maxLength - 1) boundariesChecked.add(`${name}_max_near`);
           }
         }
-
-        // Security check
-        const securityKeywords = ["' or", '" or', '--', 'union', 'select', '<script'];
-        if (securityKeywords.some(kw => valStr.toLowerCase().includes(kw))) {
-          securityChecked.add(`${name}_security`);
-        }
       }
     }
 
@@ -885,15 +872,12 @@ export class GeneticEngine {
     const possibleBounds = this.schema.length * 4; // 2 exact + 2 near per field
     const boundFactor = possibleBounds > 0 ? boundariesChecked.size / possibleBounds : 0;
 
-    const possibleSec = this.schema.length;
-    const secFactor = possibleSec > 0 ? securityChecked.size / possibleSec : 0;
-
     // Pairwise coverage
     const pairwise = this.computePairwiseCoverage(rawValues);
 
-    // Composite: 55% validation + 15% boundary + 10% security + 20% pairwise
+    // Composite: 60% validation + 20% boundary + 20% pairwise
     let coverage = Math.min(
-      (valFactor * 0.55) + (boundFactor * 0.15) + (secFactor * 0.10) + (pairwise * 0.20),
+      (valFactor * 0.60) + (boundFactor * 0.20) + (pairwise * 0.20),
       1.0
     );
 
@@ -912,8 +896,6 @@ export class GeneticEngine {
     const categorizeValue = (field: FieldConstraint, val: any): string => {
       const valStr = String(val);
       if (valStr === '') return 'empty';
-      if (valStr.toLowerCase().startsWith("' or") || valStr.toLowerCase().startsWith("'or")) return 'sqli';
-      if (valStr.toLowerCase().includes('<script') || valStr.toLowerCase().includes('onload')) return 'xss';
       if (field.type === 'number') {
         const num = Number(val);
         if (isNaN(num)) return 'invalid';
@@ -932,7 +914,7 @@ export class GeneticEngine {
     };
 
     const getPossibleCategories = (field: FieldConstraint): string[] => {
-      const cats = ['empty', 'valid', 'sqli', 'xss'];
+      const cats = ['empty', 'valid'];
       if (field.type === 'number') {
         cats.push('invalid');
         if (field.minValue !== undefined) {
@@ -1002,18 +984,17 @@ export class GeneticEngine {
       coverageValue: 0, // will be computed
     }));
 
-    // Priority order: security > boundary > negative > positive
+    // Priority order: boundary > negative > positive
     const priorityOrder: Record<string, number> = {
-      'security': 0,
-      'boundary': 1,
-      'negative': 2,
-      'positive': 3,
-      'happy': 3,
+      'boundary': 0,
+      'negative': 1,
+      'positive': 2,
+      'happy': 2,
     };
 
     // Sort by priority (keep essential cases first)
     categorized.sort((a, b) =>
-      (priorityOrder[a.category] ?? 4) - (priorityOrder[b.category] ?? 4)
+      (priorityOrder[a.category] ?? 3) - (priorityOrder[b.category] ?? 3)
     );
 
     // Greedy selection: add cases that contribute new coverage
@@ -1022,7 +1003,7 @@ export class GeneticEngine {
     const uniqueFingerprints = new Set<string>();
 
     // First pass: ensure we have at least one from each category
-    for (const cat of ['security', 'boundary', 'negative', 'positive', 'happy']) {
+    for (const cat of ['boundary', 'negative', 'positive', 'happy']) {
       const match = categorized.find(c => c.category === cat && !selectedIndices.has(c.idx));
       if (match) {
         const fp = JSON.stringify(Object.entries(match.tc).sort());
@@ -1041,7 +1022,7 @@ export class GeneticEngine {
       const fp = JSON.stringify(Object.entries(item.tc).sort());
       if (uniqueFingerprints.has(fp)) continue; // absolute duplicate
 
-      // Check if this adds new boundary/security coverage
+      // Check if this adds new boundary coverage
       let addsCoverage = false;
       for (const field of this.schema) {
         const val = item.tc[field.name];
@@ -1077,15 +1058,6 @@ export class GeneticEngine {
               return field.maxLength !== undefined && sv.length === field.maxLength;
             })) addsCoverage = true;
           }
-        }
-
-        // Check security
-        const secKW = ["' or", '" or', '--', 'union', '<script'];
-        if (secKW.some(kw => valStr.toLowerCase().includes(kw))) {
-          if (!selected.some(s => {
-            const sv = String(s[field.name]);
-            return secKW.some(kw => sv.toLowerCase().includes(kw));
-          })) addsCoverage = true;
         }
       }
 
@@ -1123,17 +1095,6 @@ export class GeneticEngine {
   }
 
   private categorizeTestCase(tc: Chromosome): string {
-    let isSecurity = false;
-    const securityKeywords = ["' or", '" or', "'or", '"or', '--', 'union', 'select', 'drop table', '<script', 'onload=', 'onerror=', 'javascript:'];
-
-    for (const val of Object.values(tc)) {
-      const str = String(val).toLowerCase();
-      if (securityKeywords.some(kw => str.includes(kw))) {
-        isSecurity = true;
-      }
-    }
-    if (isSecurity) return 'security';
-
     let hasInvalid = false;
     let hasBoundary = false;
 
@@ -1189,7 +1150,6 @@ export class GeneticEngine {
     const rawValues = testCases;
     let totalValid = 0;
     const boundariesChecked = new Set<string>();
-    const securityChecked = new Set<string>();
 
     for (const tc of rawValues) {
       for (const field of this.schema) {
@@ -1213,11 +1173,6 @@ export class GeneticEngine {
             if (field.maxLength !== undefined && valStr.length === field.maxLength) boundariesChecked.add(`${name}_max`);
           }
         }
-
-        const securityKeywords = ["' or", '" or', '--', 'union', 'select', '<script'];
-        if (securityKeywords.some(kw => valStr.toLowerCase().includes(kw))) {
-          securityChecked.add(`${name}_security`);
-        }
       }
     }
 
@@ -1228,9 +1183,6 @@ export class GeneticEngine {
     const possibleBounds = this.schema.length * 2;
     const boundFactor = possibleBounds > 0 ? boundariesChecked.size / possibleBounds : 0;
 
-    const possibleSec = this.schema.length;
-    const secFactor = possibleSec > 0 ? securityChecked.size / possibleSec : 0;
-
-    return Math.min((valFactor * 0.6) + (boundFactor * 0.25) + (secFactor * 0.15), 1.0);
+    return Math.min((valFactor * 0.7) + (boundFactor * 0.3), 1.0);
   }
 }

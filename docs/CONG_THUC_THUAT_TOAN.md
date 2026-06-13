@@ -9,7 +9,7 @@
 1. [Hàm thích nghi (Fitness Function)](#1-hàm-thích-nghi-fitness-function)
 2. [Điểm Validation (Tính hợp lệ)](#2-điểm-validation-tính-hợp-lệ)
 3. [Điểm Boundary (Bao phủ biên)](#3-điểm-boundary-bao-phủ-biên)
-4. [Điểm Security (Bảo mật)](#4-điểm-security-bảo-mật)
+4. [Điểm Priority (Mức độ ưu tiên)](#4-điểm-priority-mức-độ-ưu-tiên)
 5. [Điểm Diversity (Độ đa dạng)](#5-điểm-diversity-độ-đa-dạng)
 6. [Penalty (Phạt trùng lặp)](#6-penalty-phạt-trùng-lặp)
 7. [Tỷ lệ đột biến & lai ghép thích nghi (Adaptive Rates)](#7-tỷ-lệ-đột-biến--lai-ghép-thích-nghi)
@@ -25,14 +25,14 @@
 
 ## 1. Hàm thích nghi (Fitness Function)
 
-**Vị trí:** `backend/app/algorithms/optimizer_engine.py` (dòng 437–442)
+**Vị trí:** `backend/app/algorithms/optimizer_engine.py` (dòng 409–422)
 
 Đây là công thức trung tâm của Giải thuật Di truyền (GA), dùng để chấm điểm chất lượng mỗi Test Case. Fitness là tổng có trọng số của 4 thành phần, trừ đi hình phạt trùng lặp.
 
 ### Công thức
 
 $$
-\text{Fitness} = w_v \cdot S_v + w_b \cdot S_b + w_s \cdot S_s + w_d \cdot S_d - P
+\text{Fitness} = w_v \cdot S_v + w_b \cdot S_b + w_p \cdot S_p + w_d \cdot S_d - P
 $$
 
 $$
@@ -43,22 +43,21 @@ Trong đó:
 
 | Ký hiệu | Thành phần | Trọng số mặc định |
 |---------|-----------|-------------------|
-| $S_v$ | Validation Score (điểm hợp lệ) | $w_v = 0.5$ |
-| $S_b$ | Boundary Score (điểm bao phủ biên) | $w_b = 0.2$ |
-| $S_s$ | Security Score (điểm bảo mật) | $w_s = 0.2$ |
-| $S_d$ | Diversity Score (điểm đa dạng) | $w_d = 0.1$ |
-| $P$ | Penalty (phạt trùng lặp) | — |
+| $S_v$ | Validation/Coverage Score (điểm hợp lệ/bao phủ) | $w_v = 0.4$ |
+| $S_b$ | Boundary Score (điểm bao phủ biên) | $w_b = 0.3$ |
+| $S_p$ | Priority Score (điểm ưu tiên) | $w_p = 0.1$ |
+| $S_d$ | Diversity Score (điểm đa dạng) | $w_d = 0.2$ |
+| $P$ | Penalty (phạt trùng lặp, hệ số $0.5$) | — |
 
 Giá trị Fitness luôn được giới hạn (clamp) trong khoảng **[0.01, 1.0]**.
 
 ### Mã nguồn
 
 ```python
-# Calculate final fitness based on weights
-w = self.config["weights"]
-fitness = (w["validation"] * v_score) + (w["boundary"] * b_score) \
-        + (w["security"] * s_score) + (w["diversity"] * d_score) - penalty
-fitness = max(0.01, min(fitness, 1.0))
+        # Calculate final fitness based on weights
+        w1, w2, w3, w4, w5 = 0.4, 0.2, 0.1, 0.3, 0.5
+        fitness = (w1 * v_score) + (w2 * d_score) + (w3 * p_score) + (w4 * b_score) - (w5 * penalty)
+        fitness = max(0.01, min(fitness, 1.0))
 ```
 
 ---
@@ -170,34 +169,34 @@ b_score = min(boundary_score / num_fields, 1.0)
 
 ---
 
-## 4. Điểm Security (Bảo mật)
+## 4. Điểm Priority (Mức độ ưu tiên)
 
-**Vị trí:** `optimizer_engine.py` (dòng 409–420)
+**Vị trí:** `optimizer_engine.py` (dòng 409–417)
 
-Đếm số trường chứa payload tấn công (SQL Injection / XSS).
+Đánh giá mức độ quan trọng và ưu tiên kiểm thử của Test Case dựa trên phân loại ngữ cảnh.
 
 ### Công thức
 
 $$
-S_s = \min\left( \frac{1}{N} \sum_{i=1}^{N} \mathbb{1}[\text{trường } i \text{ chứa từ khóa tấn công}],\ 1.0 \right)
+S_p =
+\begin{cases}
+1.0 & \text{nếu là ca kiểm thử biên (boundary)} \\
+0.7 & \text{nếu là ca kiểm thử lỗi dữ liệu (negative)} \\
+0.4 & \text{nếu là ca kiểm thử chuẩn hợp lệ (positive)}
+\end{cases}
 $$
-
-Trong đó $\mathbb{1}[\cdot]$ là hàm chỉ thị (bằng 1 nếu đúng, 0 nếu sai).
-
-Tập từ khóa được kiểm tra: `' or`, `" or`, `--`, `union`, `select`, `drop table`, `<script`, `onload=`, `onerror=`.
 
 ### Mã nguồn
 
 ```python
-security_keywords = ["' or", '" or', "--", "union", "select",
-                     "drop table", "<script", "onload=", "onerror="]
-val_lower = val_str.lower()
-if any(kw in val_lower for kw in security_keywords):
-    is_security = True
-if is_security:
-    security_score += 1
-...
-s_score = min(security_score / num_fields, 1.0)
+        # --- 6. Priority (Dynamic, evaluated on the fly) ---
+        category = self._categorize_testcase(test_case)
+        if category == "boundary":
+            p_score = 1.0
+        elif category == "negative":
+            p_score = 0.7
+        else:
+            p_score = 0.4
 ```
 
 ---
@@ -460,22 +459,21 @@ preserve_count = max(1, int(self.config["popSize"] * 0.2))
 
 ## 11. Độ bao phủ tổng hợp (Composite Coverage)
 
-**Vị trí:** `optimizer_engine.py` — `_compute_full_coverage` (dòng 870–951)
+**Vị trí:** `optimizer_engine.py` — `_compute_full_coverage` (dòng 860–934)
 
-Đo độ bao phủ của cả quần thể, kết hợp 4 yếu tố, sau đó chiết khấu theo tỷ lệ trùng lặp.
+Đo độ bao phủ của cả quần thể, kết hợp các yếu tố, sau đó chiết khấu theo tỷ lệ trùng lặp.
 
 ### Công thức
 
 $$
-\text{Coverage} = \min\Big( 0.55 \cdot f_{val} + 0.15 \cdot f_{bound} + 0.10 \cdot f_{sec} + 0.20 \cdot f_{pair},\ 1.0 \Big)
+\text{Coverage} = \min\Big( 0.60 \cdot f_{val} + 0.20 \cdot f_{bound} + 0.20 \cdot f_{pair},\ 1.0 \Big)
 $$
 
 Trong đó:
 
 $$
 f_{val} = \frac{\text{số trường hợp lệ}}{\text{tổng số test} \times N}, \quad
-f_{bound} = \frac{|\text{biên đã chạm}|}{4N}, \quad
-f_{sec} = \frac{|\text{trường có payload}|}{N}
+f_{bound} = \frac{|\text{biên đã chạm}|}{4N}
 $$
 
 ($4N$ vì mỗi trường có 4 biên: 2 chính xác + 2 gần biên).
@@ -495,26 +493,27 @@ $$
 ### Mã nguồn
 
 ```python
-coverage = min(
-    (val_factor * 0.55) + (bound_factor * 0.15) +
-    (sec_factor * 0.10) + (pairwise_coverage * 0.20),
-    1.0
-)
+        # --- 3. Composite coverage ---
+        # 60% validation + 20% boundary + 20% pairwise
+        coverage = min(
+            (val_factor * 0.60) + (bound_factor * 0.20) + (pairwise_coverage * 0.20),
+            1.0
+        )
 dup_rate = self._compute_duplicate_rate()
 if dup_rate > 0.3:
     coverage *= (1.0 - (dup_rate - 0.3) * 0.5)
 return max(coverage, 0.01)
 ```
 
-> **Lưu ý:** Hàm `_compute_coverage_for_set` (dùng cho minimization) dùng trọng số khác: `0.6 * val + 0.25 * bound + 0.15 * sec` (chỉ 2 biên/trường).
+> **Lưu ý:** Hàm `_compute_coverage_for_set` (dùng cho minimization) dùng trọng số khác: `0.7 * val + 0.3 * bound` (chỉ 2 biên/trường).
 
 ---
 
 ## 12. Bao phủ cặp đôi (Pairwise Coverage)
 
-**Vị trí:** `optimizer_engine.py` — `_compute_pairwise_coverage` (dòng 953–1020)
+**Vị trí:** `optimizer_engine.py` — `_compute_pairwise_coverage` (dòng 944–1020)
 
-Đếm số tổ hợp cặp (trường $i$ = phân loại, trường $j$ = phân loại) được bao phủ. Mỗi giá trị được phân loại thành các danh mục: `valid`, `boundary_min/max`, `invalid_*`, `sqli`, `xss`, `empty`.
+Đếm số tổ hợp cặp (trường $i$ = phân loại, trường $j$ = phân loại) được bao phủ. Mỗi giá trị được phân loại thành các danh mục: `valid`, `boundary_min/max`, `invalid_*`, `empty`.
 
 ### Công thức
 
@@ -533,7 +532,7 @@ $$
 ```python
 # Xác định tập danh mục phân loại khả thi của một trường ràng buộc nghiệp vụ
 def get_possible_categories(field):
-    cats = ["empty", "valid", "sqli", "xss"]
+    cats = ["empty", "valid"]
     if field["type"] == "number":
         cats.append("invalid")
         if field.get("minValue") is not None:
@@ -645,45 +644,35 @@ elif temperature > 0.001:
 
 | Tham số | Ký hiệu | Giá trị | Vị trí |
 |---------|---------|---------|--------|
-| Trọng số Validation | $w_v$ | 0.5 | `main.py:674` |
-| Trọng số Boundary | $w_b$ | 0.2 | `main.py:674` |
-| Trọng số Security | $w_s$ | 0.2 | `main.py:674` |
-| Trọng số Diversity | $w_d$ | 0.1 | `main.py:674` |
-| Số thế hệ | $G$ | 60 | `optimizer_engine.py:211` |
-| Tỷ lệ đột biến ban đầu | $r_{mut}^{init}$ | 0.15 | `optimizer_engine.py:214` |
-| Tỷ lệ đột biến tối thiểu | $r_{mut}^{min}$ | 0.02 | `optimizer_engine.py:215` |
-| Tỷ lệ lai ghép ban đầu | $r_{cross}^{init}$ | 0.8 | `optimizer_engine.py:216` |
-| Tỷ lệ lai ghép tối thiểu | $r_{cross}^{min}$ | 0.45 | `optimizer_engine.py:217` |
-| Ngưỡng trì trệ | $T$ | 8 thế hệ | `optimizer_engine.py:221` |
-| Kích thước Hall of Fame | — | 20 | `optimizer_engine.py:225` |
-| Tỷ lệ Elitism | — | 5% | `optimizer_engine.py:774` |
-| Tỷ lệ tái tạo khi trì trệ | — | 80% (giữ 20%) | `optimizer_engine.py:732` |
+| Trọng số Coverage | $w_v$ | 0.4 | `main.py:670` |
+| Trọng số Boundary | $w_b$ | 0.3 | `main.py:670` |
+| Trọng số Priority | $w_p$ | 0.1 | (Cố định trong Engine) |
+| Trọng số Diversity | $w_d$ | 0.2 | `main.py:670` |
+| Số thế hệ | $G$ | 60 | `optimizer_engine.py:194` |
+| Tỷ lệ đột biến ban đầu | $r_{mut}^{init}$ | 0.15 | `optimizer_engine.py:197` |
+| Tỷ lệ đột biến tối thiểu | $r_{mut}^{min}$ | 0.02 | `optimizer_engine.py:198` |
+| Tỷ lệ lai ghép ban đầu | $r_{cross}^{init}$ | 0.8 | `optimizer_engine.py:199` |
+| Tỷ lệ lai ghép tối thiểu | $r_{cross}^{min}$ | 0.45 | `optimizer_engine.py:200` |
+| Ngưỡng trì trệ | $T$ | 8 thế hệ | `optimizer_engine.py:204` |
+| Kích thước Hall of Fame | — | 20 | `optimizer_engine.py:208` |
+| Tỷ lệ Elitism | — | 5% | `optimizer_engine.py:744` |
+| Tỷ lệ tái tạo khi trì trệ | — | 80% (giữ 20%) | `optimizer_engine.py:710` |
 | Nhiệt độ ban đầu (SA) | $T_0$ | 0.15 | `boundary_tweak.py:154` |
 | Tốc độ làm nguội (SA) | $\alpha$ | 0.85 | `boundary_tweak.py:155` |
 | Số lần Random Restart | — | 8 | `boundary_tweak.py:60` |
 | Tabu tenure | — | 5 | `boundary_tweak.py:160` |
-| Phạt mỗi bản trùng | — | 0.15 (tối đa 0.6) | `optimizer_engine.py:435` |
-| Kích thước giải đấu (Selection) | — | 3 | `optimizer_engine.py:574` |
+| Phạt mỗi bản trùng | — | 0.50 (tối đa 0.6) | `optimizer_engine.py:419` |
+| Kích thước giải đấu (Selection) | — | 3 | `optimizer_engine.py:577` |
 
 ---
 
-## PHỤ LỤC: Lưu ý về công thức hiển thị ở Frontend
+## PHỤ LỤC: Đồng bộ công thức hiển thị ở Frontend
 
-Giao diện có hiển thị một công thức **đơn giản hóa** khác với engine thực:
-
-**Vị trí:** `src/components/FitnessEvaluation.tsx:48` và `src/components/SpecInput.tsx:105`
-
-$$
-\text{Fitness}_{UI} = \frac{\text{Coverage} + \text{Diversity} + \text{Priority} + \text{Boundary}}{4}
-$$
+Hiện tại, giao diện đã được đồng bộ hoàn toàn để hiển thị chính xác công thức toán học và các trọng số thực tế của công cụ tối ưu hóa:
 
 ```typescript
-const finalFitness = Math.min(0.999, (coverage + diversity + priority + boundary) / 4);
+Fitness = (0.4 × Coverage) + (0.3 × Boundary) + (0.1 × Priority) + (0.2 × Diversity) - Penalty
 ```
-
-> ⚠️ Công thức này **chỉ dùng cho hiển thị minh họa** ở bước nhập liệu, KHÁC với hàm Fitness thực tế của engine (mục 1). Engine dùng 4 thành phần Validation/Boundary/Security/Diversity có trọng số; UI lại dùng Coverage/Diversity/Priority/Boundary chia trung bình. Đây là điểm nên đồng bộ nếu cần báo cáo nhất quán.
-
----
 
 *Tài liệu sinh từ phân tích mã nguồn — các file chính:*
 - `backend/app/algorithms/optimizer_engine.py` (Genetic Algorithm)

@@ -107,13 +107,13 @@ export const SpecInput: React.FC = () => {
         popSize: initialSeeds.length,
         crossoverRate: 0.8,
         mutationRate: 0.15,
-        weights: { validation: 0.5, boundary: 0.2, security: 0.2, diversity: 0.1 }
+        weights: { validation: 0.4, boundary: 0.3, security: 0.1, diversity: 0.2 }
       });
 
       const rawPop = initialSeeds;
       return initialSeeds.map((seed, idx) => {
         const result = engine.computeFitness(seed, rawPop);
-        const { vScore, bScore, sScore, dScore } = result.scoreBreakdown;
+        const { vScore, bScore, pScore, dScore } = result.scoreBreakdown;
         const finalFitness = result.fitness;
 
         let note = 'Trung bình';
@@ -125,7 +125,7 @@ export const SpecInput: React.FC = () => {
           testId: `F0-${idx + 1}`,
           validation: vScore,
           diversity: dScore,
-          security: sScore,
+          security: pScore,
           boundary: bScore,
           finalFitness,
           note,
@@ -263,18 +263,8 @@ export const SpecInput: React.FC = () => {
         /khoảng/gi,
         /chữ số/gi,
         /ký tự/gi,
-      ],
-      security: [
         /bắt buộc/gi,
         /required/gi,
-        /sql injection/gi,
-        /sqli/gi,
-        /xss/gi,
-        /script/gi,
-        /tấn công/gi,
-        /bảo mật/gi,
-        /payload/gi,
-        /khai thác/gi,
         /không được trống/gi,
       ],
     };
@@ -285,9 +275,7 @@ export const SpecInput: React.FC = () => {
         const color =
           className === 'highlight-type'
             ? 'var(--color-teal)'
-            : className === 'highlight-boundary'
-              ? 'var(--color-violet)'
-              : 'var(--color-rose)';
+            : 'var(--color-violet)';
         const styleString = `color: ${color}; font-weight: bold; text-shadow: 0 0 3px ${color}50;`;
         tokens.push({
           id,
@@ -297,7 +285,6 @@ export const SpecInput: React.FC = () => {
       });
     };
 
-    keywords.security.forEach((regex) => replaceWithToken(regex, 'highlight-security'));
     keywords.boundaries.forEach((regex) => replaceWithToken(regex, 'highlight-boundary'));
     keywords.types.forEach((regex) => replaceWithToken(regex, 'highlight-type'));
 
@@ -647,11 +634,11 @@ export const SpecInput: React.FC = () => {
 
     // Đồng bộ và tự động sinh ngẫu nhiên các giá trị hạt giống F0 cho trường mới này
     setInitialSeeds((prevSeeds) => {
-      // Sinh đa dạng các chế độ dữ liệu (valid, invalid, boundary, security) cho các ca hạt giống
-      const modes: ('valid' | 'invalid' | 'boundary' | 'security')[] = [
+      // Sinh đa dạng các chế độ dữ liệu (valid, invalid, boundary) cho các ca hạt giống
+      const modes: ('valid' | 'invalid' | 'boundary')[] = [
         'valid',
         'boundary',
-        'security',
+        'invalid',
         'valid',
       ];
       return prevSeeds.map((seed, idx) => {
@@ -782,10 +769,10 @@ export const SpecInput: React.FC = () => {
     const updatedField = updated[index];
     if (updatedField) {
       setInitialSeeds((prevSeeds) => {
-        const modes: ('valid' | 'invalid' | 'boundary' | 'security')[] = [
+        const modes: ('valid' | 'invalid' | 'boundary')[] = [
           'valid',
           'boundary',
-          'security',
+          'invalid',
           'valid',
         ];
         return prevSeeds.map((seed, idx) => {
