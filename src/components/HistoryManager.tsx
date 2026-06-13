@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import type { Chromosome } from '../algorithms/genetic';
 import { GeneticEngine } from '../algorithms/genetic';
 import type { FieldConstraint } from '../algorithms/presets';
-import { Download, FileSpreadsheet, FileJson, History, Database, AlertCircle, Trash2, Clock, ShieldAlert, Zap, Terminal, Code, Shrink, FileCode, Copy, X, Check } from 'lucide-react';
+import { Download, FileSpreadsheet, FileJson, History, Database, AlertCircle, Trash2, Clock, ShieldAlert, Zap, Terminal, Code, Shrink, FileCode, Copy, X, Check, Search, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
 
@@ -65,15 +65,23 @@ export const HistoryManager: React.FC = () => {
   const [apiSimStatus, setApiSimStatus] = useState<'idle' | 'loading' | 'success' | 'validation_error' | 'waf_blocked'>('idle');
   const [apiSimDetails, setApiSimDetails] = useState<any>(null);
   
-  // Trạng thái chạy hàng loạt (Batch Run All)
+  // Trạng thái chạy hàng loạt (Batch Run All) nâng cao
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
+  const [batchResults, setBatchResults] = useState<{
+    id: string;
+    index: number;
+    status: 'success' | 'validation_error' | 'waf_blocked';
+    details: any;
+    record: Chromosome;
+  }[]>([]);
   const [batchSummary, setBatchSummary] = useState<{
     total: number;
     passed: number;
     validationErrors: number;
     wafBlocked: number;
   } | null>(null);
+  const [batchLogFilter, setBatchLogFilter] = useState<'all' | 'error'>('all');
 
   // Minimize state
   const [isMinimizing, setIsMinimizing] = useState(false);
@@ -349,202 +357,165 @@ ${values};
     });
   };
 
+  // --- HÀM HELPER: KIỂM DUYỆT DỮ LIỆU (VALIDATION ENGINE) ---
+  const validateRecord = (record: Chromosome) => {
+    let isSecurity = false;
+    let isValidationError = false;
+    const errors: Record<string, string> = {};
+
+    // 1. Security Check (WAF blocks)
+    Object.keys(record).forEach(key => {
+      const valStr = String(record[key]);
+      if (valStr.includes("'") || valStr.includes("<script") || valStr.includes("--")) {
+        isSecurity = true;
+      }
+    });
+
+    if (isSecurity) {
+      return {
+        status: 'waf_blocked' as const,
+        details: {
+          status: 403,
+          statusText: 'Forbidden',
+          message: 'BỊ CHẶN BỞI WAF: Phát hiện dấu hiệu tấn công.',
+          wafRule: 'SQLi/XSS-Generic-Shield'
+        }
+      };
+    }
+
+    // 2. Business Validation (Dựa trên schema hoặc heuristics)
+    Object.keys(record).forEach(key => {
+      const val = record[key];
+      const valStr = String(val);
+
+      if ((key === 'email' || key === 'beneficiaryEmail') && (!valStr.includes('@') || !valStr.includes('.'))) {
+        isValidationError = true;
+        errors[key] = 'Email không hợp lệ.';
+      }
+      if (key === 'phone' && !/^(03|05|07|08|09)\d{8}$/.test(valStr)) {
+        isValidationError = true;
+        errors[key] = 'SĐT không hợp lệ.';
+      }
+      if (key === 'cardNumber' && !/^\d{16}$/.test(valStr)) {
+        isValidationError = true;
+        errors[key] = 'Số thẻ phải 16 chữ số.';
+      }
+      if (key === 'cvv' && !/^\d{3}$/.test(valStr)) {
+        isValidationError = true;
+        errors[key] = 'CVV phải 3 chữ số.';
+      }
+      if (key === 'policyNumber' && !/^[A-Z]{3}-\d{6}$/.test(valStr)) {
+        isValidationError = true;
+        errors[key] = 'Sai định dạng POL-123456.';
+      }
+      if (key === 'age') {
+        const n = Number(val);
+        if (isNaN(n) || n < 18 || n > 100) {
+          isValidationError = true;
+          errors[key] = 'Tuổi phải từ 18-100.';
+        }
+      }
+      if (key === 'amount') {
+        const n = Number(val);
+        if (isNaN(n) || n < 1 || n > 50000) {
+          isValidationError = true;
+          errors[key] = 'Số tiền 1-50,000 USD.';
+        }
+      }
+      if (key === 'monthlyIncome') {
+        const n = Number(val);
+        if (isNaN(n) || n < 10000 || n > 1000000) {
+          isValidationError = true;
+          errors[key] = 'Thu nhập 10k-1M USD.';
+        }
+      }
+      if (key === 'username' && (valStr.length < 5 || valStr.length > 15 || !/^[a-zA-Z0-9]+$/.test(valStr))) {
+        isValidationError = true;
+        errors[key] = 'Username 5-15 ký tự.';
+      }
+    });
+
+    if (isValidationError) {
+      return {
+        status: 'validation_error' as const,
+        details: {
+          status: 400,
+          statusText: 'Bad Request',
+          message: 'Lỗi kiểm duyệt dữ liệu.',
+          errors
+        }
+      };
+    }
+
+    return {
+      status: 'success' as const,
+      details: {
+        status: 200,
+        statusText: 'OK',
+        message: 'Dữ liệu hợp lệ.',
+        transactionId: `TXN-${Math.random().toString(36).substr(2, 7).toUpperCase()}`
+      }
+    };
+  };
+
   // --- HÀM CHẠY HÀNG LOẠT (BATCH RUN ALL) ---
   const handleBatchRunAll = async () => {
     if (optimizedDataset.length === 0 || batchRunning) return;
+    
     setBatchRunning(true);
     setBatchProgress(0);
     setBatchSummary(null);
+    setBatchResults([]);
     setApiSimStatus('idle');
     setSelectedRecord(null);
-
+    
+    const total = optimizedDataset.length;
+    const results = [];
     let passed = 0;
     let validationErrors = 0;
     let wafBlocked = 0;
-    const total = optimizedDataset.length;
 
+    // Chạy tuần tự để tạo hiệu ứng thanh tiến trình
     for (let i = 0; i < total; i++) {
       const record = optimizedDataset[i];
-      setBatchProgress(Math.round(((i + 1) / total) * 100));
-
-      // Kiểm tra WAF
-      let isSecurity = false;
-      let isValidationError = false;
-      Object.keys(record).forEach(key => {
-        const valStr = String(record[key]);
-        if (valStr.includes("'") || valStr.includes('<script') || valStr.includes('--')) {
-          isSecurity = true;
-        }
-      });
-      if (isSecurity) { wafBlocked++; continue; }
-
-      // Kiểm tra validation
-      Object.keys(record).forEach(key => {
-        const val = record[key];
-        const valStr = String(val);
-        if (key === 'email' || key === 'beneficiaryEmail') {
-          if (!valStr.includes('@') || !valStr.includes('.')) isValidationError = true;
-        }
-        if (key === 'phone' && !/^(03|05|07|08|09)\d{8}$/.test(valStr)) isValidationError = true;
-        if (key === 'cardNumber' && !/^\d{16}$/.test(valStr)) isValidationError = true;
-        if (key === 'cvv' && !/^\d{3}$/.test(valStr)) isValidationError = true;
-        if (key === 'age') { const n = Number(val); if (isNaN(n) || n < 18 || n > 100) isValidationError = true; }
-        if (key === 'amount') { const n = Number(val); if (isNaN(n) || n < 1 || n > 50000) isValidationError = true; }
-        if (key === 'username' && (valStr.length < 5 || valStr.length > 15 || !/^[a-zA-Z0-9]+$/.test(valStr))) isValidationError = true;
-      });
-
-      if (isValidationError) { validationErrors++; } else { passed++; }
+      const validation = validateRecord(record);
       
-      // Giả lập độ trễ 5ms giữa mỗi ca
-      await new Promise(res => setTimeout(res, 5));
+      const result = {
+        id: (record.id || record._id || `TC-${i+1}`).toString(),
+        index: i + 1,
+        status: validation.status,
+        details: validation.details,
+        record: record
+      };
+      
+      results.push(result);
+      if (validation.status === 'success') passed++;
+      else if (validation.status === 'validation_error') validationErrors++;
+      else if (validation.status === 'waf_blocked') wafBlocked++;
+
+      // Update UI every 5 records to maintain performance
+      if (i % 5 === 0 || i === total - 1) {
+        setBatchProgress(Math.round(((i + 1) / total) * 100));
+        await new Promise(res => setTimeout(res, 0));
+      }
     }
 
+    setBatchResults(results);
     setBatchSummary({ total, passed, validationErrors, wafBlocked });
     setBatchRunning(false);
-    setBatchProgress(100);
   };
 
-  // --- HÀM MÔ PHỎNG PHẢN HỒI API (LIVE API RESPONSE SIMULATOR) ---
+  // --- HÀM MÔ PHỎNG PHẢN HỒI API (SINGLE TEST) ---
   const handleSimulateAPI = (record: Chromosome, index: number) => {
     setSelectedRecord(record);
     setSelectedRecordIdx(index);
     setApiSimStatus('loading');
     
     setTimeout(() => {
-      let isSecurity = false;
-      let isValidationError = false;
-      const errors: Record<string, string> = {};
-
-      // 1. Security Check (WAF blocks)
-      Object.keys(record).forEach(key => {
-        const valStr = String(record[key]);
-        if (valStr.includes("'") || valStr.includes("<script") || valStr.includes("--")) {
-          isSecurity = true;
-        }
-      });
-
-      if (isSecurity) {
-        setApiSimStatus('waf_blocked');
-        setApiSimDetails({
-          status: 403,
-          statusText: 'Forbidden (Blocked by WAF)',
-          message: 'BỊ CHẶN BỞI TƯỜNG LỬA (WAF BLOCK): Phát hiện mẫu ký tự bất thường hoặc payload tấn công độc hại!',
-          wafRule: 'OWASP-CRS-V3.3-SQL-INJECTION-DETECTION',
-          signature: 'SIGNATURE-BLOCK#XSS-SQLi-ALERT-2026',
-          timestamp: new Date().toISOString(),
-          ipAddress: '103.48.15.22',
-          userAgent: 'Mozilla/5.0 (Playwright-Agent; Headless)'
-        });
-        return;
-      }
-
-      // 2. Validation Check
-      Object.keys(record).forEach(key => {
-        const val = record[key];
-        const valStr = String(val);
-
-        if (key === 'email' || key === 'beneficiaryEmail') {
-          if (!valStr.includes('@') || !valStr.includes('.')) {
-            isValidationError = true;
-            errors[key] = 'Địa chỉ email không đúng định dạng RFC 5322 (Thiếu ký tự "@" hoặc phần mở rộng tên miền).';
-          }
-        }
-        
-        if (key === 'phone') {
-          if (!/^(03|05|07|08|09)\d{8}$/.test(valStr)) {
-            isValidationError = true;
-            errors[key] = 'Số điện thoại không đúng định dạng mạng viễn thông Việt Nam (Cần bắt đầu bằng 03/05/07/08/09 và dài đúng 10 số).';
-          }
-        }
-
-        if (key === 'cardNumber') {
-          if (!/^\d{16}$/.test(valStr)) {
-            isValidationError = true;
-            errors[key] = 'Mã số thẻ thanh toán không hợp lệ (Phải là chuỗi gồm đúng 16 ký tự số nguyên dương).';
-          }
-        }
-
-        if (key === 'cvv') {
-          if (!/^\d{3}$/.test(valStr)) {
-            isValidationError = true;
-            errors[key] = 'Mã số CVV bảo mật không hợp lệ (Phải là chuỗi dài đúng 3 ký tự số).';
-          }
-        }
-
-        if (key === 'policyNumber') {
-          if (!/^[A-Z]{3}-\d{6}$/.test(valStr)) {
-            isValidationError = true;
-            errors[key] = 'Mã đơn bảo hiểm VIP không hợp lệ (Phải tuân thủ định dạng 3 chữ cái viết hoa đầu, theo sau bởi dấu gạch ngang và 6 chữ số, e.g., POL-123456).';
-          }
-        }
-
-        if (key === 'age') {
-          const num = Number(val);
-          if (isNaN(num) || num < 18 || num > 100) {
-            isValidationError = true;
-            errors[key] = 'Độ tuổi tham gia không đáp ứng biên quy định (Phải từ 18 tuổi đến 100 tuổi).';
-          }
-        }
-
-        if (key === 'amount') {
-          const num = Number(val);
-          if (isNaN(num) || num < 1 || num > 50000) {
-            isValidationError = true;
-            errors[key] = 'Số tiền giao dịch vượt ngoài biên cho phép (Yêu cầu lớn hơn 0 và tối đa 50,000 USD).';
-          }
-        }
-
-        if (key === 'monthlyIncome') {
-          const num = Number(val);
-          if (isNaN(num) || num < 10000 || num > 1000000) {
-            isValidationError = true;
-            errors[key] = 'Thu nhập hàng tháng của VIP nằm ngoài biên phê duyệt bảo hiểm (Yêu cầu tối thiểu từ 10,000 USD đến 1,000,000 USD).';
-          }
-        }
-
-        if (key === 'preExistingConditions') {
-          const allowed = ['None', 'HeartDisease', 'Diabetes', 'Hypertension'];
-          if (!allowed.includes(valStr)) {
-            isValidationError = true;
-            errors[key] = `Tình trạng bệnh lý nền không nằm trong danh mục kê khai cho phép: ${allowed.join(', ')}.`;
-          }
-        }
-
-        if (key === 'username') {
-          if (valStr.length < 5 || valStr.length > 15 || !/^[a-zA-Z0-9]+$/.test(valStr)) {
-            isValidationError = true;
-            errors[key] = 'Tên đăng nhập không đúng đặc tả (Yêu cầu độ dài 5-15 ký tự và chỉ chứa chữ cái hoặc số).';
-          }
-        }
-
-        if (key === 'fullName') {
-          if (valStr.length < 2 || valStr.length > 50) {
-            isValidationError = true;
-            errors[key] = 'Họ và tên không hợp lệ (Độ dài yêu cầu từ 2 đến 50 ký tự học thuật chuẩn).';
-          }
-        }
-      });
-
-      if (isValidationError) {
-        setApiSimStatus('validation_error');
-        setApiSimDetails({
-          status: 400,
-          statusText: 'Bad Request',
-          message: 'LỖI KIỂM DUYỆT (VALIDATION ERROR): Một hoặc nhiều trường dữ liệu không đáp ứng ràng buộc nghiệp vụ.',
-          errors,
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        setApiSimStatus('success');
-        setApiSimDetails({
-          status: 200,
-          statusText: 'OK',
-          message: 'GỬI YÊU CẦU THÀNH CÔNG (SUCCESS): Bản ghi dữ liệu hoàn toàn hợp lệ, form đã được phê duyệt.',
-          transactionId: `TXN-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-          timestamp: new Date().toISOString()
-        });
-      }
-    }, 800);
+      const validation = validateRecord(record);
+      setApiSimStatus(validation.status);
+      setApiSimDetails(validation.details);
+    }, 600);
   };
 
   // --- PHÂN LOẠI CA KIỂM THỬ ĐỂ HỖ TRỢ BỘ LỌC CHÍNH XÁC ---
@@ -607,7 +578,7 @@ ${values};
       <div className="grid-2" style={{ gap: '20px' }}>
       
       {/* CỘT BÊN TRÁI: KHÔNG GIAN ĐIỀU KHIỂN XUẤT DỮ LIỆU & LỊCH SỬ PHIÊN CHẠY */}
-      <div className="glass-card flex flex-col gap-md teal-border" style={{ background: 'var(--bg-card)' }}>
+      <div className="glass-card flex flex-col gap-md teal-border" style={{ background: 'var(--bg-card)', minWidth: 0 }}>
         <div className="flex align-center gap-sm" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
           <History className="text-teal" size={22} style={{ color: 'var(--color-teal)' }} />
           <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: 'var(--text-primary)', letterSpacing: '0.03em' }}>TRUNG TÂM XUẤT DỮ LIỆU &amp; LỊCH SỬ</h2>
@@ -814,81 +785,92 @@ ${values};
             {/* Minimize result summary */}
             {minimizeResult && (
               <div style={{
-                padding: '8px 12px',
-                background: 'rgba(225, 29, 72, 0.04)',
+                padding: '10px 14px',
+                background: 'linear-gradient(135deg, rgba(225, 29, 72, 0.05) 0%, rgba(225, 29, 72, 0.02) 100%)',
                 border: '1px solid rgba(225, 29, 72, 0.15)',
-                borderRadius: '6px',
+                borderRadius: '10px',
                 fontSize: '11.5px',
                 color: 'var(--text-secondary)',
                 display: 'flex',
                 justifyContent: 'space-between',
+                alignItems: 'center',
                 flexWrap: 'wrap',
-                gap: '4px',
-                marginTop: '8px'
+                gap: '12px',
+                marginTop: '12px',
+                boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)'
               }}>
-                <span>{minimizeResult.original} → <b style={{color:'var(--color-rose)'}}>{minimizeResult.minimized}</b> cases</span>
-                <span>Đã loại bỏ: <b>{minimizeResult.removed}</b></span>
-                <span>Coverage: <b style={{color:'var(--color-teal)'}}>{(minimizeResult.coverage * 100).toFixed(0)}%</b></span>
+                <div className="flex align-center gap-xs">
+                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-rose)' }} />
+                  <span>Hiệu quả: {minimizeResult.original} → <b style={{color:'var(--color-rose)', fontSize: '13px'}}>{minimizeResult.minimized}</b> cases</span>
+                </div>
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  <span>Loại bỏ: <b style={{ fontWeight: '700' }}>{minimizeResult.removed}</b></span>
+                  <span>Coverage: <b style={{color:'var(--color-teal)', fontWeight: '700'}}>{(minimizeResult.coverage * 100).toFixed(0)}%</b></span>
+                </div>
               </div>
             )}
           </div>
         ) : (
-          <div className="flex align-center gap-sm" style={{ padding: '16px', background: 'rgba(0,0,0,0.01)', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', fontSize: '13px', justifyContent: 'center' }}>
-            <AlertCircle size={16} /> Hãy chạy tối ưu hóa ở Tab "Tối Ưu Hóa Bộ Test" để xuất dữ liệu.
+          <div className="flex align-center gap-sm" style={{ padding: '24px', background: 'rgba(0,0,0,0.01)', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-md)', color: 'var(--text-muted)', fontSize: '13px', justifyContent: 'center', textAlign: 'center', flexDirection: 'column' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(0,0,0,0.03)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' }}>
+              <Download size={20} style={{ opacity: 0.5 }} />
+            </div>
+            <span>Hãy chạy tối ưu hóa ở Tab "Tối Ưu Hóa Bộ Test" để xuất dữ liệu.</span>
           </div>
         )}
 
         {/* DANH SÁCH LỊCH SỬ CÁC LƯỢT CHẠY TRONG PHIÊN */}
         <div className="flex flex-col gap-sm" style={{ marginTop: '10px' }}>
-          <div className="flex justify-between align-center" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '6px' }}>
-            <h4 style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
-              Lịch sử các phiên chạy đã lưu
+          <div className="flex justify-between align-center" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px' }}>
+            <h4 style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Clock size={14} /> Lịch sử các phiên chạy
             </h4>
             {historyRuns.length > 0 && onClearHistory && (
               <button 
                 onClick={onClearHistory}
                 className="btn btn-secondary flex align-center gap-xs" 
-                style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--color-rose)', borderColor: 'rgba(225, 29, 72, 0.1)' }}
+                style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--color-rose)', borderColor: 'rgba(225, 29, 72, 0.1)', background: 'rgba(225, 29, 72, 0.02)' }}
               >
                 <Trash2 size={12} /> Xóa sạch
               </button>
             )}
           </div>
           
-          <div className="flex flex-col gap-sm" style={{ maxHeight: '200px', overflowY: 'auto', paddingRight: '4px' }}>
+          <div className="flex flex-col gap-sm" style={{ maxHeight: '220px', overflowY: 'auto', paddingRight: '4px' }}>
             {historyRuns.length === 0 ? (
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', padding: '24px 0', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', padding: '32px 0', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)', background: 'rgba(0,0,0,0.01)' }}>
                 Chưa có lượt chạy thành công nào được lưu trữ.
-              </span>
+              </div>
             ) : (
               historyRuns.map((run, idx) => (
                 <div 
                   key={idx} 
                   className="flex justify-between align-center card-hover-animation"
                   style={{ 
-                    background: 'rgba(0,0,0,0.02)', 
+                    background: 'var(--bg-card)', 
                     border: '1px solid var(--border-subtle)', 
-                    padding: '10px 14px', 
-                    borderRadius: '8px',
+                    padding: '12px 16px', 
+                    borderRadius: '10px',
                     fontSize: '12px',
-                    transition: 'all 0.3s'
+                    boxShadow: 'var(--shadow-xs)',
+                    transition: 'all 0.2s ease'
                   }}
                 >
                   <div className="flex flex-col gap-xs">
-                    <span style={{ fontWeight: 'bold', color: 'var(--color-teal)', fontSize: '12.5px' }}>{run.schemaName}</span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Clock size={10} /> {run.timestamp}
+                    <span style={{ fontWeight: 'bold', color: 'var(--text-primary)', fontSize: '13px' }}>{run.schemaName}</span>
+                    <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Clock size={11} /> {run.timestamp}
                     </span>
                   </div>
                   <div className="flex align-center gap-md">
                     <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: 'var(--text-primary)' }}>{(run.coverage * 100).toFixed(0)}%</span>
-                      <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Độ phủ</div>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: 'var(--color-teal)', fontSize: '14px' }}>{(run.coverage * 100).toFixed(0)}%</span>
+                      <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Coverage</div>
                     </div>
                     <button 
                       onClick={() => onLoadPastRun(run.data)}
                       className="btn btn-secondary" 
-                      style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold', borderColor: 'rgba(13, 148, 136, 0.2)', color: 'var(--color-teal)' }}
+                      style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: 'bold', borderColor: 'var(--color-teal)', color: 'var(--color-teal)', background: 'var(--brand-50)' }}
                     >
                       Nạp lại
                     </button>
@@ -901,7 +883,7 @@ ${values};
       </div>
  
       {/* CỘT BÊN PHẢI: BẢNG XEM TRƯỚC BẢN GHI DỮ LIỆU CHI TIẾT HOẶC XEM TRƯỚC CODE */}
-      <div className="glass-card flex flex-col gap-md violet-border" style={{ background: 'var(--bg-card)', minHeight: '520px' }}>
+      <div className="glass-card flex flex-col gap-md violet-border" style={{ background: 'var(--bg-card)', minHeight: '520px', minWidth: 0 }}>
         {previewCode ? (
           <div className="flex flex-col gap-md" style={{ flex: 1, minHeight: '520px' }}>
             <div className="flex justify-between align-center" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
@@ -1078,24 +1060,24 @@ ${values};
                 </div>
 
                 {/* BẢNG DỮ LIỆU HIỂN THỊ SAU KHI LỌC */}
-                <div style={{ flex: 1, width: '100%', overflowX: 'auto', maxHeight: '310px', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}>
+                <div style={{ flex: 1, width: '100%', overflowX: 'auto', maxHeight: '400px', border: '1px solid var(--border-subtle)', borderRadius: '8px', position: 'relative' }}>
                   {filteredDataset.length === 0 ? (
                     <div style={{ padding: '48px', color: 'var(--text-muted)', textAlign: 'center', fontSize: '13px' }}>
                       Không tìm thấy ca kiểm thử nào khớp với bộ lọc này.
                     </div>
                   ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '12px', textAlign: 'left' }}>
                       <thead>
-                        <tr style={{ background: 'rgba(0,0,0,0.03)', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
-                          <th style={{ padding: '10px 12px', width: '80px', minWidth: '100px' }}>
+                        <tr style={{ background: 'var(--surface-subtle)', position: 'sticky', top: 0, zIndex: 20, boxShadow: '0 1px 0 var(--border-subtle)' }}>
+                          <th style={{ padding: '12px', width: '80px', minWidth: '100px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontWeight: 'bold' }}>
                             <div style={{ minWidth: '100px' }}>Phân Loại</div>
                           </th>
                           {Object.keys(optimizedDataset[0]).map(k => (
-                            <th key={k} style={{ padding: '10px 12px' }}>
+                            <th key={k} style={{ padding: '12px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontWeight: 'bold' }}>
                               <div style={{ minWidth: '120px', maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{k}</div>
                             </th>
                           ))}
-                          <th style={{ padding: '10px 12px', width: '90px', minWidth: '90px', textAlign: 'center' }}>
+                          <th style={{ padding: '12px', width: '90px', minWidth: '90px', textAlign: 'center', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontWeight: 'bold' }}>
                             <div style={{ minWidth: '90px' }}>Hành Động</div>
                           </th>
                         </tr>
@@ -1106,12 +1088,12 @@ ${values};
                             <tr 
                               key={idx} 
                               style={{ 
-                                borderBottom: '1px solid var(--border-subtle)',
-                                background: category === 'security' ? 'rgba(225, 29, 72, 0.02)' : category === 'boundary' ? 'rgba(124, 58, 237, 0.02)' : 'none'
+                                background: category === 'security' ? 'rgba(225, 29, 72, 0.02)' : category === 'boundary' ? 'rgba(124, 58, 237, 0.02)' : 'none',
+                                transition: 'background 0.2s'
                               }}
                             >
                               {/* Render badge phân loại */}
-                              <td style={{ padding: '10px 12px', minWidth: '100px', verticalAlign: 'top' }}>
+                              <td style={{ padding: '10px 12px', minWidth: '100px', verticalAlign: 'top', borderBottom: '1px solid var(--border-subtle)' }}>
                                 <span 
                                   style={{ 
                                     padding: '2px 6px', 
@@ -1134,7 +1116,8 @@ ${values};
                                     title={valStr} // Tooltip khi hover xem đầy đủ payload
                                     style={{ 
                                       padding: '10px 12px', 
-                                      verticalAlign: 'top'
+                                      verticalAlign: 'top',
+                                      borderBottom: '1px solid var(--border-subtle)'
                                     }}
                                   >
                                     <div
@@ -1156,7 +1139,7 @@ ${values};
                                   </td>
                                 );
                               })}
-                              <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              <td style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border-subtle)' }}>
                                 <button 
                                   onClick={() => handleSimulateAPI(row, idx)}
                                   className="btn btn-secondary"
@@ -1326,27 +1309,98 @@ ${values};
 
               {/* KẾT QUẢ BATCH RUN SUMMARY */}
               {batchSummary && !batchRunning && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '8px' }}>
-                  <div style={{ background: 'rgba(13, 148, 136, 0.06)', border: '1px solid rgba(13, 148, 136, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-teal)', fontFamily: 'var(--font-mono)' }}>{batchSummary.total}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>TỔNG CA</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'md' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '8px' }}>
+                    <div style={{ background: 'rgba(13, 148, 136, 0.06)', border: '1px solid rgba(13, 148, 136, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-teal)', fontFamily: 'var(--font-mono)' }}>{batchSummary.total}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>TỔNG CA</div>
+                    </div>
+                    <div style={{ background: 'rgba(13, 148, 136, 0.06)', border: '1px solid rgba(13, 148, 136, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-teal)', fontFamily: 'var(--font-mono)' }}>{batchSummary.passed}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 200 ✅</div>
+                    </div>
+                    <div style={{ background: 'rgba(124, 58, 237, 0.06)', border: '1px solid rgba(124, 58, 237, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-violet)', fontFamily: 'var(--font-mono)' }}>{batchSummary.validationErrors}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 400 ⚠️</div>
+                    </div>
+                    <div style={{ background: 'rgba(225, 29, 72, 0.06)', border: '1px solid rgba(225, 29, 72, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-rose)', fontFamily: 'var(--font-mono)' }}>{batchSummary.wafBlocked}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 403 🚫</div>
+                    </div>
                   </div>
-                  <div style={{ background: 'rgba(13, 148, 136, 0.06)', border: '1px solid rgba(13, 148, 136, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-teal)', fontFamily: 'var(--font-mono)' }}>{batchSummary.passed}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 200 ✅</div>
-                  </div>
-                  <div style={{ background: 'rgba(124, 58, 237, 0.06)', border: '1px solid rgba(124, 58, 237, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-violet)', fontFamily: 'var(--font-mono)' }}>{batchSummary.validationErrors}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 400 ⚠️</div>
-                  </div>
-                  <div style={{ background: 'rgba(225, 29, 72, 0.06)', border: '1px solid rgba(225, 29, 72, 0.2)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--color-rose)', fontFamily: 'var(--font-mono)' }}>{batchSummary.wafBlocked}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>HTTP 403 🚫</div>
+
+                  {/* BÁO CÁO CHI TIẾT BATCH RUN */}
+                  <div className="glass-card" style={{ padding: '16px', background: 'rgba(0,0,0,0.01)', border: '1px solid var(--border-subtle)', borderRadius: '12px' }}>
+                    <div className="flex justify-between align-center" style={{ marginBottom: '12px' }}>
+                      <div className="flex align-center gap-sm">
+                        <Terminal size={16} className="text-muted" />
+                        <h4 style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)', margin: 0 }}>CHI TIẾT THỰC THI (BATCH EXECUTION LOG)</h4>
+                      </div>
+                      <div className="flex gap-xs">
+                        <button 
+                          onClick={() => setBatchLogFilter('all')}
+                          style={{ fontSize: '10.5px', padding: '3px 8px', borderRadius: '4px', border: '1px solid', borderColor: batchLogFilter === 'all' ? 'var(--color-teal)' : 'var(--border-subtle)', background: batchLogFilter === 'all' ? 'rgba(13, 148, 136, 0.08)' : 'transparent', color: batchLogFilter === 'all' ? 'var(--color-teal)' : 'var(--text-muted)', cursor: 'pointer' }}
+                        >
+                          Tất cả
+                        </button>
+                        <button 
+                          onClick={() => setBatchLogFilter('error')}
+                          style={{ fontSize: '10.5px', padding: '3px 8px', borderRadius: '4px', border: '1px solid', borderColor: batchLogFilter === 'error' ? 'var(--color-rose)' : 'var(--border-subtle)', background: batchLogFilter === 'error' ? 'rgba(225, 29, 72, 0.08)' : 'transparent', color: batchLogFilter === 'error' ? 'var(--color-rose)' : 'var(--text-muted)', cursor: 'pointer' }}
+                        >
+                          Chỉ lỗi
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid var(--border-subtle)', borderRadius: '8px', background: 'white' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
+                        <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 10, boxShadow: '0 1px 0 var(--border-subtle)' }}>
+                          <tr>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 'bold', width: '60px' }}>STT</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 'bold', width: '100px' }}>ID</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 'bold', width: '120px' }}>Trạng thái</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 'bold' }}>Thông điệp phản hồi</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 'bold', width: '80px' }}>Chi tiết</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {batchResults
+                            .filter(r => batchLogFilter === 'all' || r.status !== 'success')
+                            .map((res, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)', background: res.status === 'waf_blocked' ? 'rgba(225, 29, 72, 0.02)' : 'none' }}>
+                              <td style={{ padding: '8px 12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{res.index}</td>
+                              <td style={{ padding: '8px 12px', fontWeight: '500' }}>{res.id}</td>
+                              <td style={{ padding: '8px 12px' }}>
+                                <span style={{ color: res.status === 'success' ? 'var(--color-teal)' : res.status === 'validation_error' ? 'var(--color-violet)' : 'var(--color-rose)', fontWeight: 'bold' }}>
+                                  {res.status === 'success' ? 'SUCCESS 200' : res.status === 'validation_error' ? 'BAD REQ 400' : 'FORBIDDEN 403'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>
+                                {res.details.message}
+                                {res.status === 'validation_error' && (
+                                  <div style={{ fontSize: '10px', color: 'var(--color-rose)', marginTop: '2px' }}>
+                                    Lỗi: {Object.keys(res.details.errors).join(', ')}
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                <button 
+                                  onClick={() => handleSimulateAPI(res.record, res.index - 1)}
+                                  style={{ padding: '2px 6px', background: 'none', border: '1px solid var(--border-subtle)', borderRadius: '4px', cursor: 'pointer', fontSize: '10px' }}
+                                >
+                                  Xem
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {apiSimStatus === 'idle' ? (
+              {apiSimStatus === 'idle' && !batchSummary ? (
                 <div className="flex flex-col align-center justify-center gap-sm" style={{ padding: '40px 20px', color: 'var(--text-muted)', border: '1px dashed var(--border-subtle)', borderRadius: '8px' }}>
                   <Zap size={28} style={{ color: 'rgba(0,0,0,0.1)' }} />
                   <p style={{ fontSize: '13px', textAlign: 'center' }}>
@@ -1354,10 +1408,10 @@ ${values};
                   </p>
                 </div>
               ) : (
-                <div className="grid-2" style={{ gap: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
                   {/* Cột trái: Payload được gửi lên */}
-                  <div className="flex flex-col gap-sm">
-                    <span style={{ fontSize: '12.5px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
+                  <div className="flex flex-col gap-sm" style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: '12.5px', fontWeight: 'bold', color: 'var(--text-secondary)', wordBreak: 'break-word' }}>
                       📥 HTTP Request Payload (POST /api/v1/submit)
                     </span>
                     <pre 
@@ -1370,27 +1424,63 @@ ${values};
                         fontFamily: 'var(--font-mono)', 
                         color: 'var(--text-primary)', 
                         overflow: 'auto',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-all',
                         maxHeight: '180px',
                         margin: 0
                       }}
                     >
-                      {JSON.stringify(selectedRecord, null, 2)}
+                      {(() => {
+                        if (!selectedRecord) return '{}';
+                        
+                        let businessData: Record<string, any> = {};
+
+                        if (parsedSchema && parsedSchema.length > 0) {
+                          // Cách 1: Sử dụng schema chính thức nếu có
+                          const schemaFields = (parsedSchema as any[]).map(f => f.name);
+                          schemaFields.forEach(fieldName => {
+                            if (selectedRecord[fieldName] !== undefined) {
+                              businessData[fieldName] = selectedRecord[fieldName];
+                            }
+                          });
+                        } 
+                        
+                        // Cách 2: Nếu schema trống (do refresh trang hoặc load history), tự lọc bỏ metadata
+                        if (Object.keys(businessData).length === 0) {
+                          const metadataKeys = [
+                            'id', 'fitness', 'origin', 'generation', 'ma_action', 
+                            'parent_ids', 'local_search_applied', 'improvement', 
+                            'coverage', 'test_type', 'test_subtype', 'expectedResult',
+                            'fitness_before_ls', 'fitness_after_ls', 'ls_gain'
+                          ];
+                          
+                          Object.keys(selectedRecord).forEach(key => {
+                            // Bỏ qua các trường bắt đầu bằng gạch dưới hoặc nằm trong danh sách metadata
+                            if (!key.startsWith('_') && !metadataKeys.includes(key)) {
+                              businessData[key] = selectedRecord[key];
+                            }
+                          });
+                        }
+                        
+                        return JSON.stringify(businessData, null, 2);
+                      })()}
                     </pre>
                   </div>
 
                   {/* Cột phải: Response trả về */}
-                  <div className="flex flex-col gap-sm">
-                    <div className="flex justify-between align-center">
-                      <span style={{ fontSize: '12.5px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
+                  <div className="flex flex-col gap-sm" style={{ minWidth: 0 }}>
+                    <div className="flex justify-between align-center" style={{ flexWrap: 'wrap', gap: '8px' }}>
+                      <span style={{ fontSize: '12.5px', fontWeight: 'bold', color: 'var(--text-secondary)', wordBreak: 'break-word' }}>
                         📤 HTTP Response Status:
                       </span>
-                      {apiSimStatus !== 'loading' && (
+                      {apiSimStatus !== 'loading' && apiSimStatus !== 'idle' && (
                         <span 
                           style={{ 
                             padding: '2px 8px', 
                             borderRadius: '4px', 
                             fontSize: '11px', 
                             fontWeight: 'bold',
+                            whiteSpace: 'nowrap',
                             background: 
                               apiSimStatus === 'success' ? 'rgba(13, 148, 136, 0.15)' : 
                               apiSimStatus === 'validation_error' ? 'rgba(124, 58, 237, 0.15)' : 
@@ -1414,7 +1504,7 @@ ${values};
                         </div>
                       </div>
                     ) : (
-                      <div style={{ position: 'relative' }}>
+                      <div style={{ position: 'relative', minWidth: 0 }}>
                         <pre 
                           style={{ 
                             background: '#f8fafc', 
@@ -1422,6 +1512,7 @@ ${values};
                             borderColor: 
                               apiSimStatus === 'success' ? 'rgba(13, 148, 136, 0.15)' : 
                               apiSimStatus === 'validation_error' ? 'rgba(124, 58, 237, 0.15)' : 
+                              apiSimStatus === 'idle' ? 'var(--border-subtle)' :
                               'rgba(225, 29, 72, 0.2)',
                             padding: '12px', 
                             borderRadius: '8px', 
@@ -1430,13 +1521,16 @@ ${values};
                             color: 
                               apiSimStatus === 'success' ? 'var(--color-teal)' : 
                               apiSimStatus === 'validation_error' ? 'var(--color-violet)' : 
+                              apiSimStatus === 'idle' ? 'var(--text-muted)' :
                               'var(--color-rose)', 
                             overflow: 'auto',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-all',
                             maxHeight: '180px',
                             margin: 0
                           }}
                         >
-                          {JSON.stringify(apiSimDetails, null, 2)}
+                          {apiSimStatus === 'idle' ? '// Chưa có dữ liệu phản hồi' : JSON.stringify(apiSimDetails, null, 2)}
                         </pre>
                         
                         {/* Cảnh báo WAF nhấp nháy đỏ cực ngầu */}
@@ -1477,6 +1571,10 @@ ${values};
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.7; }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </div>
