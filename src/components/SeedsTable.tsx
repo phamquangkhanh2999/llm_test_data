@@ -17,6 +17,8 @@ export interface FieldConstraint {
 interface SeedsTableProps {
   data: SeedData[];
   fields?: FieldConstraint[];
+  sanityRecords?: any[];
+  fitnessRecords?: any[];
   onAnalyze?: () => void;
   onDownload?: () => void;
 }
@@ -24,6 +26,8 @@ interface SeedsTableProps {
 export const SeedsTable: React.FC<SeedsTableProps> = ({
   data = [],
   fields = [],
+  sanityRecords = [],
+  fitnessRecords = [],
   onDownload,
 }) => {
   // Compute dynamic columns based on parsed fields constraints, falling back to data keys
@@ -104,7 +108,7 @@ export const SeedsTable: React.FC<SeedsTableProps> = ({
               margin: 0,
             }}
           >
-            DANH SÁCH PHÁT SINH TỰ ĐỘNG (INITIAL SEEDS)
+            DANH SÁCH HẠT GIỐNG (INITIAL SEEDS), SANITY CHECK & FITNESS EVALUATION
           </h2>
           <p
             style={{
@@ -191,16 +195,22 @@ export const SeedsTable: React.FC<SeedsTableProps> = ({
               <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '220px' }}>
                 Mô tả kịch bản
               </th>
-              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '180px' }}>
+              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '140px' }}>
                 Kết quả mong đợi
               </th>
+              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '90px' }}>Sanity Check</th>
+              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '150px' }}>Chi tiết Lỗi</th>
+              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '80px' }}>Coverage</th>
+              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '80px' }}>Diversity</th>
+              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '80px' }}>Boundary</th>
+              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '90px' }}>Final Fitness</th>
             </tr>
           </thead>
           <tbody>
             {data.length === 0 ? (
               <tr>
                 <td
-                  colSpan={4 + columns.length}
+                  colSpan={10 + columns.length}
                   style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}
                 >
                   Chưa có dữ liệu hạt giống. Vui lòng chạy phân tích đặc tả bằng AI hoặc tải tệp
@@ -294,6 +304,43 @@ export const SeedsTable: React.FC<SeedsTableProps> = ({
                       >
                         {seed.expectedResult || 'Hợp lệ'}
                       </span>
+                    </td>
+                    <td style={{ padding: '12px 12px' }}>
+                      {sanityRecords[idx] ? (
+                        <span style={{
+                          padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold',
+                          background: sanityRecords[idx].status === 'Valid' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                          color: sanityRecords[idx].status === 'Valid' ? 'var(--success)' : 'var(--error)'
+                        }}>
+                          {sanityRecords[idx].status}
+                        </span>
+                      ) : '-'}
+                    </td>
+                    <td style={{ padding: '12px 12px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                      {sanityRecords[idx] && sanityRecords[idx].status === 'Invalid' ? (
+                        <div>
+                          <span style={{ color: 'var(--error)', fontWeight: 'bold' }}>{sanityRecords[idx].errorDetected}</span><br/>
+                          <span>{sanityRecords[idx].actionTaken}</span>
+                        </div>
+                      ) : '-'}
+                    </td>
+                    <td style={{ padding: '12px 12px', fontFamily: 'var(--font-mono)' }}>
+                      {fitnessRecords[idx] ? (fitnessRecords[idx].validation * 100).toFixed(0) + '%' : '-'}
+                    </td>
+                    <td style={{ padding: '12px 12px', fontFamily: 'var(--font-mono)' }}>
+                      {fitnessRecords[idx] ? (fitnessRecords[idx].diversity * 100).toFixed(0) + '%' : '-'}
+                    </td>
+                    <td style={{ padding: '12px 12px', fontFamily: 'var(--font-mono)' }}>
+                      {fitnessRecords[idx] ? (fitnessRecords[idx].boundary * 100).toFixed(0) + '%' : '-'}
+                    </td>
+                    <td style={{ padding: '12px 12px', fontFamily: 'var(--font-mono)' }}>
+                      {fitnessRecords[idx] ? (
+                        <strong style={{
+                          color: fitnessRecords[idx].finalFitness >= 0.85 ? 'var(--color-rose)' : fitnessRecords[idx].finalFitness >= 0.7 ? 'var(--color-violet)' : 'var(--color-teal)'
+                        }}>
+                          {fitnessRecords[idx].finalFitness.toFixed(3)}
+                        </strong>
+                      ) : '-'}
                     </td>
                   </tr>
                 );

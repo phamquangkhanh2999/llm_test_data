@@ -219,6 +219,12 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
                         neighbors.extend([field["maxValue"], field["maxValue"] + 1])
                 except (ValueError, TypeError):
                     pass
+            elif field_type == "date":
+                # --- [BVA] Lân cận cho kiểu ngày: biên ngày kinh điển + ca sai định dạng ---
+                neighbors.extend([
+                    "2024-02-29", "2020-01-01", "2023-12-31", "2024-04-30", "2021-02-28",
+                    "2024-13-01", "2024-02-30", "not-a-date", "2024/01/01", ""
+                ])
             else:
                 str_val = str(current_val)
 

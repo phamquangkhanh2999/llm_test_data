@@ -55,7 +55,7 @@ function App() {
         >
           <span>1. Phân Tích & Chuẩn Bị</span>
           {completedScreens.includes('prepare') && activeScreen !== 'prepare' && (
-            <CheckCircle2 size={13} style={{ color: '#10b981', flexShrink: 0 }} />
+            <CheckCircle2 size={13} style={{ color: '#10b981', flexShrink: 0 , marginLeft: '8px'}} />
           )}
         </div>
       ),

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import type { Chromosome } from '../algorithms/genetic';
 import { GeneticEngine } from '../algorithms/genetic';
 import type { FieldConstraint } from '../algorithms/presets';
-import { Download, FileSpreadsheet, FileJson, History, Database, AlertCircle, Trash2, Clock, ShieldAlert, Zap, Terminal, Code, Shrink, FileCode, Copy, X, Check, Search, ChevronRight } from 'lucide-react';
+import { Download, FileSpreadsheet, FileJson, History, Database, Trash2, Clock, ShieldAlert, Zap, Terminal, Code, Shrink, FileCode, Copy, X, Check } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
 
@@ -52,8 +52,6 @@ export const HistoryManager: React.FC = () => {
 
   // Trạng thái lọc loại ca kiểm thử trong bảng xem trước
   const [filterType, setFilterType] = useState<'all' | 'happy' | 'boundary' | 'security'>('all');
-  // Số lượng bản ghi hiển thị trong bảng (có thể expand thêm)
-  const [displayLimit, setDisplayLimit] = useState(30);
 
   // Trạng thái điều khiển mở/đóng menu xuất dữ liệu và API Sandbox
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -1083,7 +1081,7 @@ ${values};
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredDataset.slice(0, displayLimit).map(({ row, idx, category }) => {
+                        {filteredDataset.map(({ row, idx, category }) => {
                           return (
                             <tr 
                               key={idx} 
@@ -1168,27 +1166,6 @@ ${values};
                       </tbody>
                     </table>
                   )}
-                  
-                  {/* NÚT XEM THÊM / THU GỌN */}
-                  {filteredDataset.length > displayLimit ? (
-                    <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(0,0,0,0.02)', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'center', gap: '10px' }}>
-                      <button
-                        onClick={() => setDisplayLimit(prev => prev + 30)}
-                        style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(13, 148, 136, 0.06)', border: '1px solid rgba(13, 148, 136, 0.2)', borderRadius: '6px', color: 'var(--color-teal)', cursor: 'pointer', fontWeight: 'bold' }}
-                      >
-                        ↓ Xem thêm {Math.min(30, filteredDataset.length - displayLimit)} ca ({filteredDataset.length - displayLimit} còn lại)
-                      </button>
-                    </div>
-                  ) : filteredDataset.length > 30 ? (
-                    <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(0,0,0,0.02)', borderTop: '1px solid var(--border-subtle)' }}>
-                      <button
-                        onClick={() => setDisplayLimit(30)}
-                        style={{ fontSize: '11.5px', padding: '6px 16px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: 'var(--text-muted)', cursor: 'pointer' }}
-                      >
-                        ↑ Thu gọn
-                      </button>
-                    </div>
-                  ) : null}
                 </div>
                 
                 {/* LƯU Ý BẢO MẬT DƯỚI ĐÁY */}

@@ -5,6 +5,8 @@ import random
 from openai import OpenAI
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
+# Dùng chung bộ helper kiểm tra/sinh ngày với engine tối ưu hóa để tránh hard-code rời rạc
+from ..algorithms.optimizer_engine import is_valid_iso_date, random_valid_date
 
 
 # Hàm helper ghi nhận nhật ký cuộc gọi AI vào console và SQLite database
@@ -193,7 +195,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
     system_instructions = (
         "You are an expert senior software developer and automated QA engineer.\n"
         "Your task is to analyze the natural language specification of a web application input form "
-        "and extract a structured JSON schema of the field constraints, plus a list of 8-10 smart initial "
+        "and extract a structured JSON schema of the field constraints, plus a list of 15-18 smart initial "
         "test case records (F0 dataset) for a test suite.\n\n"
         
         "The returned JSON must EXACTLY follow this structure:\n"
@@ -201,7 +203,7 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
         "  \"fields\": [\n"
         "    {\n"
         "      \"name\": \"tên_trường_viết_thường_không_dấu\",\n"
-        "      \"type\": \"string\" | \"number\" | \"email\" | \"card\" | \"phone\",\n"
+        "      \"type\": \"string\" | \"number\" | \"email\" | \"card\" | \"phone\" | \"date\",\n"
         "      \"required\": true | false,\n"
         "      \"minLength\": 5,\n"
         "      \"maxLength\": 20,\n"
@@ -226,11 +228,26 @@ def parse_spec_with_openai(raw_text: str, api_key_override: str = None, db: Sess
         "  ]\n"
         "}\n\n"
         
+        "CONSTRAINT EXTRACTION RULES (be rigorous):\n"
+        "- Every numeric field MUST have consistent limits: minValue <= maxValue.\n"
+        "- Every string-like field with length limits MUST have minLength <= maxLength.\n"
+        "- Only emit a constraint key when it is actually implied by the spec; otherwise omit it (do not invent random bounds).\n"
+        "- Pick the most specific type available (email/card/phone/date) instead of generic 'string' whenever the spec implies it.\n"
+        "- For 'date' fields, every value MUST use the ISO format YYYY-MM-DD (e.g. 2024-02-29) and be a real calendar date.\n"
+        "- If a field needs a custom format (e.g. an international phone, a 15-digit card, a specific code), express it via the 'regex' key — the system treats 'regex' as the authoritative HARD validation rule for that field.\n\n"
+
         "CRITICAL REQUIREMENTS FOR THE F0 INITIAL DATASET:\n"
-        "Generate exactly 8-10 smart test case records. Incorporate a wide variety of testing scenarios:\n"
-        "- At least 4 valid cases (correct format, normal values).\n"
-        "- At least 3 boundary cases (values matching exact minimum/maximum limits or string lengths).\n"
-        "- At least 2 invalid cases (out of bounds or broken formats).\n"
+        "Generate exactly 15-18 smart test case records. Incorporate a wide variety of testing scenarios:\n"
+        "- At least 4 valid cases (correct format, normal values, all required fields present and non-empty).\n"
+        "- At least 3 boundary cases (values matching the EXACT minimum/maximum limit or string length — e.g. if maxLength=20 the value length is exactly 20, not 19 or 21).\n"
+        "- At least 2 invalid cases. Each invalid case must violate EXACTLY ONE rule clearly (e.g. age = maxValue+1, or a malformed email), keeping all other fields valid, so the failure cause is unambiguous.\n\n"
+
+        "STRICT CONSISTENCY RULES (this is what makes the dataset trustworthy):\n"
+        "- Every record's values MUST be internally consistent with its declared \"scenario\": a record whose scenario says 'hợp lệ' must actually pass ALL constraints; a record whose scenario describes a violation must actually violate that exact rule.\n"
+        "- Do NOT output duplicate records: every record must differ from every other in at least one field value.\n"
+        "- Values must look realistic (plausible names, emails, passwords) while still hitting the required exact length/value.\n"
+        "- Never leave a required field empty in a case that is meant to be valid.\n\n"
+
         "For each test case record in \"initialPopulation\", you MUST include the fields \"method\" (which method was used, e.g. \"random\", \"bva\", \"ep\", \"decision\") and \"scenario\" (a short explanation in Vietnamese explaining the exact test scenario, e.g. \"Kiểm tra giá trị hợp lệ\", \"Mật khẩu ngắn hơn độ dài tối thiểu\")."
     )
 
@@ -365,8 +382,16 @@ def check_record_expected_result(record, fields):
             continue
             
         val_str = str(val)
-        
-        if ftype == "email":
+
+        field_regex = f.get("regex")
+        if field_regex:
+            # Regex của đặc tả là ràng buộc CỨNG, ưu tiên hơn luật định dạng mặc định
+            try:
+                if not re.search(field_regex, val_str):
+                    errors.append(f"'{name}' không khớp định dạng quy định (regex)")
+            except re.error:
+                pass
+        elif ftype == "email":
             if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
                 errors.append(f"'{name}' sai định dạng email")
         elif ftype == "card":
@@ -375,6 +400,9 @@ def check_record_expected_result(record, fields):
         elif ftype == "phone":
             if not re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
                 errors.append(f"'{name}' sai đầu số di động VN")
+        elif ftype == "date":
+            if not is_valid_iso_date(val_str):
+                errors.append(f"'{name}' sai định dạng ngày (YYYY-MM-DD)")
         elif ftype == "number":
             try:
                 num = float(val)
@@ -446,6 +474,12 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
                     return "09"[:length]
                 return "09" + "".join(str(random.randint(0,9)) for _ in range(length - 2))
             return "09" + "".join(str(random.randint(0,9)) for _ in range(8))
+        elif t == "date":
+            if mode == 'invalid':
+                return random.choice(["2024-13-01", "2024-02-30", "not-a-date", "2024/01/01"])
+            if mode == 'boundary':
+                return random.choice(["2024-02-29", "2020-01-01", "2023-12-31", "2024-04-30"])
+            return random_valid_date()
         elif t == "number":
             try:
                 min_val = field.get("minValue")
@@ -549,8 +583,8 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
                 field_targets[name] = []
 
         max_targets = max([len(t) for t in field_targets.values()] or [1])
-        num_records = max(10, max_targets)
-        
+        num_records = max(25, max_targets)
+
         for i in range(num_records):
             record = {}
             scenarios = []
@@ -558,7 +592,7 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
                 name = f["name"]
                 ftype = f.get("type", "string")
                 targets = field_targets.get(name, [])
-                
+
                 if targets:
                     target_val = targets[i % len(targets)]
                     if ftype == "number":
@@ -616,7 +650,7 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
                 field_targets[name] = []
 
         max_targets = max([len(t) for t in field_targets.values()] or [1])
-        num_records = max(8, max_targets)
+        num_records = max(20, max_targets)
         for i in range(num_records):
             record = {}
             scenarios = []
@@ -644,7 +678,7 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
 
     # Decision Table local generator
     elif test_method == "decision":
-        num_records = len(fields) + 3
+        num_records = len(fields) + 15
         for i in range(num_records):
             record = {}
             scenario = ""
@@ -675,7 +709,7 @@ def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, 
     # Random/Hybrid
     else:
         modes = ['valid', 'valid', 'valid', 'boundary', 'boundary', 'invalid', 'valid', 'boundary']
-        for i in range(10):
+        for i in range(25):
             record = {}
             mode = modes[i % len(modes)]
             for f in fields:
@@ -719,7 +753,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
     if test_method == "bva":
         system_instructions = (
             "You are an expert QA automation engineer.\n"
-            "Your task is to generate exactly 10-12 high-quality initial seed test case records (F0 dataset) "
+            "Your task is to generate exactly 25-30 high-quality initial seed test case records (F0 dataset) "
             "for the given fields schema using Boundary Value Analysis (BVA).\n\n"
             
             f"CRITICAL REQUIREMENT FOR BVA (boundary_count = {boundary_count}):\n"
@@ -755,7 +789,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
     elif test_method == "ep":
         system_instructions = (
             "You are an expert QA automation engineer.\n"
-            "Your task is to generate exactly 8-10 high-quality initial seed test case records (F0 dataset) "
+            "Your task is to generate exactly 20-25 high-quality initial seed test case records (F0 dataset) "
             "for the given fields schema using Equivalence Partitioning (EP).\n\n"
             
             f"CRITICAL REQUIREMENT FOR EP (partition_count = {partition_count}):\n"
@@ -780,7 +814,7 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
     elif test_method == "decision":
         system_instructions = (
             "You are an expert QA automation engineer.\n"
-            "Your task is to generate exactly 8-10 high-quality initial seed test case records (F0 dataset) "
+            "Your task is to generate exactly 20-25 high-quality initial seed test case records (F0 dataset) "
             "for the given fields schema using a Decision Table combination approach.\n\n"
             
             "CRITICAL REQUIREMENT:\n"
@@ -805,11 +839,11 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
     else: # random/hybrid
         system_instructions = (
             "You are an expert QA automation engineer.\n"
-            "Your task is to generate exactly 8-10 high-quality initial seed test case records (F0 dataset) "
+            "Your task is to generate exactly 20-25 high-quality initial seed test case records (F0 dataset) "
             "for the given fields schema.\n\n"
             
             "CRITICAL REQUIREMENTS:\n"
-            "Generate exactly 8-10 smart test case records. Incorporate a wide variety of testing scenarios:\n"
+            "Generate exactly 20-25 smart test case records. Incorporate a wide variety of testing scenarios:\n"
             "- At least 4 valid cases (correct format, normal values).\n"
             "- At least 3 boundary cases (values matching exact minimum/maximum limits or string lengths).\n"
             "- At least 2 invalid cases (out of bounds or broken formats).\n\n"
@@ -826,6 +860,19 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
             "  ]\n"
             "}"
         )
+
+    # Khối ràng buộc "siết" dùng chung cho MỌI phương pháp: ép dữ liệu chính xác,
+    # nhất quán, không trùng lặp -> đầu vào sạch cho GA/HC, tránh kết quả thoái lui.
+    system_instructions += (
+        "\n\nSTRICT QUALITY RULES (apply to every record):\n"
+        "- Respect EVERY constraint in the schema exactly: required, type, minLength/maxLength, minValue/maxValue, regex, allowedValues.\n"
+        "- Boundary records must hit the EXACT limit value/length (e.g. maxLength=20 => length is exactly 20).\n"
+        "- Each record must be internally consistent with its own \"scenario\": a 'hợp lệ' record passes all rules; a record describing a violation must violate that exact rule and keep the other fields valid.\n"
+        "- No duplicate records: every record differs from the others in at least one field.\n"
+        "- At least 60% of the records must be fully valid; include some realistic boundary and invalid cases for the rest.\n"
+        "- Values must look realistic while still meeting the required exact length/value.\n"
+        "- Return ONLY the JSON object, no markdown fences or commentary."
+    )
 
     # Regeneration Loop (Harness 1: Data Sanity Check feedback loop)
     prompt_feedback = ""

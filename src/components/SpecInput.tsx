@@ -83,11 +83,18 @@ export const SpecInput: React.FC = () => {
   const [showSchemaDetails, setShowSchemaDetails] = useState(false);
 
   // Dynamic seeds details mappers for Step 1 components
+    const activeSeeds = React.useMemo(() => {
+    return Object.values(methodSeeds).some((arr) => arr && arr.length > 0)
+      ? Object.values(methodSeeds).flat()
+      : initialSeeds;
+  }, [methodSeeds, initialSeeds]);
+
   const sanityRecords = React.useMemo(() => {
-    return initialSeeds.map((_, idx) => {
-      const isInvalid = idx % 9 === 0;
+    return activeSeeds.map((seed, idx) => {
+const isInvalid = idx % 9 === 0;
       return {
         testId: `F0-${idx + 1}`,
+        dataValue: seed,
         status: isInvalid ? ('Invalid' as const) : ('Valid' as const),
         errorDetected: isInvalid ? 'Trường dữ liệu rỗng hoặc sai cấu trúc biên' : 'None',
         severity: isInvalid ? ('High' as const) : ('None' as const),
@@ -1245,47 +1252,7 @@ export const SpecInput: React.FC = () => {
               <span>Bỏ qua bộ nhớ đệm</span>
             </label>
 
-            {/* Nút Tái Sinh F0 (chỉ hiện khi đã có Schema được bóc tách) */}
-            {parsedSchema.length > 0 && (
-              <button
-                onClick={handleRegenerateSeedsOnly}
-                disabled={isRegenerating || isParsing}
-                type='button'
-                className='btn btn-secondary'
-                style={{
-                  padding: '9px 16px',
-                  whiteSpace: 'nowrap',
-                  color: 'var(--color-teal)',
-                  borderColor: 'rgba(13,148,136,0.25)',
-                  background: 'rgba(13,148,136,0.03)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontSize: '13px',
-                }}
-              >
-                {isRegenerating ? (
-                  <>
-                    <div
-                      style={{
-                        width: '14px',
-                        height: '14px',
-                        border: '2px solid rgba(13,148,136,0.2)',
-                        borderTopColor: 'var(--color-teal)',
-                        borderRadius: '50%',
-                        animation: 'spin 0.9s linear infinite',
-                      }}
-                    />
-                    Đang Tái Sinh...
-                  </>
-                ) : (
-                  <>
-                    <Zap size={14} style={{ color: 'var(--color-teal)' }} />
-                    Tái Sinh F0
-                  </>
-                )}
-              </button>
-            )}
+            
 
             {/* Nút Phân Tích & Sinh F0 */}
             <button
@@ -1312,7 +1279,7 @@ export const SpecInput: React.FC = () => {
               ) : (
                 <>
                   <Sparkles size={15} />
-                  {parsedSchema.length > 0 ? 'Phân Tích Lại' : 'Phân Tích & Sinh F0'}
+                  {parsedSchema.length > 0 ? 'Tái Sinh & Phân Tích Lại' : 'Phân Tích & Sinh F0'}
                 </>
               )}
             </button>
@@ -1679,108 +1646,91 @@ export const SpecInput: React.FC = () => {
                       </div>
 
                       {/* Hộp tùy chỉnh ràng buộc biên */}
-                      <div className='flex gap-sm' style={{ flexWrap: 'wrap' }}>
-                        <label
-                          style={{
-                            fontSize: '11px',
-                            color: 'var(--text-secondary)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px', padding: '12px', background: 'var(--surface-subtle)', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
+                        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                          <label style={{ flex: '1', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                            <input
+                              type='checkbox'
+                              checked={field.required}
+                              onChange={(e) => handleUpdateField(idx, 'required', e.target.checked)}
+                              style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
+                            />
+                            Bắt buộc (Required)
+                          </label>
+
+                          <div style={{ flex: '2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>
+                              {field.type === 'number' ? 'Giá trị tối thiểu (MIN VAL)' : 'Độ dài tối thiểu (MIN LEN)'}
+                            </span>
+                            <input
+                              type='number'
+                              placeholder='Mặc định'
+                              value={field.type === 'number' ? (field.minValue !== undefined ? field.minValue : '') : (field.minLength !== undefined ? field.minLength : '')}
+                              onChange={(e) => handleUpdateField(idx, field.type === 'number' ? 'minValue' : 'minLength', e.target.value === '' ? undefined : Number(e.target.value))}
+                              className='input-field'
+                              style={{ padding: '6px 10px', fontSize: '12px', width: '100%' }}
+                            />
+                          </div>
+
+                          <div style={{ flex: '2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>
+                              {field.type === 'number' ? 'Giá trị tối đa (MAX VAL)' : 'Độ dài tối đa (MAX LEN)'}
+                            </span>
+                            <input
+                              type='number'
+                              placeholder='Mặc định'
+                              value={field.type === 'number' ? (field.maxValue !== undefined ? field.maxValue : '') : (field.maxLength !== undefined ? field.maxLength : '')}
+                              onChange={(e) => handleUpdateField(idx, field.type === 'number' ? 'maxValue' : 'maxLength', e.target.value === '' ? undefined : Number(e.target.value))}
+                              className='input-field'
+                              style={{ padding: '6px 10px', fontSize: '12px', width: '100%' }}
+                            />
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                          <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>Mẫu biểu thức chính quy (REGULAR EXPRESSION)</span>
+                            <input
+                              type='text'
+                              placeholder='Ví dụ: ^[A-Za-z0-9]+$'
+                              value={field.regex || ''}
+                              onChange={(e) => handleUpdateField(idx, 'regex', e.target.value || undefined)}
+                              className='input-field'
+                              style={{ padding: '6px 10px', fontSize: '12px', width: '100%', fontFamily: 'var(--font-mono)' }}
+                            />
+                          </div>
+
+                          <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>Danh sách giá trị cho phép (ENUM - phân tách bằng dấu phẩy)</span>
+                            <input
+                              type='text'
+                              placeholder='active, inactive'
+                              value={field.enum ? field.enum.join(', ') : ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                handleUpdateField(idx, 'enum', val ? val.split(',').map(s => s.trim()) : undefined);
+                              }}
+                              className='input-field'
+                              style={{ padding: '6px 10px', fontSize: '12px', width: '100%' }}
+                            />
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>Mô tả chi tiết (DESCRIPTION)</span>
                           <input
-                            type='checkbox'
-                            checked={field.required}
-                            onChange={(e) => handleUpdateField(idx, 'required', e.target.checked)}
+                            type='text'
+                            placeholder='Trạng thái tài khoản của người dùng.'
+                            value={field.description || ''}
+                            onChange={(e) => handleUpdateField(idx, 'description', e.target.value || undefined)}
+                            className='input-field'
+                            style={{ padding: '6px 10px', fontSize: '12px', width: '100%' }}
                           />
-                          Bắt buộc
-                        </label>
-
-                        {/* Hiển thị giới hạn số hoặc ký tự tùy theo kiểu dữ liệu để tối ưu hóa biên */}
-                        {field.type === 'number' ? (
-                          <>
-                            <input
-                              type='number'
-                              placeholder='Min Val'
-                              value={field.minValue !== undefined ? field.minValue : ''}
-                              onChange={(e) =>
-                                handleUpdateField(
-                                  idx,
-                                  'minValue',
-                                  e.target.value === '' ? undefined : Number(e.target.value),
-                                )
-                              }
-                              className='input-field'
-                              style={{ padding: '4px 8px', fontSize: '11px', width: '80px' }}
-                            />
-                            <input
-                              type='number'
-                              placeholder='Max Val'
-                              value={field.maxValue !== undefined ? field.maxValue : ''}
-                              onChange={(e) =>
-                                handleUpdateField(
-                                  idx,
-                                  'maxValue',
-                                  e.target.value === '' ? undefined : Number(e.target.value),
-                                )
-                              }
-                              className='input-field'
-                              style={{ padding: '4px 8px', fontSize: '11px', width: '80px' }}
-                            />
-                          </>
-                        ) : (
-                          <>
-                            <input
-                              type='number'
-                              placeholder='Min Len'
-                              value={field.minLength !== undefined ? field.minLength : ''}
-                              onChange={(e) =>
-                                handleUpdateField(
-                                  idx,
-                                  'minLength',
-                                  e.target.value === '' ? undefined : Number(e.target.value),
-                                )
-                              }
-                              className='input-field'
-                              style={{ padding: '4px 8px', fontSize: '11px', width: '80px' }}
-                            />
-                            <input
-                              type='number'
-                              placeholder='Max Len'
-                              value={field.maxLength !== undefined ? field.maxLength : ''}
-                              onChange={(e) =>
-                                handleUpdateField(
-                                  idx,
-                                  'maxLength',
-                                  e.target.value === '' ? undefined : Number(e.target.value),
-                                )
-                              }
-                              className='input-field'
-                              style={{ padding: '4px 8px', fontSize: '11px', width: '80px' }}
-                            />
-                          </>
-                        )}
-
-                        {/* Ô nhập biểu thức chính quy (Regex) để so khớp kiểm định định dạng */}
-                        <input
-                          type='text'
-                          placeholder='Regex Pattern'
-                          value={field.regex || ''}
-                          onChange={(e) =>
-                            handleUpdateField(idx, 'regex', e.target.value || undefined)
-                          }
-                          className='input-field'
-                          style={{
-                            padding: '4px 8px',
-                            fontSize: '11px',
-                            width: '130px',
-                            fontFamily: 'var(--font-mono)',
-                          }}
-                        />
+                        </div>
                       </div>
 
                       {/* Bảng giải thích chi tiết BVA/EP cho từng trường */}
+
                       {(() => {
                         const explanation = getFieldBoundaryExplanation(field);
                         if (!explanation) return null;
@@ -2112,12 +2062,10 @@ export const SpecInput: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
                 {/* Khối 1: Seeds Table */}
                 <SeedsTable
-                  data={
-                    Object.values(methodSeeds).some((arr) => arr && arr.length > 0)
-                      ? Object.values(methodSeeds).flat()
-                      : initialSeeds
-                  }
+                  data={activeSeeds}
                   fields={parsedSchema}
+                  sanityRecords={sanityRecords}
+                  fitnessRecords={fitnessRecords}
                   onAnalyze={() => {
                     const hasMethodSeeds = Object.values(methodSeeds).some(
                       (arr) => arr && arr.length > 0,
@@ -2145,16 +2093,9 @@ export const SpecInput: React.FC = () => {
                   }}
                 />
 
-                {/* Khối 2: Data Sanity Check */}
-                <SanityCheckCard
-                  total={initialSeeds.length}
-                  valid={Math.ceil(initialSeeds.length * 0.9)}
-                  invalid={initialSeeds.length - Math.ceil(initialSeeds.length * 0.9)}
-                  results={sanityRecords}
-                />
+                
 
-                {/* Khối 3: Fitness Evaluation */}
-                <FitnessEvaluation results={fitnessRecords} />
+                
 
                 {/* Nút bấm AI Đánh Giá và Chuyển bước */}
                 <div

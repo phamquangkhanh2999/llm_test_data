@@ -6,7 +6,7 @@ export interface BoundaryRecord {
   boundaryType: string;
   testValue: any;
   expectedResult: string;
-  status: 'Valid' | 'Invalid';
+  status: 'Covered' | 'Missed';
 }
 
 interface BoundaryEdgeCheckerProps {
@@ -51,7 +51,7 @@ export const BoundaryEdgeChecker: React.FC<BoundaryEdgeCheckerProps> = ({
         <div style={{ width: '1.5px', height: '18px', background: 'var(--border-subtle)' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--success)' }}>
           <CheckCircle size={14} />
-          <span>Hợp lệ:</span>
+          <span>Đã bao phủ:</span>
           <span style={{ fontSize: '15px' }}>{validCount}</span>
         </div>
       </div>
@@ -77,7 +77,7 @@ export const BoundaryEdgeChecker: React.FC<BoundaryEdgeCheckerProps> = ({
               </tr>
             ) : (
               records.map((row, idx) => {
-                const isValid = row.status === 'Valid';
+                const isCovered = row.status === 'Covered';
                 
                 return (
                   <tr
@@ -115,11 +115,11 @@ export const BoundaryEdgeChecker: React.FC<BoundaryEdgeCheckerProps> = ({
                         borderRadius: '6px',
                         fontSize: '11px',
                         fontWeight: 'bold',
-                        background: isValid ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                        color: isValid ? 'var(--success)' : 'var(--error)',
+                        background: isCovered ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                        color: isCovered ? 'var(--success)' : 'var(--error)',
                         display: 'inline-block'
                       }}>
-                        {row.status}
+                        {row.status === 'Covered' ? 'Đã bao phủ' : 'Bỏ sót'}
                       </span>
                     </td>
                   </tr>

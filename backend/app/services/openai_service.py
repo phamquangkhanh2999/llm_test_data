@@ -25,7 +25,7 @@ class FieldConstraintSchema(BaseModel):
 
 class SpecOutputSchema(BaseModel):
     fields: List[FieldConstraintSchema] = Field(..., description="Danh sách các ràng buộc trường dữ liệu")
-    initialPopulation: List[Dict[str, Any]] = Field(..., description="Danh sách mảng 10-15 objects dữ liệu mẫu F0, mỗi object chứa các key là name của fields + 'method' + 'scenario'")
+    initialPopulation: List[Dict[str, Any]] = Field(..., description="Danh sách mảng 15-18 objects dữ liệu mẫu F0, mỗi object chứa các key là name của fields + 'method' + 'scenario'")
 
 class SeedOutputSchema(BaseModel):
     initialPopulation: List[Dict[str, Any]] = Field(..., description="Danh sách mảng các objects dữ liệu mẫu, mỗi object chứa các key là name của fields + 'method' + 'scenario'")
@@ -83,16 +83,26 @@ def parse_spec_with_openai_v2(raw_text: str, api_key_override: Optional[str] = N
     Bạn là một chuyên gia phân tích nghiệp vụ phần mềm (BA) và kỹ sư kiểm thử (QA).
     Nhiệm vụ của bạn là phân tích văn bản đặc tả dưới đây và trích xuất ra:
     1. Danh sách các trường dữ liệu và ràng buộc của chúng (JSON Schema style).
-    2. Một tập dữ liệu mẫu ban đầu (initialPopulation) gồm 12-15 bản ghi đa dạng (Happy path, Edge cases, Invalid cases).
-    
+    2. Một tập dữ liệu mẫu ban đầu (initialPopulation) gồm 15-18 bản ghi đa dạng (Happy path, Edge cases, Invalid cases).
+
     VĂN BẢN ĐẶC TẢ:
     \"\"\"
     {raw_text}
     \"\"\"
-    
-    YÊU CẦU DỮ LIỆU MẪU:
+
+    QUY TẮC TRÍCH XUẤT RÀNG BUỘC (nghiêm ngặt):
+    - Trường số: phải đảm bảo minValue <= maxValue. Trường chuỗi có giới hạn: minLength <= maxLength.
+    - Chỉ thêm khóa ràng buộc khi đặc tả thực sự ngụ ý; không tự bịa giới hạn.
+    - Chọn type cụ thể nhất (email/card/phone/date) thay vì 'string' khi đặc tả ngụ ý.
+    - Trường 'date': mọi giá trị PHẢI dùng định dạng ISO YYYY-MM-DD (vd 2024-02-29) và là ngày lịch hợp lệ.
+    - Nếu cần định dạng tùy biến (phone quốc tế, card 15 số, mã riêng...), khai báo qua khóa 'regex' — hệ thống coi 'regex' là luật validate CỨNG, ưu tiên hơn luật mặc định theo kiểu.
+
+    YÊU CẦU DỮ LIỆU MẪU (chặt chẽ):
     - Mỗi bản ghi trong initialPopulation phải chứa tất cả các trường bạn đã định nghĩa.
     - Phải có thêm 2 trường: 'method' (tên phương pháp sinh: 'random', 'bva', 'ep', 'decision') và 'scenario' (mô tả ngắn kịch bản bằng tiếng Việt).
+    - Tối thiểu 4 ca hợp lệ, 3 ca biên (đúng CHÍNH XÁC giá trị/độ dài biên), 2 ca không hợp lệ (mỗi ca vi phạm đúng MỘT quy tắc, các trường còn lại hợp lệ).
+    - Mỗi bản ghi phải NHẤT QUÁN với 'scenario' của chính nó: ca 'hợp lệ' phải qua hết ràng buộc; ca mô tả lỗi phải thực sự vi phạm đúng quy tắc đó.
+    - KHÔNG có bản ghi trùng lặp; giá trị thực tế nhưng vẫn đạt đúng độ dài/giá trị yêu cầu.
 
     Trả về JSON object có dạng:
     {{"fields": [ {{"name": ..., "type": ..., "required": ..., "description": ...}} ], "initialPopulation": [ {{...}} ]}}
@@ -133,15 +143,22 @@ def generate_seeds_openai(fields: List[Dict], test_method: str, raw_text: str = 
     prompt = f"""
     Dựa trên các quy tắc ràng buộc sau:
     {fields_str}
-    
-    Hãy sinh 15 bản ghi dữ liệu kiểm thử theo phương pháp: {test_method}.
+
+    Hãy sinh 25-30 bản ghi dữ liệu kiểm thử theo phương pháp: {test_method}.
     Đặc tả bổ sung (nếu có): {raw_text}
-    
+
     Mỗi bản ghi phải có các trường tương ứng và thêm:
     - method: '{test_method}'
-    - scenario: Mô tả kịch bản kiểm thử
+    - scenario: Mô tả kịch bản kiểm thử (tiếng Việt)
 
-    Trả về JSON object có dạng: {{"initialPopulation": [ {{...}}, ... ]}}
+    QUY TẮC CHẤT LƯỢNG (nghiêm ngặt — đây là đầu vào cho thuật toán GA/HC nên phải sạch):
+    - Tuân thủ CHÍNH XÁC mọi ràng buộc: required, type, minLength/maxLength, minValue/maxValue, regex, allowedValues.
+    - Ca biên phải trúng ĐÚNG giá trị/độ dài biên (ví dụ maxLength=20 thì độ dài đúng 20).
+    - Mỗi bản ghi NHẤT QUÁN với 'scenario' của nó: ca hợp lệ qua hết ràng buộc; ca lỗi vi phạm đúng MỘT quy tắc, các trường khác vẫn hợp lệ.
+    - KHÔNG có bản ghi trùng lặp; tối thiểu 60% bản ghi hoàn toàn hợp lệ, phần còn lại là ca biên/không hợp lệ thực tế.
+    - Giá trị phải thực tế nhưng vẫn đạt đúng độ dài/giá trị yêu cầu.
+
+    Chỉ trả về JSON object có dạng: {{"initialPopulation": [ {{...}}, ... ]}}, không kèm văn bản hay markdown.
     """
 
     try:

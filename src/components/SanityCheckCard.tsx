@@ -1,5 +1,7 @@
 import React from 'react';
 import { AlertCircle, CheckCircle, ShieldAlert } from 'lucide-react';
+import { CollapsibleJson } from './HillClimbingComparison';
+
 
 export interface SanityRecord {
   testId: string;
@@ -7,6 +9,7 @@ export interface SanityRecord {
   errorDetected: string;
   severity: 'High' | 'None';
   actionTaken: string;
+  dataValue?: any;
 }
 
 interface SanityCheckCardProps {
@@ -70,7 +73,8 @@ export const SanityCheckCard: React.FC<SanityCheckCardProps> = ({
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
-              <th style={{ padding: '8px 12px', fontWeight: 'bold', width: '100px' }}>Test ID</th>
+              <th style={{ padding: '8px 12px', fontWeight: 'bold', width: '90px' }}>Test ID</th>
+              <th style={{ padding: '8px 12px', fontWeight: 'bold', width: '220px' }}>Dữ liệu kiểm tra (Payload)</th>
               <th style={{ padding: '8px 12px', fontWeight: 'bold', width: '110px' }}>Trạng thái</th>
               <th style={{ padding: '8px 12px', fontWeight: 'bold' }}>Lỗi phát hiện</th>
               <th style={{ padding: '8px 12px', fontWeight: 'bold', width: '100px' }}>Mức độ</th>
@@ -99,6 +103,9 @@ export const SanityCheckCard: React.FC<SanityCheckCardProps> = ({
                   >
                     <td style={{ padding: '10px 12px', fontWeight: 'bold', fontFamily: 'var(--font-mono)' }}>
                       {record.testId}
+                    </td>
+<td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
+                      {record.dataValue ? <CollapsibleJson value={record.dataValue} /> : <span style={{color: 'var(--text-muted)'}}>-</span>}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
                       <span style={{

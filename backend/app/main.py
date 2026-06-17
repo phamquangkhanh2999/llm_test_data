@@ -78,6 +78,7 @@ class OptimizeRequest(BaseModel):
     mutationRate: float
     weights: OptimizeWeights
     initial_seeds: List[Dict[str, Any]] # Danh sách F0 mẫu
+    schema_rules: Optional[List[Dict[str, Any]]] = None # Đẩy trực tiếp schema từ UI lên
     algorithm: Optional[str] = "hybrid" #traditional, ga, hc, hybrid
     traditional_method: Optional[str] = "bva" #random, bva
 
@@ -419,7 +420,13 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
     if not db_spec:
         raise HTTPException(status_code=404, detail="Không tìm thấy đặc tả nghiệp vụ tương ứng!")
 
-    schema_rules = json.loads(db_spec.parsed_schema)
+    if req.schema_rules and len(req.schema_rules) > 0:
+        schema_rules = req.schema_rules
+    else:
+        if "schema" in req_data and req_data["schema"] and len(req_data["schema"]) > 0:
+            schema_rules = req_data["schema"]
+        else:
+            schema_rules = json.loads(db_spec.parsed_schema)
     # Ép kiểu các tham số giới hạn số và chuỗi về int để tránh lỗi float khi xử lý
     for field in schema_rules:
         if "minLength" in field and field["minLength"] is not None:
@@ -591,7 +598,12 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
         optimizer.test_suite[0]["fitness"] = hc_tweak_stats.optimized_fitness
         optimizer.test_suite[0]["origin"] = "HC_FINE_TUNED"
 
-    # 5. Lưu phiên chạy Job này vào Cơ sở dữ liệu SQLite
+    # 5. Lắp ráp bộ kết quả tối ưu CUỐI CÙNG (HoF + tinh gọn + chốt sàn seed F0).
+    # Với luồng truyền thống, KHÔNG chốt sàn seed LLM để giữ baseline so sánh trung thực.
+    floor_seeds = None if algo == "traditional" else req.initial_seeds
+    final_dataset = optimizer.assemble_optimized_dataset(original_seeds=floor_seeds)
+
+    # 6. Lưu phiên chạy Job này vào Cơ sở dữ liệu SQLite
     final_stats = progress_history[-1]
     db_job = models.Job(
         specification_id=req.specification_id,
@@ -604,17 +616,18 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
     db.commit()
     db.refresh(db_job)
 
-    for ind in optimizer.test_suite:
+    for ind in final_dataset:
         tc_values = ind["values"]
-        
-        # Nhận diện xem có phải ca biên đặc biệt không
-        is_edge = (ind["fitness"] > 0.85 and "Tweak" in ind["origin"])
+
+        # Nhận diện ca biên đặc biệt (fitness cao + xuất phát từ tinh chỉnh HC/Hall of Fame)
+        origin = ind["origin"]
+        is_edge = (ind["fitness"] > 0.85 and ("HC" in origin or "HallOfFame" in origin or "HoF" in origin))
 
         db_data = models.GeneratedData(
             job_id=db_job.id,
             test_case_values=json.dumps(tc_values),
             fitness_score=ind["fitness"],
-            source_algorithm=ind["origin"],
+            source_algorithm=origin,
             is_edge_case=is_edge
         )
         db.add(db_data)
@@ -625,7 +638,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
         "job_id": db_job.id,
         "final_coverage": final_stats["coverage"],
         "final_duplicateRate": final_stats["duplicateRate"],
-        "optimizedDataset": [p["values"] for p in optimizer.test_suite],
+        "optimizedDataset": [p["values"] for p in final_dataset],
         "progressHistory": progress_history,
         "hcStats": hc_tweak_stats.to_dict()
     }
@@ -681,7 +694,10 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
             await websocket.close()
             return
 
-        schema_rules = json.loads(db_spec.parsed_schema)
+        if "schema" in req_data and req_data["schema"] and len(req_data["schema"]) > 0:
+            schema_rules = req_data["schema"]
+        else:
+            schema_rules = json.loads(db_spec.parsed_schema)
         # Ép kiểu các tham số giới hạn số và chuỗi về int để tránh lỗi float khi xử lý
         for field in schema_rules:
             if "minLength" in field and field["minLength"] is not None:
@@ -934,7 +950,12 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
             optimizer.test_suite[0]["origin"] = "HC_FINE_TUNED"
             await asyncio.sleep(0.02)
 
-        # 6. Cập nhật Job với kết quả cuối cùng
+        # 6. Lắp ráp bộ kết quả tối ưu CUỐI CÙNG (HoF + tinh gọn + chốt sàn seed F0).
+        # Luồng truyền thống không chốt sàn seed LLM để giữ baseline so sánh trung thực.
+        floor_seeds = None if algorithm == "traditional" else initial_seeds
+        final_dataset = optimizer.assemble_optimized_dataset(original_seeds=floor_seeds)
+
+        # 7. Cập nhật Job với kết quả cuối cùng
         final_stats = progress_history[-1]
         db_job.status = "COMPLETE"
         db_job.final_coverage = final_stats["coverage"]
@@ -942,15 +963,16 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
         db.commit()
         db.refresh(db_job)
 
-        for ind in optimizer.test_suite:
+        for ind in final_dataset:
             tc_values = ind["values"]
-            is_edge = (ind["fitness"] > 0.85 and "Tweak" in ind["origin"])
+            origin = ind["origin"]
+            is_edge = (ind["fitness"] > 0.85 and ("HC" in origin or "HallOfFame" in origin or "HoF" in origin))
 
             db_data = models.GeneratedData(
                 job_id=db_job.id,
                 test_case_values=json.dumps(tc_values),
                 fitness_score=ind["fitness"],
-                source_algorithm=ind["origin"],
+                source_algorithm=origin,
                 is_edge_case=is_edge
             )
             db.add(db_data)
@@ -963,7 +985,7 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
                 "job_id": db_job.id,
                 "final_coverage": final_stats["coverage"],
                 "final_duplicateRate": final_stats["duplicateRate"],
-                "optimizedDataset": [p["values"] for p in optimizer.test_suite],
+                "optimizedDataset": [p["values"] for p in final_dataset],
                 "hcStats": hc_tweak_stats.to_dict()
             }
         })

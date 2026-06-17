@@ -1101,11 +1101,23 @@ export const OptimizationDashboard: React.FC = () => {
 
   // Hill Climbing Comparison records mapping
   const comparisonsList = useMemo<ComparisonRecord[]>(() => {
-    if (!optimizedDataset || optimizedDataset.length === 0) return [];
-    return optimizedDataset.slice(0, 8).map((gaRecord, idx) => {
+    const datasetToUse = optimizedDataset && optimizedDataset.length > 0 ? optimizedDataset : initialSeeds;
+    if (!datasetToUse || datasetToUse.length === 0) return [];
+    
+    // Khởi tạo dummy engine để chấm điểm fitness thực tế
+    const dummyEngine = new GeneticEngine(schema, {
+      generations: 1,
+      popSize: 100,
+      crossoverRate: 0.8,
+      mutationRate: 0.15,
+      weights: { validation: 0.4, boundary: 0.3, security: 0.1, diversity: 0.2 },
+    });
+
+    return datasetToUse.map((gaRecord, idx) => {
       const llmRecord = initialSeeds[idx % initialSeeds.length] || {};
-      const baseFitness = 0.58 + (idx % 4) * 0.06;
-      const gaFit = Math.min(0.999, baseFitness + 0.16 + (idx % 3) * 0.03);
+      
+      const llmFitness = dummyEngine.computeFitness(llmRecord, initialSeeds).fitness;
+      const gaFitness = dummyEngine.computeFitness(gaRecord, datasetToUse).fitness;
 
       // Tweak values to simulate local HC boundary refinement
       const hcRecord = { ...gaRecord };
@@ -1121,15 +1133,17 @@ export const OptimizationDashboard: React.FC = () => {
               : hcRecord[fieldToTweak.name];
         }
       }
+      
+      const hcFitness = Math.max(gaFitness, dummyEngine.computeFitness(hcRecord, datasetToUse).fitness);
 
       return {
         testId: `TC-OPT-${idx + 1}`,
         llmValue: llmRecord,
         gaValue: gaRecord,
         hcValue: hcRecord,
-        llmFitness: baseFitness,
-        gaFitness: gaFit,
-        hcFitness: Math.min(0.999, gaFit + 0.06 + (idx % 2) * 0.02),
+        llmFitness: llmFitness,
+        gaFitness: gaFitness,
+        hcFitness: hcFitness,
       };
     });
   }, [optimizedDataset, initialSeeds, schema]);
@@ -1137,24 +1151,63 @@ export const OptimizationDashboard: React.FC = () => {
   // Boundary check records mapping
   const boundaryRecords = useMemo<BoundaryRecord[]>(() => {
     if (schema.length === 0) return [];
-    return schema.map((field) => {
-      const testValue =
-        field.type === 'number'
-          ? field.minValue !== undefined
-            ? field.minValue
-            : 0
-          : field.maxLength !== undefined
-            ? `a`.repeat(field.maxLength)
-            : 'test';
-      return {
-        fieldName: field.name,
-        boundaryType: field.type === 'number' ? 'BVA (Min Limit)' : 'BVA (Max Length)',
-        testValue: testValue,
-        expectedResult: field.required ? 'Bắt buộc - Hợp lệ' : 'Tùy chọn - Hợp lệ',
-        status: 'Valid' as const,
-      };
+    const datasetToUse = optimizedDataset && optimizedDataset.length > 0 ? optimizedDataset : initialSeeds;
+    const records: BoundaryRecord[] = [];
+
+    schema.forEach(field => {
+      // 1. Required Check
+      if (field.required) {
+        const isCovered = datasetToUse.some(seed => !seed[field.name]);
+        records.push({
+          fieldName: field.name,
+          boundaryType: 'Bắt buộc (Required)',
+          testValue: 'Rỗng / Null',
+          expectedResult: 'Lỗi',
+          status: isCovered ? 'Covered' : 'Missed',
+        });
+      }
+
+      // 2. Number boundaries
+      if (field.type === 'number') {
+        if (field.minValue !== undefined) {
+          const minCovered = datasetToUse.some(seed => Number(seed[field.name]) === field.minValue);
+          records.push({ fieldName: field.name, boundaryType: 'BVA (Min)', testValue: field.minValue, expectedResult: 'Hợp lệ', status: minCovered ? 'Covered' : 'Missed' });
+          
+          const minMinus1Covered = datasetToUse.some(seed => Number(seed[field.name]) === field.minValue! - 1);
+          records.push({ fieldName: field.name, boundaryType: 'BVA (Min-1)', testValue: field.minValue - 1, expectedResult: 'Lỗi', status: minMinus1Covered ? 'Covered' : 'Missed' });
+        }
+        if (field.maxValue !== undefined) {
+          const maxCovered = datasetToUse.some(seed => Number(seed[field.name]) === field.maxValue);
+          records.push({ fieldName: field.name, boundaryType: 'BVA (Max)', testValue: field.maxValue, expectedResult: 'Hợp lệ', status: maxCovered ? 'Covered' : 'Missed' });
+          
+          const maxPlus1Covered = datasetToUse.some(seed => Number(seed[field.name]) === field.maxValue! + 1);
+          records.push({ fieldName: field.name, boundaryType: 'BVA (Max+1)', testValue: field.maxValue + 1, expectedResult: 'Lỗi', status: maxPlus1Covered ? 'Covered' : 'Missed' });
+        }
+      }
+
+      // 3. String boundaries
+      else if (field.type === 'string' || field.type === 'email' || field.type === 'phone') {
+        if (field.minLength !== undefined) {
+          const minLenCovered = datasetToUse.some(seed => typeof seed[field.name] === 'string' && seed[field.name].length === field.minLength);
+          records.push({ fieldName: field.name, boundaryType: 'BVA (Min Len)', testValue: `${field.minLength} chars`, expectedResult: 'Hợp lệ', status: minLenCovered ? 'Covered' : 'Missed' });
+          
+          if (field.minLength > 0) {
+            const minLenMinus1Covered = datasetToUse.some(seed => typeof seed[field.name] === 'string' && seed[field.name].length === field.minLength! - 1);
+            records.push({ fieldName: field.name, boundaryType: 'BVA (Min Len-1)', testValue: `${field.minLength - 1} chars`, expectedResult: 'Lỗi', status: minLenMinus1Covered ? 'Covered' : 'Missed' });
+          }
+        }
+        if (field.maxLength !== undefined) {
+          const maxLenCovered = datasetToUse.some(seed => typeof seed[field.name] === 'string' && seed[field.name].length === field.maxLength);
+          records.push({ fieldName: field.name, boundaryType: 'BVA (Max Len)', testValue: `${field.maxLength} chars`, expectedResult: 'Hợp lệ', status: maxLenCovered ? 'Covered' : 'Missed' });
+          
+          const maxLenPlus1Covered = datasetToUse.some(seed => typeof seed[field.name] === 'string' && seed[field.name].length === field.maxLength! + 1);
+          records.push({ fieldName: field.name, boundaryType: 'BVA (Max Len+1)', testValue: `${field.maxLength + 1} chars`, expectedResult: 'Lỗi', status: maxLenPlus1Covered ? 'Covered' : 'Missed' });
+        }
+      }
     });
-  }, [schema]);
+
+    return records;
+  }, [schema, optimizedDataset, initialSeeds]);
 
   const totalEdgeCases =
     results?.find((r) => r.key === 'hybrid')?.edgeCases || boundaryRecords.length * 2 || 12;
@@ -1664,15 +1717,9 @@ export const OptimizationDashboard: React.FC = () => {
           {boundaryRecords.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <BoundaryEdgeChecker
-                totalEdgeCases={totalEdgeCases}
-                validCount={validCountCount || Math.ceil(totalEdgeCases * 0.92)}
-                records={boundaryRecords.slice(0, 10).map((rec, i) => ({
-                  fieldName: rec.fieldName,
-                  boundaryType: rec.boundaryType,
-                  testValue: rec.testValue,
-                  expectedResult: rec.expectedResult,
-                  status: (i === 8 ? 'Invalid' : 'Valid') as 'Valid' | 'Invalid',
-                }))}
+                totalEdgeCases={boundaryRecords.length}
+                validCount={boundaryRecords.filter(r => r.status === 'Covered').length}
+                records={boundaryRecords}
               />
 
               {/* Nút hành động sau bảng kiểm duyệt biên */}
@@ -1686,9 +1733,25 @@ export const OptimizationDashboard: React.FC = () => {
               >
                 <button
                   onClick={() => {
-                    toast.success(
-                      'Kiểm duyệt toàn bộ giá trị biên thành công! Các ca kiểm thử đáp ứng tiêu chuẩn BVA.',
-                    );
+                    const missed = boundaryRecords.filter(r => r.status === 'Missed');
+                    if (missed.length === 0) {
+                      toast.success('Tuyệt vời! Tất cả các ca biên đều đã được bao phủ trong tập dữ liệu.');
+                      return;
+                    }
+                    
+                    const baseSeed = optimizedDataset && optimizedDataset.length > 0 ? { ...optimizedDataset[0] } : {};
+                    const newSeeds = missed.map((rec) => {
+                      const newSeed = { ...baseSeed };
+                      newSeed[rec.fieldName] = rec.testValue === 'Rỗng / Null' ? null : rec.testValue;
+                      // Update meta info so it shows nicely
+                      newSeed.expectedResult = rec.expectedResult;
+                      newSeed.scenario = `[Auto-Gen] Bổ sung ca biên: ${rec.fieldName} (${rec.boundaryType})`;
+                      newSeed.method = 'BVA';
+                      return newSeed;
+                    });
+                    
+                    setOptimizedDataset([...(optimizedDataset || []), ...newSeeds]);
+                    toast.success(`Đã tự động bổ sung ${newSeeds.length} ca kiểm thử biên còn thiếu vào tập dữ liệu!`);
                   }}
                   className='btn'
                   style={{
@@ -1715,7 +1778,7 @@ export const OptimizationDashboard: React.FC = () => {
                   }}
                 >
                   <Target size={15} />
-                  🎯 Kiểm Tra Giá Trị Biên
+                  🎯 Bổ Sung Các Ca Biên Thiếu
                 </button>
               </div>
             </div>

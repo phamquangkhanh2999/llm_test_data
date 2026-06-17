@@ -2,6 +2,55 @@ import random
 import re
 import string
 import math
+import datetime
+
+# =========================================================================
+# [HỖ TRỢ KIỂU NGÀY - DATE SUPPORT]
+# Định dạng chuẩn ISO YYYY-MM-DD. Dùng chung cho sinh giá trị, validate và
+# chấm biên để KHÔNG hard-code rời rạc -> đặc tả có field date được xử lý đúng.
+# =========================================================================
+ISO_DATE_RE = r"^\d{4}-\d{2}-\d{2}$"
+
+
+def is_valid_iso_date(val_str):
+    """True nếu chuỗi đúng định dạng YYYY-MM-DD VÀ là ngày lịch hợp lệ."""
+    if not isinstance(val_str, str) or not re.match(ISO_DATE_RE, val_str):
+        return False
+    try:
+        datetime.date.fromisoformat(val_str)
+        return True
+    except ValueError:
+        return False
+
+
+def is_boundary_date(val_str):
+    """Biên ngày kinh điển (BVA): đầu/cuối tháng, ngày nhuận 29/02, đầu/cuối năm."""
+    if not is_valid_iso_date(val_str):
+        return False
+    d = datetime.date.fromisoformat(val_str)
+    # Ngày cuối tháng
+    if d.month == 12:
+        next_month_first = datetime.date(d.year + 1, 1, 1)
+    else:
+        next_month_first = datetime.date(d.year, d.month + 1, 1)
+    last_day = (next_month_first - datetime.timedelta(days=1)).day
+    if d.day == 1 or d.day == last_day:
+        return True
+    if d.month == 2 and d.day == 29:  # ngày nhuận
+        return True
+    if (d.month, d.day) in [(1, 1), (12, 31)]:  # đầu/cuối năm
+        return True
+    return False
+
+
+def random_valid_date():
+    """Sinh một ngày hợp lệ ngẫu nhiên dạng YYYY-MM-DD."""
+    y = random.randint(1971, 2030)
+    m = random.randint(1, 12)
+    is_leap = (y % 4 == 0 and (y % 100 != 0 or y % 400 == 0))
+    days_in_month = [31, 29 if is_leap else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    d = random.randint(1, days_in_month[m - 1])
+    return f"{y:04d}-{m:02d}-{d:02d}"
 
 # Helper: Tính khoảng cách Levenshtein giữa 2 chuỗi để đo lường tính đa dạng (Diversity)
 def levenshtein_distance(s1, s2):
@@ -132,6 +181,20 @@ def generate_random_field_value(field, mode="valid"):
             if mode == "boundary":
                 return min_i if random.random() > 0.5 else max_i
             return random.randint(min_i, max_i)
+
+    elif f_type == "date":
+        if field.get("allowedValues") and mode != "invalid":
+            return random.choice(field["allowedValues"])
+        if mode == "invalid":
+            return random.choice([
+                "2024-13-01", "2024-00-10", "2024-02-30", "not-a-date",
+                "2024/01/01", "20240101", "2024-1-1", "01-01-2024"
+            ])
+        if mode == "boundary":
+            return random.choice([
+                "2024-02-29", "2020-01-01", "2023-12-31", "2024-04-30", "2021-02-28"
+            ])
+        return random_valid_date()
 
     else: # type == string
         if field.get("allowedValues"):
@@ -286,22 +349,38 @@ class TestSuiteOptimizer:
 
                 # Data type compliance and structural rules
                 if hard_passed and val is not None and val_str.strip() != "":
-                    if field["type"] == "email":
-                        if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
-                            hard_passed = False
-                    elif field["type"] == "card":
-                        if not re.match(r"^\d{16}$", val_str):
-                            hard_passed = False
-                    elif field["type"] == "phone":
-                        if not re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
-                            hard_passed = False
-                    elif field["type"] == "number":
+                    field_regex = field.get("regex")
+                    if field_regex:
+                        # ƯU TIÊN: regex của đặc tả là ràng buộc CỨNG, thay cho luật định
+                        # dạng mặc định -> đặc tả mới (phone quốc tế, card 15 số, format
+                        # tùy biến) được chấm theo đúng luật của nó, không bị luật cứng đè.
                         try:
-                            float(val)
-                        except (ValueError, TypeError):
-                            hard_passed = False
+                            if not re.search(field_regex, val_str):
+                                hard_passed = False
+                        except re.error:
+                            pass  # regex hỏng -> bỏ qua, không phạt oan
+                    else:
+                        # Không có regex riêng -> dùng luật định dạng mặc định theo kiểu
+                        ftype = field["type"]
+                        if ftype == "email":
+                            if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
+                                hard_passed = False
+                        elif ftype == "card":
+                            if not re.match(r"^\d{16}$", val_str):
+                                hard_passed = False
+                        elif ftype == "phone":
+                            if not re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
+                                hard_passed = False
+                        elif ftype == "date":
+                            if not is_valid_iso_date(val_str):
+                                hard_passed = False
+                        elif ftype == "number":
+                            try:
+                                float(val)
+                            except (ValueError, TypeError):
+                                hard_passed = False
 
-                    # allowedValues (enum checks)
+                    # allowedValues (enum checks) - luôn là ràng buộc cứng
                     if hard_passed and field.get("allowedValues") and field["allowedValues"]:
                         if val_str not in [str(av) for av in field["allowedValues"]]:
                             hard_passed = False
@@ -318,20 +397,12 @@ class TestSuiteOptimizer:
                                 soft_passed = False
                         except (ValueError, TypeError):
                             pass
-                    else:
-                        # minLength / maxLength
+                    elif field["type"] != "date":
+                        # minLength / maxLength (không áp cho date vì độ dài cố định)
                         if field.get("minLength") is not None and len(val_str) < field["minLength"]:
                             soft_passed = False
                         if field.get("maxLength") is not None and len(val_str) > field["maxLength"]:
                             soft_passed = False
-
-                    # Regex match
-                    if soft_passed and field.get("regex"):
-                        try:
-                            if not re.search(field["regex"], val_str):
-                                soft_passed = False
-                        except Exception:
-                            pass
 
                 # Scoring validation
                 if not hard_passed:
@@ -365,6 +436,10 @@ class TestSuiteOptimizer:
                                     is_near_boundary = True
                         except (ValueError, TypeError):
                             pass
+                    elif field["type"] == "date":
+                        # Biên ngày: đầu/cuối tháng, ngày nhuận, đầu/cuối năm
+                        if is_boundary_date(val_str):
+                            is_boundary = True
                     else:
                         min_l = field.get("minLength")
                         max_l = field.get("maxLength")
@@ -407,17 +482,24 @@ class TestSuiteOptimizer:
         penalty = min(0.15 * (dup_count - 1), 0.6) if dup_count > 1 else 0.0
 
         # --- 6. Priority (Dynamic, evaluated on the fly) ---
+        # LƯU Ý: KHÔNG phạt happy-path. Trước đây positive=0.4 khiến một bản ghi
+        # hợp lệ bị chấm thấp hơn bản ghi sai/biên, làm GA tiến hóa TRÔI XA các seed
+        # sạch của LLM -> kết quả tệ hơn dữ liệu ban đầu. Nay positive ngang negative,
+        # boundary chỉ được ưu tiên nhẹ để vẫn khuyến khích dò biên.
         category = self._categorize_testcase(test_case)
         if category == "boundary":
             p_score = 1.0
         elif category == "negative":
-            p_score = 0.7
-        else:
-            p_score = 0.4
+            p_score = 0.8
+        else:  # positive / happy-path
+            p_score = 0.8
 
-        # Calculate final fitness based on weights
-        w1, w2, w3, w4, w5 = 0.4, 0.2, 0.1, 0.3, 0.5
-        fitness = (w1 * v_score) + (w2 * d_score) + (w3 * p_score) + (w4 * b_score) - (w5 * penalty)
+        # Trọng số dương đã CHUẨN HÓA (tổng = 1.0). Validation là thành phần trội nhất
+        # để các bản ghi vỡ cấu trúc do đột biến bị chấm điểm thấp, không lấn át seed sạch.
+        # penalty (trùng lặp) trừ riêng, biên độ vừa phải để không đè bẹp điểm gốc.
+        w_val, w_bound, w_div, w_prio = 0.50, 0.25, 0.15, 0.10
+        w_penalty = 0.30
+        fitness = (w_val * v_score) + (w_bound * b_score) + (w_div * d_score) + (w_prio * p_score) - (w_penalty * penalty)
         fitness = max(0.01, min(fitness, 1.0))
 
         return fitness
@@ -515,6 +597,113 @@ class TestSuiteOptimizer:
             "hall_of_fame": self.hall_of_fame,
             "config": self.config,
         }
+
+    # ═══════════════════════════════════════════════════════════
+    # LẮP RÁP KẾT QUẢ CUỐI CÙNG (CURATED OUTPUT)
+    # ═══════════════════════════════════════════════════════════
+
+    def assemble_optimized_dataset(self, original_seeds=None, target_size=None, max_size=None):
+        """
+        Lắp ráp bộ kết quả tối ưu CUỐI CÙNG một cách "chặt chẽ" thay vì trả về
+        nguyên quần thể thô (vốn đầy con lai/đột biến chất lượng thấp).
+
+        Quy trình:
+          1. Gom ứng viên = quần thể cuối + Hall of Fame (tốt nhất xuyên các thế hệ)
+             + seed F0 gốc (dùng làm SÀN chất lượng).
+          2. Khử trùng lặp theo dấu vân tay giá trị.
+          3. Sắp theo fitness giảm dần để khâu tinh gọn ưu tiên cá thể tốt.
+          4. Lấy LÕI coverage bằng minimize_testcases (giữ phủ biên/âm/dương).
+          5. BÙ thêm (top-up) các cá thể tốt nhất còn lại cho tới khi đạt target_size,
+             để bộ trả về không bị quá ít so với kích thước quần thể người dùng cấu hình.
+
+        Nhờ Hall of Fame lưu cả thế hệ 0 (chứa seed) nên cá thể tốt nhất trả về
+        LUÔN >= seed tốt nhất ban đầu => kết quả không bao giờ tệ hơn dữ liệu LLM.
+
+        Tham số:
+          - target_size: số bản ghi mong muốn (mặc định = popSize cấu hình). Bộ trả về
+            sẽ được bù lên xấp xỉ giá trị này nếu còn đủ cá thể duy nhất.
+          - max_size: trần cứng số bản ghi trả về (nếu cần giới hạn).
+
+        Trả về list dict {"values", "fitness", "origin"} sắp theo fitness giảm dần.
+        """
+        if target_size is None:
+            target_size = self.config.get("popSize")
+        raw_values = [ind["values"] for ind in self.test_suite]
+
+        pool = []
+        seen = set()
+
+        def _fingerprint(values):
+            return str(sorted((k, str(v)) for k, v in values.items()))
+
+        def _add(values, fitness, origin):
+            fp = _fingerprint(values)
+            if fp in seen:
+                return
+            seen.add(fp)
+            pool.append({"values": values, "fitness": fitness, "origin": origin})
+
+        # 1. Quần thể cuối cùng
+        for ind in self.test_suite:
+            _add(ind["values"], ind["fitness"], ind["origin"])
+
+        # 2. Hall of Fame
+        for hof in self.hall_of_fame:
+            _add(hof["values"], hof.get("fitness", 0.0), hof.get("origin", "HallOfFame"))
+
+        # 3. Seed F0 gốc làm SÀN chất lượng
+        if original_seeds:
+            for s in original_seeds:
+                cleaned = {}
+                for field in self.schema:
+                    name = field["name"]
+                    cleaned[name] = s[name] if name in s else generate_random_field_value(field, "valid")
+                fit = self.evaluate_testcase_quality(cleaned, raw_values)
+                _add(cleaned, fit, "Seed_F0")
+
+        # Sắp theo fitness giảm dần (minimize ưu tiên cá thể đứng trước trong mỗi nhóm)
+        pool.sort(key=lambda x: x["fitness"], reverse=True)
+
+        # 4. Lấy LÕI coverage (giữ phủ biên/âm/dương, loại dư thừa)
+        values_list = [p["values"] for p in pool]
+        result = self.minimize_testcases(values_list)
+        minimized = result["minimized"]
+
+        # Gắn lại fitness/origin theo dấu vân tay
+        meta_map = {_fingerprint(p["values"]): p for p in pool}
+        enriched = []
+        selected_fps = set()
+        for tc in minimized:
+            fp = _fingerprint(tc)
+            selected_fps.add(fp)
+            meta = meta_map.get(fp, {"fitness": 0.0, "origin": "Optimized"})
+            enriched.append({
+                "values": tc,
+                "fitness": meta["fitness"],
+                "origin": meta["origin"]
+            })
+
+        # 5. BÙ lên target_size từ các cá thể tốt nhất còn lại (pool đã sắp theo fitness,
+        #    đã khử trùng) -> tránh trả về quá ít bản ghi.
+        if target_size and len(enriched) < target_size:
+            for p in pool:
+                if len(enriched) >= target_size:
+                    break
+                fp = _fingerprint(p["values"])
+                if fp in selected_fps:
+                    continue
+                selected_fps.add(fp)
+                enriched.append({
+                    "values": p["values"],
+                    "fitness": p["fitness"],
+                    "origin": p["origin"]
+                })
+
+        enriched.sort(key=lambda x: x["fitness"], reverse=True)
+        if max_size:
+            enriched = enriched[:max_size]
+
+        return enriched
 
     def evaluate_suite(self):
         raw_values = [ind["values"] for ind in self.test_suite]
@@ -665,6 +854,15 @@ class TestSuiteOptimizer:
                         else:
                             mutated_tc[name] = generate_random_field_value(field, "valid")
                     elif rand < 0.75:
+                        mutated_tc[name] = generate_random_field_value(field, "boundary")
+                    else:
+                        mutated_tc[name] = generate_random_field_value(field, "invalid")
+
+                elif field["type"] == "date":
+                    # Đột biến ngày: sinh lại ngày hợp lệ / biên / sai định dạng
+                    if rand < 0.45:
+                        mutated_tc[name] = generate_random_field_value(field, "valid")
+                    elif rand < 0.80:
                         mutated_tc[name] = generate_random_field_value(field, "boundary")
                     else:
                         mutated_tc[name] = generate_random_field_value(field, "invalid")
@@ -889,6 +1087,10 @@ class TestSuiteOptimizer:
                                 boundaries_checked.add(f"{name}_max_near")
                         except (ValueError, TypeError):
                             pass
+                    elif field["type"] == "date":
+                        if is_boundary_date(val_str):
+                            boundaries_checked.add(f"{name}_min")
+                            boundaries_checked.add(f"{name}_max")
                     else:
                         if field.get("minLength") is not None and len(val_str) == field["minLength"]:
                             boundaries_checked.add(f"{name}_min")
@@ -955,6 +1157,12 @@ class TestSuiteOptimizer:
                     return 'valid'
                 except (ValueError, TypeError):
                     return 'invalid'
+            elif field["type"] == "date":
+                if not is_valid_iso_date(val_str):
+                    return 'invalid'
+                if is_boundary_date(val_str):
+                    return 'boundary_min'
+                return 'valid'
             else:
                 min_l = field.get("minLength")
                 max_l = field.get("maxLength")
@@ -978,6 +1186,8 @@ class TestSuiteOptimizer:
                     cats.extend(["boundary_min", "invalid_low"])
                 if field.get("maxValue") is not None:
                     cats.extend(["boundary_max", "invalid_high"])
+            elif field["type"] == "date":
+                cats.extend(["invalid", "boundary_min"])
             else:
                 if field.get("minLength") is not None:
                     cats.extend(["boundary_min", "invalid_short"])
@@ -1127,7 +1337,15 @@ class TestSuiteOptimizer:
 
             if field.get("required") and val_str == "":
                 is_valid = False
-            if is_valid and field["type"] == "email":
+            field_regex = field.get("regex")
+            if is_valid and field_regex:
+                # Regex của đặc tả là ràng buộc cứng (đồng bộ với hàm fitness)
+                try:
+                    if not re.search(field_regex, val_str):
+                        is_valid = False
+                except re.error:
+                    pass
+            elif is_valid and field["type"] == "email":
                 if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
                     is_valid = False
             elif is_valid and field["type"] == "card":
@@ -1136,6 +1354,11 @@ class TestSuiteOptimizer:
             elif is_valid and field["type"] == "phone":
                 if not re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
                     is_valid = False
+            elif is_valid and field["type"] == "date":
+                if not is_valid_iso_date(val_str):
+                    is_valid = False
+                elif is_boundary_date(val_str):
+                    has_boundary = True
             elif is_valid and field["type"] == "number":
                 try:
                     num = float(val)
@@ -1151,7 +1374,7 @@ class TestSuiteOptimizer:
                 except (ValueError, TypeError):
                     is_valid = False
 
-            if is_valid and field["type"] not in ["number"]:
+            if is_valid and field["type"] not in ["number", "date"]:
                 if field.get("minLength") is not None and len(val_str) < field["minLength"]:
                     is_valid = False
                 if field.get("maxLength") is not None and len(val_str) > field["maxLength"]:
@@ -1196,6 +1419,10 @@ class TestSuiteOptimizer:
                                 boundaries_checked.add(f"{name}_max")
                         except (ValueError, TypeError):
                             pass
+                    elif field["type"] == "date":
+                        if is_boundary_date(val_str):
+                            boundaries_checked.add(f"{name}_min")
+                            boundaries_checked.add(f"{name}_max")
                     else:
                         if field.get("minLength") is not None and len(val_str) == field["minLength"]:
                             boundaries_checked.add(f"{name}_min")

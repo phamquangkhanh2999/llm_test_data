@@ -26,12 +26,12 @@ interface HillClimbingComparisonProps {
   schema?: any[];
 }
 
-interface CollapsibleJsonProps {
+export interface CollapsibleJsonProps {
   value: any;
   isHighlighted?: boolean;
 }
 
-const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ value, isHighlighted = false }) => {
+export const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ value, isHighlighted = false }) => {
   const [expanded, setExpanded] = useState(false);
   
   const jsonString = useMemo(() => {
@@ -129,16 +129,45 @@ export const HillClimbingComparison: React.FC<HillClimbingComparisonProps> = ({
   comparisons = []
 }) => {
   const [activeTab, setActiveTab] = useState<'llm' | 'ga' | 'hc_only' | 'hc' | 'comparison'>('comparison');
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 40;
 
   const handleTabChange = (tab: 'llm' | 'ga' | 'hc_only' | 'hc' | 'comparison') => {
     setActiveTab(tab);
-    setIsExpanded(false);
+    setCurrentPage(1);
   };
 
+  const totalPages = Math.ceil(comparisons.length / itemsPerPage);
+
   const visibleComparisons = useMemo(() => {
-    return isExpanded ? comparisons : comparisons.slice(0, 4);
-  }, [comparisons, isExpanded]);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return comparisons.slice(startIndex, startIndex + itemsPerPage);
+  }, [comparisons, currentPage]);
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+        <button
+          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+          disabled={currentPage === 1}
+          style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: currentPage === 1 ? 'transparent' : 'rgba(255,255,255,0.05)', color: currentPage === 1 ? 'var(--text-muted)' : 'var(--text-primary)', cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}
+        >
+          Trước
+        </button>
+        <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+          Trang {currentPage} / {totalPages}
+        </span>
+        <button
+          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+          disabled={currentPage === totalPages}
+          style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: currentPage === totalPages ? 'transparent' : 'rgba(255,255,255,0.05)', color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--text-primary)', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer' }}
+        >
+          Sau
+        </button>
+      </div>
+    );
+  };
 
 
   // Helper xác định ca kiểm thử là Hợp lệ (Positive) hay Lỗi/Bảo mật (Negative)
@@ -190,7 +219,7 @@ export const HillClimbingComparison: React.FC<HillClimbingComparisonProps> = ({
 
   // Chuyển đổi dữ liệu cho biểu đồ Recharts
   const chartData = useMemo(() => {
-    return comparisons.slice(0, 8).map((c) => ({
+    return comparisons.map((c) => ({
       name: c.testId.replace('TC-OPT-', 'TC-'),
       'LLM thô (F0)': parseFloat(c.llmFitness.toFixed(3)),
       'Tối ưu GA': parseFloat(c.gaFitness.toFixed(3)),
@@ -350,48 +379,9 @@ export const HillClimbingComparison: React.FC<HillClimbingComparisonProps> = ({
               </tbody>
             </table>
           </div>
+          {renderPagination()}
 
-          {comparisons.length > 4 && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
-              <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 14px',
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: '20px',
-                  color: 'var(--text-primary)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                  outline: 'none'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
-                {isExpanded ? (
-                  <>
-                    Thu gọn <ChevronUp size={13} />
-                  </>
-                ) : (
-                  <>
-                    Xem thêm ({comparisons.length - 4} ca) <ChevronDown size={13} />
-                  </>
-                )}
-              </button>
-            </div>
-          )}
+          
         </div>
       )}
 
@@ -454,48 +444,9 @@ export const HillClimbingComparison: React.FC<HillClimbingComparisonProps> = ({
               </tbody>
             </table>
           </div>
+          {renderPagination()}
 
-          {comparisons.length > 4 && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
-              <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 14px',
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: '20px',
-                  color: 'var(--text-primary)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                  outline: 'none'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
-                {isExpanded ? (
-                  <>
-                    Thu gọn <ChevronUp size={13} />
-                  </>
-                ) : (
-                  <>
-                    Xem thêm ({comparisons.length - 4} ca) <ChevronDown size={13} />
-                  </>
-                )}
-              </button>
-            </div>
-          )}
+          
         </div>
       )}
 
@@ -601,29 +552,9 @@ export const HillClimbingComparison: React.FC<HillClimbingComparisonProps> = ({
               </tbody>
             </table>
           </div>
+          {renderPagination()}
 
-          {comparisons.length > 4 && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
-              <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '6px 14px',
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: '20px',
-                  color: 'var(--text-primary)',
-                  fontSize: '12px', fontWeight: 600,
-                  cursor: 'pointer', transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)', outline: 'none'
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                onMouseOut={(e)  => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.transform = 'translateY(0)'; }}
-              >
-                {isExpanded ? <>Thu gọn <ChevronUp size={13} /></> : <>Xem thêm ({comparisons.length - 4} ca) <ChevronDown size={13} /></>}
-              </button>
-            </div>
-          )}
+          
         </div>
       )}
 
@@ -696,48 +627,9 @@ export const HillClimbingComparison: React.FC<HillClimbingComparisonProps> = ({
               </tbody>
             </table>
           </div>
+          {renderPagination()}
 
-          {comparisons.length > 4 && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
-              <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 14px',
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: '20px',
-                  color: 'var(--text-primary)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                  outline: 'none'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
-                {isExpanded ? (
-                  <>
-                    Thu gọn <ChevronUp size={13} />
-                  </>
-                ) : (
-                  <>
-                    Xem thêm ({comparisons.length - 4} ca) <ChevronDown size={13} />
-                  </>
-                )}
-              </button>
-            </div>
-          )}
+          
         </div>
       )}
 
@@ -891,47 +783,8 @@ export const HillClimbingComparison: React.FC<HillClimbingComparisonProps> = ({
                 </tbody>
               </table>
             </div>
-            {comparisons.length > 4 && (
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '8px' }}>
-                <button
-                  onClick={() => setIsExpanded(!isExpanded)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '6px 14px',
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: '20px',
-                    color: 'var(--text-primary)',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                    outline: 'none'
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
-                >
-                  {isExpanded ? (
-                    <>
-                      Thu gọn <ChevronUp size={13} />
-                    </>
-                  ) : (
-                    <>
-                      Xem thêm ({comparisons.length - 4} ca) <ChevronDown size={13} />
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
+            {renderPagination()}
+            
           </div>
         </div>
       )}
