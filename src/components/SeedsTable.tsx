@@ -77,6 +77,32 @@ export const SeedsTable: React.FC<SeedsTableProps> = ({
     }));
   }, [fields, data]);
 
+  // Sort data by the field name it tests, grouping them together
+  const sortedData = useMemo(() => {
+    if (!data || data.length === 0) return [];
+    
+    const fieldNames = fields?.map(f => f.name.toLowerCase()) || [];
+    
+    return [...data].sort((a, b) => {
+      const getTargetField = (scenario: string) => {
+        if (!scenario) return 'zz_unknown';
+        const s = scenario.toLowerCase();
+        for (const f of fieldNames) {
+          if (s.includes(f) || s.includes(`trường ${f}`)) return f;
+        }
+        return 'zz_unknown';
+      };
+      
+      const fieldA = getTargetField(a.scenario || a.desc || a.description || '');
+      const fieldB = getTargetField(b.scenario || b.desc || b.description || '');
+      
+      if (fieldA !== fieldB) {
+        return fieldA.localeCompare(fieldB);
+      }
+      return (a.scenario || '').localeCompare(b.scenario || '');
+    });
+  }, [data, fields]);
+
   return (
     <div
       className='glass-card'
@@ -174,7 +200,7 @@ export const SeedsTable: React.FC<SeedsTableProps> = ({
       {/* Table section */}
       <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)' }}>
         <table
-          style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}
+          style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left', tableLayout: 'fixed', wordBreak: 'break-word' }}
         >
           <thead>
             <tr
@@ -183,31 +209,25 @@ export const SeedsTable: React.FC<SeedsTableProps> = ({
                 color: 'var(--text-secondary)',
               }}
             >
-              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '60px' }}>STT</th>
-              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '120px' }}>
-                Phương pháp
-              </th>
+              <th style={{ padding: '4px', fontWeight: 'bold', width: '3%' }}>STT</th>
+              <th style={{ padding: '4px', fontWeight: 'bold', width: '6%' }}>Method</th>
               {columns.map((col) => (
-                <th key={col.name} style={{ padding: '10px 12px', fontWeight: 'bold' }}>
+                <th key={col.name} style={{ padding: '4px', fontWeight: 'bold', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                   {col.label}
                 </th>
               ))}
-              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '220px' }}>
-                Mô tả kịch bản
-              </th>
-              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '140px' }}>
-                Kết quả mong đợi
-              </th>
-              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '90px' }}>Sanity Check</th>
-              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '150px' }}>Chi tiết Lỗi</th>
-              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '80px' }}>Coverage</th>
-              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '80px' }}>Diversity</th>
-              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '80px' }}>Boundary</th>
-              <th style={{ padding: '10px 12px', fontWeight: 'bold', width: '90px' }}>Final Fitness</th>
+              <th style={{ padding: '4px', fontWeight: 'bold', width: '20%' }}>Mô tả kịch bản</th>
+              <th style={{ padding: '4px', fontWeight: 'bold', width: '10%' }}>Kết quả</th>
+              <th style={{ padding: '4px', fontWeight: 'bold', width: '5%' }}>Sanity</th>
+              <th style={{ padding: '4px', fontWeight: 'bold', width: '10%' }}>Lỗi</th>
+              <th style={{ padding: '4px', fontWeight: 'bold', width: '4%' }}>Cov.</th>
+              <th style={{ padding: '4px', fontWeight: 'bold', width: '4%' }}>Div.</th>
+              <th style={{ padding: '4px', fontWeight: 'bold', width: '4%' }}>Bnd.</th>
+              <th style={{ padding: '4px', fontWeight: 'bold', width: '5%' }}>Fitness</th>
             </tr>
           </thead>
           <tbody>
-            {data.length === 0 ? (
+            {sortedData.length === 0 ? (
               <tr>
                 <td
                   colSpan={10 + columns.length}
@@ -218,7 +238,7 @@ export const SeedsTable: React.FC<SeedsTableProps> = ({
                 </td>
               </tr>
             ) : (
-              data.map((seed, idx) => {
+              sortedData.map((seed, idx) => {
                 const methodLabel = seed.method || 'Hybrid';
                 const isHybrid = methodLabel.toLowerCase() === 'hybrid';
                 const isBva = methodLabel.toLowerCase() === 'bva';
@@ -266,7 +286,7 @@ export const SeedsTable: React.FC<SeedsTableProps> = ({
                       </span>
                     </td>
                     {columns.map((col) => {
-                      const val = seed[col.name];
+                      const val = seed.data ? seed.data[col.name] : seed[col.name];
                       return (
                         <td
                           key={col.name}
@@ -284,15 +304,16 @@ export const SeedsTable: React.FC<SeedsTableProps> = ({
                     })}
                     <td
                       style={{
-                        padding: '12px 12px',
+                        padding: '8px',
                         color: 'var(--text-secondary)',
-                        fontSize: '12.5px',
+                        fontSize: '12px',
                         lineHeight: '1.4',
+                        wordBreak: 'break-word',
                       }}
                     >
                       {seed.scenario || seed.desc || seed.description || '-'}
                     </td>
-                    <td style={{ padding: '12px 12px', fontSize: '12.5px', fontWeight: '500' }}>
+                    <td style={{ padding: '8px', fontSize: '12px', fontWeight: '500' }}>
                       <span
                         style={{
                           color:

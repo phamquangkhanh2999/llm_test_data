@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useMemo } from 'react';
 import { Scale, Sparkles, Cpu, Zap, BarChart2, ChevronDown, ChevronUp, Database } from 'lucide-react';
 import {

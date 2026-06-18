@@ -9,6 +9,7 @@ import {
 import React from 'react';
 import { AILogsViewer } from './components/AILogsViewer';
 import { DataImport } from './components/DataImport';
+import { BenchmarkDashboard } from './components/BenchmarkDashboard';
 import { HistoryManager } from './components/HistoryManager';
 import { Layout } from './components/Layout';
 import { OptimizationDashboard } from './components/OptimizationDashboard';
@@ -98,6 +99,22 @@ function App() {
         </div>
       ),
       icon: <Download size={16} />,
+    },
+{
+      id: 'benchmark',
+      label: (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+          }}
+        >
+          <span style={{color: 'var(--color-yellow)'}}>4. Chiến Trường Benchmark</span>
+        </div>
+      ),
+      icon: <Zap size={16} style={{color: 'var(--color-yellow)'}} />,
     },
   ];
 
@@ -251,7 +268,23 @@ function App() {
       user={{ name: 'Minh Thu', role: 'QA Engineer Manager', avatarInitials: 'MT' }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
+        
+        {/* ══════════ CHIẾN TRƯỜNG BENCHMARK ══════════ */}
+        <div style={{ display: activeScreen === 'benchmark' ? 'block' : 'none' }}>
+          <PageLayout
+            stepId='benchmark'
+            title='Bước 4: Chiến Trường Benchmark'
+            icon={<Zap size={24} />}
+            description='Chạy đồng thời 6 chiến lược tự động sinh dữ liệu để so sánh hiệu năng và chất lượng độ phủ.'
+            hints={[]}
+            accentColor='var(--color-yellow)'
+          >
+            <BenchmarkDashboard />
+          </PageLayout>
+        </div>
+
         {/* ══════════ BƯỚC 1: CHUẨN BỊ DỮ LIỆU ══════════ */}
+
         <div style={{ display: activeScreen === 'prepare' ? 'block' : 'none' }}>
           <PageLayout
             stepId='prepare'

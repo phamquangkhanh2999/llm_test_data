@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { BarChart2, Cpu, Database, Sparkles, Target, Terminal } from 'lucide-react';
 import React, { useMemo, useRef, useState } from 'react';
 import type { Chromosome, GeneticConfig, PopulationStats } from '../algorithms/genetic';

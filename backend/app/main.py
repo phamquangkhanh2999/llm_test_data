@@ -18,8 +18,10 @@ from .core.database import engine, Base, get_db, SessionLocal
 # Nạp các Models bảng dữ liệu quan hệ
 from . import models
 # Nạp dịch vụ kết nối OpenAI API thật
-from .services.ai_parser import parse_spec_with_openai, generate_seeds, evaluate_test_quality_with_ai, evaluate_optimized_dataset_with_ai
-from .services import openai_service
+from .services.strategy_runner import run_all_strategies
+from .engines.fitness_engine import calculate_dataset_fitness
+from .services.prompts import get_benchmark_analysis_prompt
+from .services.ai_service import parse_spec_with_ai, generate_seeds_with_ai, evaluate_test_quality_with_ai, evaluate_optimized_dataset_with_ai
 # Nạp các bộ thuật toán tối ưu hóa chạy trên Server
 from .algorithms.optimizer_engine import TestSuiteOptimizer, generate_random_field_value
 from .algorithms.boundary_tweak import optimize_testcase_boundaries, BoundaryTweakStats
@@ -130,36 +132,40 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
     if existing_spec and not req.force_reanalyze:
         print(">>> INFO: Cache hit! Trả về dữ liệu đặc tả đã lưu từ trước.")
         try:
-            fields = json.loads(existing_spec.parsed_schema)
+            business_rules = json.loads(existing_spec.extracted_rules) if existing_spec.extracted_rules else []
         except:
-            fields = []
+            business_rules = []
         try:
-            initial_seeds = json.loads(existing_spec.initial_seeds) if existing_spec.initial_seeds else []
+            constraints = json.loads(existing_spec.extracted_constraints) if existing_spec.extracted_constraints else []
         except:
-            initial_seeds = []
+            constraints = []
             
         return {
             "specification_id": existing_spec.id,
             "project_id": existing_spec.project_id,
+            "business_rules": business_rules,
+            "constraints": constraints,
+            "ambiguities": [],
             "fields": fields,
             "initialPopulation": initial_seeds,
             "cached": True
         }
 
     try:
-        # 1. Gọi OpenAI API (hoặc bộ dự phòng Fallback) xử lý phân tích ngữ nghĩa
-        if req.llm_provider == "openai":
-            ai_result = openai_service.parse_spec_with_openai_v2(req.raw_text, req.api_key_override, db=db)
-        else:
-            ai_result = parse_spec_with_openai(req.raw_text, req.api_key_override, db=db)
+        # 1. Gọi AI Parsing thống nhất (LLM Client tự lo việc chia ngả)
+        ai_result = parse_spec_with_ai(req.raw_text, req.api_key_override, req.llm_provider, db=db)
     except ValueError as ve:
-        if str(ve).startswith("API_KEY_ERROR"):
+        if "API_KEY_ERROR" in str(ve):
             print(f">>> ERROR: {str(ve)}")
-            raise HTTPException(status_code=400, detail=f"Lỗi API Key: {str(ve).replace('API_KEY_ERROR: ', '')}")
-        raise ve
+            raise HTTPException(status_code=400, detail=f"Lỗi API Key: {str(ve).replace('API_KEY_ERROR: ', '').replace('AI Error: ', '')}")
+        raise HTTPException(status_code=500, detail=f"Lỗi từ AI Server: {str(ve)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi nội bộ hệ thống: {str(e)}")
 
     # Nếu đã tồn tại bản ghi trong CSDL và yêu cầu phân tích lại, cập nhật đè bản ghi cũ
     if existing_spec:
+        existing_spec.extracted_rules = json.dumps(ai_result.get("business_rules", []))
+        existing_spec.extracted_constraints = json.dumps(ai_result.get("constraints", []))
         existing_spec.parsed_schema = json.dumps(ai_result.get("fields", []))
         existing_spec.initial_seeds = json.dumps(ai_result.get("initialPopulation", []))
         db.commit()
@@ -167,9 +173,13 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
         return {
             "specification_id": existing_spec.id,
             "project_id": existing_spec.project_id,
+            "business_rules": ai_result.get("business_rules", []),
+            "constraints": ai_result.get("constraints", []),
+            "ambiguities": ai_result.get("ambiguities", []),
             "fields": ai_result.get("fields", []),
             "initialPopulation": ai_result.get("initialPopulation", []),
             "is_mock": ai_result.get("is_mock", False),
+            "engine": ai_result.get("engine", ""),
             "reanalyzed": True
         }
 
@@ -186,8 +196,10 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
     db_spec = models.Specification(
         project_id=db_project.id,
         raw_text=req.raw_text,
-        parsed_schema=json.dumps(ai_result.get("fields", [])), # Chuyển mảng Python list sang chuỗi JSON lưu vào CSDL
-        initial_seeds=json.dumps(ai_result.get("initialPopulation", [])) # Lưu lại F0 để tiết kiệm token khi gọi lại
+        extracted_rules=json.dumps(ai_result.get("business_rules", [])),
+        extracted_constraints=json.dumps(ai_result.get("constraints", [])),
+        parsed_schema=json.dumps(ai_result.get("fields", [])),
+        initial_seeds=json.dumps(ai_result.get("initialPopulation", []))
     )
     db.add(db_spec)
     db.commit()
@@ -197,9 +209,13 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
     return {
         "specification_id": db_spec.id,
         "project_id": db_project.id,
+        "business_rules": ai_result.get("business_rules", []),
+        "constraints": ai_result.get("constraints", []),
+        "ambiguities": ai_result.get("ambiguities", []),
         "fields": ai_result.get("fields", []),
         "initialPopulation": ai_result.get("initialPopulation", []),
-        "is_mock": ai_result.get("is_mock", False)
+        "is_mock": ai_result.get("is_mock", False),
+        "engine": ai_result.get("engine", "")
     }
 
 
@@ -232,24 +248,15 @@ def api_generate_seeds(req: SeedGenerationRequest, db: Session = Depends(get_db)
                 except (ValueError, TypeError):
                     pass
 
-        if req.llm_provider == "openai":
-            seeds = openai_service.generate_seeds_openai(
-                fields=fields,
-                test_method=req.test_method,
-                raw_text=req.raw_text or "",
-                api_key_override=req.api_key_override,
-                db=db
-            )
-        else:
-            seeds = generate_seeds(
-                fields=fields,
-                test_method=req.test_method,
-                boundary_count=req.boundary_count,
-                partition_count=req.partition_count,
-                api_key=req.api_key_override,
-                raw_text=req.raw_text or "",
-                db=db
-            )
+        seeds = generate_seeds_with_ai(
+            fields=fields,
+            test_method=req.test_method,
+            boundary_count=req.boundary_count,
+            partition_count=req.partition_count,
+            api_key=active_key,
+            raw_text=req.raw_text or "",
+            db=db
+        )
         return {
             "initialPopulation": seeds,
             "is_mock": is_mock
@@ -270,24 +277,16 @@ def api_evaluate_seeds(req: EvaluateRequest, db: Session = Depends(get_db)):
     Nhận tập seeds, schemas và gửi cho AI (Gemini/OpenAI) để chấm điểm và đánh giá ưu/nhược điểm.
     """
     try:
-        if req.llm_provider == "openai":
-            evaluation = openai_service.evaluate_test_quality_openai(
-                fields=req.fields,
-                seeds=req.seeds,
-                test_method=req.test_method,
-                raw_text=req.raw_text,
-                api_key_override=req.api_key_override,
-                db=db
-            )
-        else:
-            evaluation = evaluate_test_quality_with_ai(
-                fields=req.fields,
-                seeds=req.seeds,
-                test_method=req.test_method,
-                raw_text=req.raw_text,
-                api_key_override=req.api_key_override,
-                db=db
-            )
+        evaluation = evaluate_test_quality_with_ai(
+            fields=req.fields,
+            seeds=req.seeds,
+            test_method=req.test_method,
+            raw_text=req.raw_text,
+            api_key_override=req.api_key_override,
+            db=db,
+            extracted_rules=[],
+            extracted_constraints=[]
+        )
         return {"success": True, "data": evaluation}
     except ValueError as ve:
         if str(ve).startswith("API_KEY_ERROR"):
@@ -306,24 +305,16 @@ def api_evaluate_optimized(req: EvaluateOptimizedRequest, db: Session = Depends(
     Nhận tập dataset, schemas và gửi cho AI (Gemini/OpenAI) để chấm điểm và đánh giá.
     """
     try:
-        if req.llm_provider == "openai":
-            evaluation = openai_service.evaluate_optimized_openai(
-                fields=req.fields,
-                dataset=req.dataset,
-                algorithm=req.algorithm,
-                raw_text=req.raw_text,
-                api_key_override=req.api_key_override,
-                db=db
-            )
-        else:
-            evaluation = evaluate_optimized_dataset_with_ai(
-                fields=req.fields,
-                dataset=req.dataset,
-                algorithm=req.algorithm,
-                raw_text=req.raw_text,
-                api_key_override=req.api_key_override,
-                db=db
-            )
+        evaluation = evaluate_optimized_dataset_with_ai(
+            fields=req.fields,
+            dataset=req.dataset,
+            algorithm=req.algorithm,
+            raw_text=req.raw_text,
+            api_key_override=req.api_key_override,
+            db=db,
+            extracted_rules=[],
+            extracted_constraints=[]
+        )
         return {"success": True, "data": evaluation}
     except ValueError as ve:
         if str(ve).startswith("API_KEY_ERROR"):
@@ -676,7 +667,7 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
         data = await websocket.receive_text()
         req_data = json.loads(data)
         
-        generations = int(req_data.get("generations", 60))
+        generations = int(req_data.get("generations", 30))
         pop_size = int(req_data.get("popSize", 100))
         crossover_rate = float(req_data.get("crossoverRate", 0.8))
         mutation_rate = float(req_data.get("mutationRate", 0.15))
@@ -1003,3 +994,48 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
     finally:
         db.close()
 
+
+
+class BenchmarkRequest(BaseModel):
+    specification_id: str
+    fields: list
+    extracted_rules: list
+    extracted_constraints: list
+    initialPopulation: list
+    api_key_override: Optional[str] = None
+
+@app.post("/api/benchmark")
+def api_benchmark(req: BenchmarkRequest, db: Session = Depends(get_db)):
+    try:
+        # Run 6 strategies
+        datasets = run_all_strategies(
+            schema=req.fields,
+            rules=req.extracted_rules,
+            constraints=req.extracted_constraints,
+            initial_seeds=req.initialPopulation
+        )
+        
+        # Calculate fitness for all
+        results = {}
+        for strategy, dataset in datasets.items():
+            metrics = calculate_dataset_fitness(dataset, req.extracted_rules, req.extracted_constraints)
+            results[strategy] = {
+                "score": metrics["fitness_score"],
+                "details": metrics["details"],
+                "dataset_preview": dataset[:5] # Send back top 5 for UI preview
+            }
+            
+        # Get AI analysis
+        sys_p, usr_p = get_benchmark_analysis_prompt(results)
+        from .services.llm_client import call_llm_json
+        analysis_json, _, _ = call_llm_json(sys_p, usr_p, req.api_key_override)
+        
+        return {
+            "status": "success",
+            "benchmark_data": results,
+            "ai_analysis": analysis_json
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

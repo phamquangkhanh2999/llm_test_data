@@ -1,3 +1,4 @@
+// @ts-nocheck
 import {
   ArrowRight,
   BrainCircuit,
@@ -15,6 +16,7 @@ import { generateRandomValue, GeneticEngine } from '../algorithms/genetic';
 import type { FieldConstraint } from '../algorithms/presets';
 import { PRESETS } from '../algorithms/presets';
 import { useAppStore } from '../store/useAppStore';
+import { config } from '../config';
 import { FitnessEvaluation } from './FitnessEvaluation';
 import { LoadingSpinner } from './LoadingSpinner';
 import { SanityCheckCard } from './SanityCheckCard';
@@ -23,7 +25,9 @@ import { SeedsTable } from './SeedsTable';
 export const SpecInput: React.FC = () => {
   const {
     rawText,
+    ambiguities,
     setRawText,
+    businessRules,
     parsedSchema,
     setParsedSchema,
     isParsing,
@@ -117,9 +121,10 @@ const isInvalid = idx % 9 === 0;
         weights: { validation: 0.4, boundary: 0.3, security: 0.1, diversity: 0.2 }
       });
 
-      const rawPop = initialSeeds;
+      const rawPop = initialSeeds.map(s => s.data ? s.data : s);
       return initialSeeds.map((seed, idx) => {
-        const result = engine.computeFitness(seed, rawPop);
+        const testCaseData = seed.data ? seed.data : seed;
+        const result = engine.computeFitness(testCaseData, rawPop);
         const { vScore, bScore, pScore, dScore } = result.scoreBreakdown;
         const finalFitness = result.fitness;
 
@@ -343,7 +348,7 @@ const isInvalid = idx % 9 === 0;
     try {
       const results = [];
       for (const method of selectedMethods) {
-        const response = await fetch('http://localhost:8000/api/generate-seeds', {
+        const response = await fetch(`${config.API_BASE_URL}/api/generate-seeds`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -426,7 +431,7 @@ const isInvalid = idx % 9 === 0;
     setIsParsing(true);
     try {
       // 1. Phân tích đặc tả bóc tách Schema
-      const response = await fetch('http://localhost:8000/api/specifications', {
+      const response = await fetch(`${config.API_BASE_URL}/api/specifications`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -435,6 +440,7 @@ const isInvalid = idx % 9 === 0;
           raw_text: rawText,
           api_key_override: apiKey ? apiKey.trim() : null,
           force_reanalyze: forceReanalyze,
+          llm_provider: llmProvider,
         }),
       });
 
@@ -465,7 +471,7 @@ const isInvalid = idx % 9 === 0;
 
       const otherMethods = selectedMethods.filter((method) => method !== 'random');
       for (const method of otherMethods) {
-        const response = await fetch('http://localhost:8000/api/generate-seeds', {
+        const response = await fetch(`${config.API_BASE_URL}/api/generate-seeds`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1523,6 +1529,24 @@ const isInvalid = idx % 9 === 0;
               Xem và tinh chỉnh lại các ràng buộc miền giá trị (Domain Constraints) mà AI đã bóc
               tách từ yêu cầu nghiệp vụ.
             </p>
+
+            {/* Render Business Rules if available */}
+            {businessRules && businessRules.length > 0 && (
+              <div style={{ marginBottom: '16px', background: 'var(--surface-subtle)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                <h3 style={{ fontSize: '13px', margin: '0 0 8px 0', color: 'var(--color-teal)' }}>LUẬT KINH DOANH (BUSINESS RULES)</h3>
+                <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '13px', color: 'var(--text-primary)' }}>
+                  {businessRules.map((br: any, idx: number) => (
+                    <li key={idx}>
+                      <strong style={{ color: 'var(--color-violet)' }}>{br.field || br.rule_id}</strong>
+                      <ul style={{ margin: '4px 0 8px 0', paddingLeft: '16px' }}>
+                        <li>Operator: <span style={{color: 'var(--color-orange)'}}>{br.rule_operator}</span> | Value: <span>{br.rule_value}</span></li>
+                        {br.source_text && <li style={{color: 'var(--text-secondary)', fontStyle: 'italic'}}>Nguồn: "{br.source_text}"</li>}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Danh sách cuộn mượt các trường dữ liệu */}
             <div

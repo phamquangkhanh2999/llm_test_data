@@ -34,6 +34,8 @@ class Specification(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     project_id = Column(String(36), ForeignKey("projects.id"), nullable=False)
     raw_text = Column(String(2000), nullable=False) # Văn bản mô tả nghiệp vụ bằng chữ thường
+    extracted_rules = Column(Text, nullable=True) # Lưu trữ các Business Rules sau khi được chuẩn hóa ID
+    extracted_constraints = Column(Text, nullable=True) # Lưu trữ các ràng buộc logic chéo (Cross-field constraints)
     parsed_schema = Column(Text, nullable=False) # Cấu trúc JSON Schema dạng text (dùng Text thay vì String để tránh truncate)
     initial_seeds = Column(Text, nullable=True) # Dữ liệu hạt giống F0 ban đầu
     created_at = Column(DateTime, default=datetime.utcnow)

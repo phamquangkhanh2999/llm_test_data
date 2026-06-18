@@ -1,4 +1,5 @@
 import random
+from ..engines.fitness_engine import evaluate_individual_fitness
 import re
 import string
 import math
@@ -876,6 +877,12 @@ class TestSuiteOptimizer:
                             mutated_tc[name] = random.choice(others)
                         else:
                             mutated_tc[name] = random.choice(current_vals)
+                    elif field.get("regex"):
+                        # Bảo vệ Regex: Không đột biến bằng ký tự ngẫu nhiên tránh vỡ format
+                        if rand < 0.2:
+                            mutated_tc[name] = generate_random_field_value(field, "boundary")
+                        else:
+                            is_mutated = False # Giữ nguyên gốc
                     elif rand < 0.3:
                         # chèn 1 ký tự đặc biệt biên
                         char = random.choice("!@#$%'\"<>")
