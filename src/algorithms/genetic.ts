@@ -68,7 +68,7 @@ function calculateDiversity(c: Chromosome, subset: Chromosome[]): number {
 }
 
 // Helper: Generate random value according to constraints
-export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'invalid' | 'boundary' | 'security' = 'valid'): any {
+export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'invalid' | 'boundary' | 'security' | 'ep_valid' | 'ep_invalid' = 'valid'): any {
   const specialChars = ['!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '=', '-', '{', '}', '[', ']', '|', '\\', ':', ';', '"', '<', '>', ',', '.', '?', '/'];
   const securityPayloads = [
     "' OR '1'='1",
@@ -101,23 +101,29 @@ export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'inv
 
   switch (field.type) {
     case 'email':
-      if (mode === 'invalid') {
+      if (mode === 'invalid' || mode === 'ep_invalid') {
         const badEmails = ['invalid-email', 'name@', '@domain.com', 'name.domain.com', 'name@domain.'];
         return badEmails[Math.floor(Math.random() * badEmails.length)];
       }
       if (mode === 'boundary') {
         return `a@${'b'.repeat(100)}.com`;
       }
+      if (mode === 'ep_valid') {
+        return "standard.user@example.com";
+      }
       const names = ['emma', 'liam', 'olivia', 'noah', 'ava', 'will', 'sophia', 'james'];
       const domains = ['gmail.com', 'yahoo.com', 'outlook.com', 'test.io', 'company.vn'];
       return `${names[Math.floor(Math.random() * names.length)]}${Math.floor(Math.random() * 100)}@${domains[Math.floor(Math.random() * domains.length)]}`;
 
     case 'card':
-      if (mode === 'invalid') {
+      if (mode === 'invalid' || mode === 'ep_invalid') {
         return '1234-5678-9012';
       }
       if (mode === 'boundary') {
         return '0000000000000000';
+      }
+      if (mode === 'ep_valid') {
+        return '1234567890123456';
       }
       let card = '';
       for (let i = 0; i < 16; i++) card += Math.floor(Math.random() * 10);
@@ -125,11 +131,14 @@ export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'inv
 
     case 'phone':
       const prefixes = ['03', '05', '07', '08', '09'];
-      if (mode === 'invalid') {
+      if (mode === 'invalid' || mode === 'ep_invalid') {
         return '0281234567';
       }
       if (mode === 'boundary') {
         return '0900000000';
+      }
+      if (mode === 'ep_valid') {
+        return '0987654321';
       }
       let phone = prefixes[Math.floor(Math.random() * prefixes.length)];
       for (let i = 0; i < 8; i++) phone += Math.floor(Math.random() * 10);
@@ -139,18 +148,21 @@ export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'inv
       const min = field.minValue !== undefined ? field.minValue : 0;
       const max = field.maxValue !== undefined ? field.maxValue : 1000;
 
-      if (mode === 'invalid') {
-        return Math.random() > 0.5 ? min - 5 : max + 5;
+      if (mode === 'invalid' || mode === 'ep_invalid') {
+        return Math.random() > 0.5 ? min - 50 : max + 50;
       }
       if (mode === 'boundary') {
         return Math.random() > 0.5 ? min : max;
+      }
+      if (mode === 'ep_valid') {
+        return Math.floor((min + max) / 2);
       }
       return Math.floor(Math.random() * (max - min + 1)) + min;
 
     case 'string':
     default:
       if (field.allowedValues && field.allowedValues.length > 0) {
-        if (mode === 'invalid') return 'INVALID_VAL';
+        if (mode === 'invalid' || mode === 'ep_invalid') return 'INVALID_VAL';
         return field.allowedValues[Math.floor(Math.random() * field.allowedValues.length)];
       }
 
@@ -158,10 +170,12 @@ export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'inv
       const maxLen = field.maxLength !== undefined ? field.maxLength : 20;
 
       let len = Math.floor(Math.random() * (maxLen - minLen + 1)) + minLen;
-      if (mode === 'invalid') {
-        len = Math.random() > 0.5 ? Math.max(0, minLen - 2) : maxLen + 5;
+      if (mode === 'invalid' || mode === 'ep_invalid') {
+        len = Math.random() > 0.5 ? Math.max(0, minLen - 5) : maxLen + 10;
       } else if (mode === 'boundary') {
         len = Math.random() > 0.5 ? minLen : maxLen;
+      } else if (mode === 'ep_valid') {
+        len = Math.floor((minLen + maxLen) / 2);
       }
 
       if (len === 0) return '';
@@ -381,7 +395,8 @@ export class GeneticEngine {
 
           // allowedValues (enum checks)
           if (hardPassed && field.allowedValues && field.allowedValues.length > 0) {
-            if (!field.allowedValues.map(String).includes(strVal)) {
+            const allowedArr = Array.isArray(field.allowedValues) ? field.allowedValues : [];
+            if (!allowedArr.map(String).includes(strVal)) {
               hardPassed = false;
             }
           }
@@ -665,7 +680,8 @@ export class GeneticEngine {
         } else {
           // ENUM-AWARE: mutate within allowedValues if present
           if (field.allowedValues && field.allowedValues.length > 1) {
-            const allowed = field.allowedValues.map(String);
+            const allowedArr = Array.isArray(field.allowedValues) ? field.allowedValues : [];
+            const allowed = allowedArr.map(String);
             if (allowed.includes(valStr)) {
               const others = allowed.filter(v => v !== valStr);
               mutatedRecord[field.name] = others[Math.floor(Math.random() * others.length)];

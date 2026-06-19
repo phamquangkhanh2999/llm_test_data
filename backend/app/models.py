@@ -78,6 +78,7 @@ class GeneratedData(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     job_id = Column(String(36), ForeignKey("jobs.id"), nullable=False)
+    parent_id = Column(String(36), nullable=True) # Lưu vết phả hệ để tạo Bảng Đối Chiếu Tiến Hóa
     
     # payload giá trị test (Ví dụ: '{"username": "admin", "password": "Pass123!"}')
     # Lưu dưới dạng String, Client sẽ tự parse thành JSON object khi hiển thị
@@ -131,3 +132,81 @@ class AICallLog(Base):
     status = Column(String(20), nullable=False) # "SUCCESS" hoặc "FAILED"
     error_message = Column(Text, nullable=True) # Chi tiết lỗi nếu status là FAILED
 
+# --- NEW MODELS FOR TEST CASE LINEAGE & VISUALIZATION ---
+
+class TestCase(Base):
+    """Bảng lưu trữ tổng quan của 1 test case tối ưu"""
+    __tablename__ = "test_cases"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    requirement_id = Column(String(36), nullable=True) # ID liên kết về spec (job/specification)
+    scenario = Column(String(255), nullable=True)
+    strategy = Column(String(50), nullable=True) # F0, GA, HC, Hybrid
+    fitness_before = Column(Float, nullable=True)
+    fitness_after = Column(Float, nullable=True)
+    status = Column(String(50), nullable=True) # Optimized, No Change, Degraded, Failed
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    versions = relationship("TestCaseVersion", back_populates="test_case", cascade="all, delete-orphan")
+    fitness_scores = relationship("FitnessScore", back_populates="test_case", cascade="all, delete-orphan")
+
+
+class TestCaseVersion(Base):
+    """Các phiên bản (F0, GA, HC) của 1 test case"""
+    __tablename__ = "test_case_versions"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    test_case_id = Column(String(36), ForeignKey("test_cases.id"), nullable=False)
+    stage = Column(String(20), nullable=False) # F0, GA, HC
+    input_json = Column(Text, nullable=False) # Data fields json
+    fitness_score = Column(Float, nullable=True)
+    generation = Column(Integer, nullable=True)
+
+    test_case = relationship("TestCase", back_populates="versions")
+    changes = relationship("TestCaseChange", back_populates="version", cascade="all, delete-orphan")
+
+
+class TestCaseChange(Base):
+    """Theo dõi thay đổi chi tiết từng trường dữ liệu"""
+    __tablename__ = "test_case_changes"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    version_id = Column(String(36), ForeignKey("test_case_versions.id"), nullable=False)
+    field = Column(String(100), nullable=False)
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
+    reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    version = relationship("TestCaseVersion", back_populates="changes")
+
+
+class FitnessScore(Base):
+    """Điểm số đánh giá chi tiết (Rubric) cho test case"""
+    __tablename__ = "fitness_scores"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    test_case_id = Column(String(36), ForeignKey("test_cases.id"), nullable=False)
+    happy_path = Column(Float, nullable=True)
+    boundary = Column(Float, nullable=True)
+    validation = Column(Float, nullable=True)
+    security = Column(Float, nullable=True)
+    diversity = Column(Float, nullable=True)
+    total_score = Column(Float, nullable=True)
+
+    test_case = relationship("TestCase", back_populates="fitness_scores")
+
+
+class Lineage(Base):
+    """Bảng theo dõi phả hệ (mối quan hệ cha-con) qua từng thao tác"""
+    __tablename__ = "lineage"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    child_id = Column(String(36), ForeignKey("test_case_versions.id"), nullable=False) # Version con
+    parent_id = Column(String(36), ForeignKey("test_case_versions.id"), nullable=False) # Version cha
+    operation = Column(String(50), nullable=True) # Mutation, HC Adjustment, Crossover...
+    mutation_detail = Column(Text, nullable=True) # Chi tiết field nào thay đổi
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    child_version = relationship("TestCaseVersion", foreign_keys=[child_id])
+    parent_version = relationship("TestCaseVersion", foreign_keys=[parent_id])

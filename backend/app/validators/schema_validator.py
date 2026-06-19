@@ -15,7 +15,8 @@ def validate_schema(fields: list) -> bool:
             
         ftype = f.get("type")
         if ftype not in allowed_types:
-            raise ValueError(f"Field '{name}' has invalid type: {ftype}. Allowed: {allowed_types}")
+            # Fallback to string if the LLM outputs an unsupported type like 'object' or 'array'
+            f["type"] = "string"
             
         # Check constraints logic
         min_len = f.get("minLength")

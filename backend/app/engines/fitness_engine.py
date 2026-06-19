@@ -74,3 +74,61 @@ def evaluate_individual_fitness(test_case: dict, rules: list, constraints: list)
     # Simplified individual fitness formula
     fitness = (rule_score * 0.4) + (boundary_score * 0.3) + (constraint_score * 0.3)
     return max(0.01, min(fitness, 1.0))
+
+def calculateRubricScores(test_cases: list, schema: list) -> dict:
+    """
+    Hợp nhất logic tính điểm Fitness theo thang điểm 100.
+    """
+    if not test_cases:
+        return {
+            "total_score": 0,
+            "rubric": {
+                "validation": {"score": 0, "max": 40, "label": "Validation (Tính hợp lệ)"},
+                "boundary": {"score": 0, "max": 30, "label": "Boundary (Bao phủ biên)"},
+                "diversity": {"score": 0, "max": 20, "label": "Diversity (Độ đa dạng)"},
+                "security": {"score": 0, "max": 10, "label": "Security (Bảo mật/Rủi ro)"}
+            }
+        }
+    
+    # 1. Validation (Mức độ hợp lệ với schema)
+    # Giả lập: Kiểm tra số trường hợp lệ. Nếu 100% hợp lệ -> 40 điểm.
+    # Trong môi trường thật, validation tính dựa trên constraints (như cũ).
+    from .constraint_engine import evaluate_constraints
+    validation_score_raw = sum(evaluate_constraints(tc, schema) for tc in test_cases) / len(test_cases)
+    val_score = round(validation_score_raw * 40)
+    
+    # 2. Boundary (Bao phủ biên)
+    # Tái sử dụng calculate_boundary_coverage nếu có rules, nhưng ở đây nhận schema
+    # Giả lập chấm điểm dựa trên origin hoặc fitness đã lưu.
+    # Trong hệ thống production: đếm tỷ lệ các giá trị nằm ở cận/biên.
+    from .coverage_engine import calculate_boundary_coverage
+    # Giả định "schema" cũng dùng thay cho "rules" tạm thời để chấm điểm
+    bound_cov = calculate_boundary_coverage(test_cases, schema) 
+    bound_score = round((bound_cov["boundary_coverage_percent"] / 100.0) * 30)
+
+    # 3. Diversity (Đa dạng dữ liệu)
+    # Hệ số khác biệt giữa các test case trong quần thể.
+    # Tính nhanh = 1 - (tỷ lệ trùng lặp)
+    seen_fp = set()
+    for tc in test_cases:
+        fp = str(sorted((k, str(v)) for k, v in tc.items()))
+        seen_fp.add(fp)
+    diversity_ratio = len(seen_fp) / len(test_cases) if test_cases else 0
+    div_score = round(diversity_ratio * 20)
+    
+    # 4. Security / Negative Testing
+    # Kiểm tra các ca kiểm thử cố tình điền sai hoặc chèn ký tự đặc biệt
+    # Tạm mô phỏng tỷ lệ invalid/boundary là security coverage
+    sec_score = round((bound_cov["boundary_coverage_percent"] / 100.0) * 10)
+    
+    total = val_score + bound_score + div_score + sec_score
+    
+    return {
+        "total_score": min(total, 100),
+        "rubric": {
+            "validation": {"score": min(val_score, 40), "max": 40, "label": "Validation (Tính hợp lệ)"},
+            "boundary": {"score": min(bound_score, 30), "max": 30, "label": "Boundary (Bao phủ biên)"},
+            "diversity": {"score": min(div_score, 20), "max": 20, "label": "Diversity (Độ đa dạng)"},
+            "security": {"score": min(sec_score, 10), "max": 10, "label": "Security (Bảo mật/Rủi ro)"}
+        }
+    }

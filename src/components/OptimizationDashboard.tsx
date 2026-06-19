@@ -15,7 +15,9 @@ import type { BoundaryRecord } from './BoundaryEdgeChecker';
 import { BoundaryEdgeChecker } from './BoundaryEdgeChecker';
 import { ExperimentComparisonCharts } from './ExperimentComparisonCharts';
 import { HillClimbingComparison, type ComparisonRecord } from './HillClimbingComparison';
+import { EvolutionTraceTable } from './EvolutionTraceTable';
 import { OptimizationConfig } from './OptimizationConfig';
+import { TestCaseOptimizationResult } from './TestCaseOptimizationResult';
 
 // Cấu trúc kết quả của từng chiến lược
 interface DashboardResult {
@@ -71,7 +73,7 @@ export const OptimizationDashboard: React.FC = () => {
   const [wDiv, setWDiv] = useState(0.2);
 
   // Thuật toán truyền thống làm Baseline
-  const [traditionalAlgo, setTraditionalAlgo] = useState<'random' | 'bva'>('bva');
+  const [traditionalAlgo, setTraditionalAlgo] = useState<'random' | 'bva' | 'ep'>('bva');
 
   // Optimization Profile
   const [optProfile, setOptProfile] = useState<'fast' | 'balanced' | 'deep'>('balanced');
@@ -612,7 +614,12 @@ export const OptimizationDashboard: React.FC = () => {
       const logsList = ['Bắt đầu sinh dữ liệu ngẫu nhiên hoặc BVA tĩnh...'];
       for (let i = 0; i < popSize; i++) {
         const record: Chromosome = {};
-        const mode = traditionalAlgo === 'bva' ? (i % 2 === 0 ? 'boundary' : 'valid') : 'valid';
+        let mode: 'valid' | 'boundary' | 'ep_valid' | 'ep_invalid' = 'valid';
+        if (traditionalAlgo === 'bva') {
+          mode = i % 2 === 0 ? 'boundary' : 'valid';
+        } else if (traditionalAlgo === 'ep') {
+          mode = i % 2 === 0 ? 'ep_valid' : 'ep_invalid';
+        }
         schema.forEach((field) => {
           record[field.name] = generateRandomValue(field, mode);
         });
@@ -858,13 +865,13 @@ export const OptimizationDashboard: React.FC = () => {
 
       const finalResults: DashboardResult[] = [
         {
-          name: traditionalAlgo === 'random' ? 'Baseline (Random)' : 'Baseline (BVA)',
+          name: traditionalAlgo === 'random' ? 'Baseline (Random)' : traditionalAlgo === 'bva' ? 'Baseline (BVA)' : 'Baseline (EP)',
           key: 'traditional',
           coverage: tRes.metrics.coverage,
           duplicateRate: tRes.metrics.duplicateRate,
           edgeCases: tRes.metrics.edgeCases,
           execTime: Math.round(tRes.time),
-          badge: traditionalAlgo === 'random' ? 'Ngẫu nhiên đơn giản' : 'Bao phủ biên thủ công',
+          badge: traditionalAlgo === 'random' ? 'Ngẫu nhiên đơn giản' : traditionalAlgo === 'bva' ? 'Bao phủ biên thủ công' : 'Phân vùng tương đương',
           color: '#3b82f6',
           sampleData: tRes.chromosomes.slice(0, 10),
           allData: tRes.chromosomes,
@@ -1038,7 +1045,7 @@ export const OptimizationDashboard: React.FC = () => {
     return [
       {
         id: 'baseline',
-        name: traditionalAlgo === 'random' ? 'Baseline (Random)' : 'Baseline (BVA)',
+        name: traditionalAlgo === 'random' ? 'Baseline (Random)' : traditionalAlgo === 'bva' ? 'Baseline (BVA)' : 'Baseline (EP)',
         progress: runStates.traditional.progress,
         execTime:
           runStates.traditional.execTime ||
@@ -1451,7 +1458,7 @@ export const OptimizationDashboard: React.FC = () => {
                 Thuật toán đối chứng
               </div>
               <div style={{ display: 'flex', gap: '6px' }}>
-                {(['random', 'bva'] as const).map((algo) => (
+                {(['random', 'bva', 'ep'] as const).map((algo) => (
                   <button
                     key={algo}
                     onClick={() => setTraditionalAlgo(algo)}
@@ -1470,7 +1477,7 @@ export const OptimizationDashboard: React.FC = () => {
                       fontWeight: traditionalAlgo === algo ? 'bold' : 'normal',
                     }}
                   >
-                    {algo === 'random' ? 'Ngẫu nhiên' : 'Biên BVA tĩnh'}
+                    {algo === 'random' ? 'Ngẫu nhiên' : algo === 'bva' ? 'Biên BVA' : 'Phân vùng EP'}
                   </button>
                 ))}
               </div>
@@ -1785,7 +1792,10 @@ export const OptimizationDashboard: React.FC = () => {
             </div>
           )}
 
-          {/* KHỐI 6: BÁO CÁO ĐỐI SÁNH THỰC NGHIỆM */}
+          {/* KHỐI 6: BẢNG SO SÁNH PHẢ HỆ TIẾN HÓA (DB VERSION) */}
+          <TestCaseOptimizationResult />
+
+          {/* KHỐI 7: BÁO CÁO ĐỐI SÁNH THỰC NGHIỆM */}
           {/* <ExperimentComparisonCharts
             liveResults={results ? {
               traditional: results.find(r => r.key === 'traditional') ? {

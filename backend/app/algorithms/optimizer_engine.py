@@ -1,4 +1,5 @@
 import random
+import uuid
 from ..engines.fitness_engine import evaluate_individual_fitness
 import re
 import string
@@ -133,27 +134,33 @@ def generate_random_field_value(field, mode="valid"):
     f_type = field["type"]
 
     if f_type == "email":
-        if mode == "invalid":
+        if mode in ("invalid", "ep_invalid"):
             return random.choice(["invalid-email", "name@", "@domain.com", "name@domain."])
         if mode == "boundary":
             return f"a@{'b' * 100}.com" # độ dài email cực lớn
+        if mode == "ep_valid":
+            return "standard.user@example.com"
         names = ["emma", "liam", "olivia", "noah", "will", "sophia", "james"]
         domains = ["gmail.com", "yahoo.com", "outlook.com", "test.io", "company.vn"]
         return f"{random.choice(names)}{random.randint(10, 99)}@{random.choice(domains)}"
 
     elif f_type == "card":
-        if mode == "invalid":
+        if mode in ("invalid", "ep_invalid"):
             return "1234-5678-9012" # sai cấu trúc thẻ 16 số viết liền
         if mode == "boundary":
             return "0" * 16 # biên số 0 nhỏ nhất
+        if mode == "ep_valid":
+            return "1234567890123456"
         return "".join(str(random.randint(0, 9)) for _ in range(16))
 
     elif f_type == "phone":
         prefixes = ["03", "05", "07", "08", "09"]
-        if mode == "invalid":
+        if mode in ("invalid", "ep_invalid"):
             return "0281234567" # sai đầu số di động VN
         if mode == "boundary":
             return "0900000000"
+        if mode == "ep_valid":
+            return "0987654321"
         phone = random.choice(prefixes)
         phone += "".join(str(random.randint(0, 9)) for _ in range(8))
         return phone
@@ -169,24 +176,28 @@ def generate_random_field_value(field, mode="valid"):
 
         is_float = not min_v.is_integer() or not max_v.is_integer()
         if is_float:
-            if mode == "invalid":
-                return min_v - 5.0 if random.random() > 0.5 else max_v + 5.0
+            if mode in ("invalid", "ep_invalid"):
+                return min_v - 50.0 if random.random() > 0.5 else max_v + 50.0
             if mode == "boundary":
                 return min_v if random.random() > 0.5 else max_v
+            if mode == "ep_valid":
+                return (min_v + max_v) / 2.0
             return random.uniform(min_v, max_v)
         else:
             min_i = int(min_v)
             max_i = int(max_v)
-            if mode == "invalid":
-                return min_i - 5 if random.random() > 0.5 else max_i + 5
+            if mode in ("invalid", "ep_invalid"):
+                return min_i - 50 if random.random() > 0.5 else max_i + 50
             if mode == "boundary":
                 return min_i if random.random() > 0.5 else max_i
+            if mode == "ep_valid":
+                return (min_i + max_i) // 2
             return random.randint(min_i, max_i)
 
     elif f_type == "date":
-        if field.get("allowedValues") and mode != "invalid":
+        if field.get("allowedValues") and mode not in ("invalid", "ep_invalid"):
             return random.choice(field["allowedValues"])
-        if mode == "invalid":
+        if mode in ("invalid", "ep_invalid"):
             return random.choice([
                 "2024-13-01", "2024-00-10", "2024-02-30", "not-a-date",
                 "2024/01/01", "20240101", "2024-1-1", "01-01-2024"
@@ -195,11 +206,13 @@ def generate_random_field_value(field, mode="valid"):
             return random.choice([
                 "2024-02-29", "2020-01-01", "2023-12-31", "2024-04-30", "2021-02-28"
             ])
+        if mode == "ep_valid":
+            return "2024-06-15"
         return random_valid_date()
 
     else: # type == string
         if field.get("allowedValues"):
-            if mode == "invalid":
+            if mode in ("invalid", "ep_invalid"):
                 return "INVALID_VAL"
             return random.choice(field["allowedValues"])
 
@@ -207,12 +220,14 @@ def generate_random_field_value(field, mode="valid"):
         max_l = int(field.get("maxLength", 20) or 20)
 
         length = random.randint(min_l, max_l)
-        if mode == "invalid":
-            length = max(0, min_l - 2) if random.random() > 0.5 else max_l + 5
+        if mode in ("invalid", "ep_invalid"):
+            length = max(0, min_l - 10) if random.random() > 0.5 else max_l + 10
         elif mode == "boundary":
             length = min_l if random.random() > 0.5 else max_l
+        elif mode == "ep_valid":
+            length = (min_l + max_l) // 2
 
-        if length == 0:
+        if length <= 0:
             return ""
 
         chars = string.ascii_letters + string.digits
@@ -522,6 +537,8 @@ class TestSuiteOptimizer:
                 name = field["name"]
                 cleaned_tc[name] = s[name] if name in s else generate_random_field_value(field, "valid")
             self.test_suite.append({
+                "id": str(uuid.uuid4()),
+                "parent_id": None,
                 "values": cleaned_tc,
                 "fitness": 0.0,
                 "origin": "Seed"
@@ -535,6 +552,8 @@ class TestSuiteOptimizer:
             for field in self.schema:
                 record[field["name"]] = generate_random_field_value(field, mode)
             self.test_suite.append({
+                "id": str(uuid.uuid4()),
+                "parent_id": None,
                 "values": record,
                 "fitness": 0.0,
                 "origin": f"Init_{mode.upper()}"
@@ -560,6 +579,8 @@ class TestSuiteOptimizer:
                 if cleaned_tc[name] is None:
                     cleaned_tc[name] = generate_random_field_value(field, "valid")
             self.test_suite.append({
+                "id": ind.get("id", str(uuid.uuid4())),
+                "parent_id": ind.get("parent_id"),
                 "values": cleaned_tc,
                 "fitness": ind.get("fitness", 0.0),
                 "origin": ind.get("origin", "WarmStart")
@@ -573,6 +594,8 @@ class TestSuiteOptimizer:
             for field in self.schema:
                 record[field["name"]] = generate_random_field_value(field, mode)
             self.test_suite.append({
+                "id": str(uuid.uuid4()),
+                "parent_id": None,
                 "values": record,
                 "fitness": 0.0,
                 "origin": "WarmStart_Expanded"
@@ -589,6 +612,8 @@ class TestSuiteOptimizer:
             "generation": self.generation,
             "population": [
                 {
+                    "id": ind.get("id"),
+                    "parent_id": ind.get("parent_id"),
                     "values": ind["values"],
                     "fitness": ind["fitness"],
                     "origin": ind["origin"]
@@ -637,20 +662,20 @@ class TestSuiteOptimizer:
         def _fingerprint(values):
             return str(sorted((k, str(v)) for k, v in values.items()))
 
-        def _add(values, fitness, origin):
+        def _add(values, fitness, origin, id_val=None, parent_id_val=None):
             fp = _fingerprint(values)
             if fp in seen:
                 return
             seen.add(fp)
-            pool.append({"values": values, "fitness": fitness, "origin": origin})
+            pool.append({"id": id_val or str(uuid.uuid4()), "parent_id": parent_id_val, "values": values, "fitness": fitness, "origin": origin})
 
         # 1. Quần thể cuối cùng
         for ind in self.test_suite:
-            _add(ind["values"], ind["fitness"], ind["origin"])
+            _add(ind["values"], ind["fitness"], ind["origin"], ind.get("id"), ind.get("parent_id"))
 
         # 2. Hall of Fame
         for hof in self.hall_of_fame:
-            _add(hof["values"], hof.get("fitness", 0.0), hof.get("origin", "HallOfFame"))
+            _add(hof["values"], hof.get("fitness", 0.0), hof.get("origin", "HallOfFame"), hof.get("id"), hof.get("parent_id"))
 
         # 3. Seed F0 gốc làm SÀN chất lượng
         if original_seeds:
@@ -679,6 +704,8 @@ class TestSuiteOptimizer:
             selected_fps.add(fp)
             meta = meta_map.get(fp, {"fitness": 0.0, "origin": "Optimized"})
             enriched.append({
+                "id": meta.get("id", str(uuid.uuid4())),
+                "parent_id": meta.get("parent_id"),
                 "values": tc,
                 "fitness": meta["fitness"],
                 "origin": meta["origin"]
@@ -695,6 +722,8 @@ class TestSuiteOptimizer:
                     continue
                 selected_fps.add(fp)
                 enriched.append({
+                    "id": p.get("id", str(uuid.uuid4())),
+                    "parent_id": p.get("parent_id"),
                     "values": p["values"],
                     "fitness": p["fitness"],
                     "origin": p["origin"]
@@ -723,6 +752,8 @@ class TestSuiteOptimizer:
             tc_str = str(sorted(ind["values"].items()))
             if not any(str(sorted(hof["values"].items())) == tc_str for hof in self.hall_of_fame):
                 self.hall_of_fame.append({
+                    "id": ind.get("id", str(uuid.uuid4())),
+                    "parent_id": ind.get("parent_id"),
                     "values": {**ind["values"]},
                     "fitness": ind["fitness"],
                     "origin": f"HoF_Gen{self.generation}"
@@ -745,7 +776,7 @@ class TestSuiteOptimizer:
         tour_size = 3
         candidates = random.sample(self.test_suite, tour_size)
         candidates.sort(key=lambda x: (-x["fitness"], -self._niche_density_distance(x)))
-        return candidates[0]["values"]
+        return candidates[0]
 
     def _niche_density_distance(self, individual):
         """
@@ -927,6 +958,8 @@ class TestSuiteOptimizer:
             for field in self.schema:
                 record[field["name"]] = generate_random_field_value(field, mode)
             new_individuals.append({
+                "id": str(uuid.uuid4()),
+                "parent_id": None,
                 "values": record,
                 "fitness": 0.0,
                 "origin": "Restart"
@@ -961,6 +994,8 @@ class TestSuiteOptimizer:
         elite_size = max(1, int(self.config["popSize"] * 0.05))
         for i in range(elite_size):
             next_suite.append({
+                "id": self.test_suite[i].get("id", str(uuid.uuid4())),
+                "parent_id": self.test_suite[i].get("parent_id"),
                 "values": {**self.test_suite[i]["values"]},
                 "fitness": self.test_suite[i]["fitness"],
                 "origin": "Elite"
@@ -972,10 +1007,10 @@ class TestSuiteOptimizer:
 
         # 2. Sinh các Test Cases con thông qua Crossover & Mutation
         while len(next_suite) < self.config["popSize"]:
-            p1 = self.select_parent()
-            p2 = self.select_parent()
+            p1_ind = self.select_parent()
+            p2_ind = self.select_parent()
 
-            c1, c2 = self.mix_testcases(p1, p2)
+            c1, c2 = self.mix_testcases(p1_ind["values"], p2_ind["values"])
             c1_mut, m1 = self.tweak_values(c1)
             c2_mut, m2 = self.tweak_values(c2)
 
@@ -985,6 +1020,8 @@ class TestSuiteOptimizer:
                 mutation_count += 1
 
             next_suite.append({
+                "id": str(uuid.uuid4()),
+                "parent_id": p1_ind.get("id"),
                 "values": c1_mut,
                 "fitness": 0.0,
                 "origin": "Mutation" if m1 else "Crossover"
@@ -996,6 +1033,8 @@ class TestSuiteOptimizer:
                 else:
                     mutation_count += 1
                 next_suite.append({
+                    "id": str(uuid.uuid4()),
+                    "parent_id": p2_ind.get("id"),
                     "values": c2_mut,
                     "fitness": 0.0,
                     "origin": "Mutation" if m2 else "Crossover"
@@ -1031,7 +1070,7 @@ class TestSuiteOptimizer:
             "crossover": crossover_count,
             "mutation": mutation_count,
             "test_cases": [
-                {"values": p["values"], "fitness": p["fitness"], "origin": p["origin"]}
+                {"id": p.get("id"), "parent_id": p.get("parent_id"), "values": p["values"], "fitness": p["fitness"], "origin": p["origin"]}
                 for p in self.test_suite[:10]
             ]
         }

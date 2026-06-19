@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Activity, Award, AlertTriangle, Play, Loader } from 'lucide-react';
+import { RubricBoard } from './RubricBoard';
 
 export const BenchmarkDashboard: React.FC = () => {
   const {
@@ -134,37 +135,7 @@ export const BenchmarkDashboard: React.FC = () => {
                   <span style={{ color: 'var(--text-secondary)', paddingBottom: '4px' }}>điểm</span>
                 </div>
 
-                <div className="flex flex-col gap-sm">
-                  <div>
-                    <div className="flex justify-between" style={{ fontSize: '12px', marginBottom: '4px' }}>
-                      <span>Rule Coverage</span>
-                      <span>{(data.details.rule_score * 100).toFixed(0)}%</span>
-                    </div>
-                    <div style={{ width: '100%', background: 'var(--surface-subtle)', height: '6px', borderRadius: '3px' }}>
-                      <div style={{ width: `${data.details.rule_score * 100}%`, background: 'var(--color-violet)', height: '100%', borderRadius: '3px' }} />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <div className="flex justify-between" style={{ fontSize: '12px', marginBottom: '4px' }}>
-                      <span>Boundary Edge</span>
-                      <span>{(data.details.boundary_score * 100).toFixed(0)}%</span>
-                    </div>
-                    <div style={{ width: '100%', background: 'var(--surface-subtle)', height: '6px', borderRadius: '3px' }}>
-                      <div style={{ width: `${data.details.boundary_score * 100}%`, background: 'var(--color-yellow)', height: '100%', borderRadius: '3px' }} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between" style={{ fontSize: '12px', marginBottom: '4px' }}>
-                      <span>Constraints</span>
-                      <span>{(data.details.constraint_score * 100).toFixed(0)}%</span>
-                    </div>
-                    <div style={{ width: '100%', background: 'var(--surface-subtle)', height: '6px', borderRadius: '3px' }}>
-                      <div style={{ width: `${data.details.constraint_score * 100}%`, background: 'var(--color-teal)', height: '100%', borderRadius: '3px' }} />
-                    </div>
-                  </div>
-                </div>
+                <RubricBoard rubric={data.details?.rubric} />
               </div>
             ))}
           </div>

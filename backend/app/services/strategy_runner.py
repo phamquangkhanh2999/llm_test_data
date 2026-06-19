@@ -45,10 +45,14 @@ def run_all_strategies(schema: list, rules: list, constraints: list, initial_see
     random_seeds = [{"data": tc.get("data", tc)} for tc in initial_seeds]
     
     # 2. Strategy: GA
-    ga_engine = TestSuiteOptimizer(schema, random_seeds, generations=5)
+    ga_config = {"generations": 5, "popSize": 50}
+    ga_engine = TestSuiteOptimizer(schema, ga_config)
     ga_engine.rules = rules
     ga_engine.constraints = constraints
-    ga_result = ga_engine.run()
+    ga_engine.initialize_suite(random_seeds)
+    for _ in range(ga_config["generations"]):
+        ga_engine.evolve_one_generation()
+    ga_result = ga_engine.assemble_optimized_dataset(original_seeds=random_seeds, target_size=35, max_size=50)
     results["GA"] = [ind["values"] for ind in ga_result]
     
     # 3. Strategy: HC (Hill Climbing on random seeds)
@@ -58,10 +62,14 @@ def run_all_strategies(schema: list, rules: list, constraints: list, initial_see
     )
     
     # 4. Strategy: LLM + GA
-    llm_ga_engine = TestSuiteOptimizer(schema, initial_seeds, generations=10)
+    llm_ga_config = {"generations": 10, "popSize": 50}
+    llm_ga_engine = TestSuiteOptimizer(schema, llm_ga_config)
     llm_ga_engine.rules = rules
     llm_ga_engine.constraints = constraints
-    llm_ga_result = llm_ga_engine.run()
+    llm_ga_engine.initialize_suite(initial_seeds)
+    for _ in range(llm_ga_config["generations"]):
+        llm_ga_engine.evolve_one_generation()
+    llm_ga_result = llm_ga_engine.assemble_optimized_dataset(original_seeds=initial_seeds, target_size=35, max_size=50)
     results["LLM_GA"] = [ind["values"] for ind in llm_ga_result]
     
     # 5. Strategy: LLM + HC

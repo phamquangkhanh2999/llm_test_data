@@ -17,17 +17,20 @@ import { PageLayout } from './components/PageLayout';
 import { SpecInput } from './components/SpecInput';
 import { Tabs } from './components/Tabs';
 import { ToastContainer } from './components/ToastContainer';
+import { SchemaVisualizer } from './components/SchemaVisualizer';
 import { useAppStore } from './store/useAppStore';
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
   // Tab state within steps
   const [prepareTab, setPrepareTab] = React.useState<string>('ai');
+  const [optimizeTab, setOptimizeTab] = React.useState<string>('optimize');
   const [isAILogsOpen, setIsAILogsOpen] = React.useState(false);
 
   const {
     schemaName,
     parsedSchema,
+    businessRules,
     activeScreen,
     setActiveScreen,
     completedScreens,
@@ -99,23 +102,7 @@ function App() {
         </div>
       ),
       icon: <Download size={16} />,
-    },
-{
-      id: 'benchmark',
-      label: (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            width: '100%',
-          }}
-        >
-          <span style={{color: 'var(--color-yellow)'}}>4. Chiến Trường Benchmark</span>
-        </div>
-      ),
-      icon: <Zap size={16} style={{color: 'var(--color-yellow)'}} />,
-    },
+    }
   ];
 
   const headerTitle = (
@@ -269,19 +256,7 @@ function App() {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
         
-        {/* ══════════ CHIẾN TRƯỜNG BENCHMARK ══════════ */}
-        <div style={{ display: activeScreen === 'benchmark' ? 'block' : 'none' }}>
-          <PageLayout
-            stepId='benchmark'
-            title='Bước 4: Chiến Trường Benchmark'
-            icon={<Zap size={24} />}
-            description='Chạy đồng thời 6 chiến lược tự động sinh dữ liệu để so sánh hiệu năng và chất lượng độ phủ.'
-            hints={[]}
-            accentColor='var(--color-yellow)'
-          >
-            <BenchmarkDashboard />
-          </PageLayout>
-        </div>
+
 
         {/* ══════════ BƯỚC 1: CHUẨN BỊ DỮ LIỆU ══════════ */}
 
@@ -318,6 +293,13 @@ function App() {
               onChange={setPrepareTab}
             />
             {prepareTab === 'ai' ? <SpecInput /> : <DataImport />}
+            
+            {/* Tích hợp SchemaVisualizer vào Bước 1 */}
+            {parsedSchema && parsedSchema.length > 0 && (
+              <div style={{ marginTop: '24px' }}>
+                <SchemaVisualizer fields={parsedSchema as any} rules={businessRules || []} />
+              </div>
+            )}
           </PageLayout>
         </div>
 
@@ -346,7 +328,17 @@ function App() {
               },
             ]}
           >
-            <OptimizationDashboard />
+            <Tabs
+              tabs={[
+                { id: 'benchmark', label: '2.1. Chiến Trường Benchmark', icon: <Zap size={15} />, color: '#D97706' },
+                { id: 'optimize', label: '2.2. Tiến Hóa GA/HC', icon: <Activity size={15} />, color: '#7C3AED' }
+              ]}
+              activeTab={optimizeTab}
+              onChange={setOptimizeTab}
+            />
+            <div style={{ marginTop: '16px' }}>
+              {optimizeTab === 'benchmark' ? <BenchmarkDashboard /> : <OptimizationDashboard />}
+            </div>
           </PageLayout>
         </div>
 

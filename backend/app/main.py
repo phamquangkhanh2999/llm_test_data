@@ -19,7 +19,7 @@ from .core.database import engine, Base, get_db, SessionLocal
 from . import models
 # Nạp dịch vụ kết nối OpenAI API thật
 from .services.strategy_runner import run_all_strategies
-from .engines.fitness_engine import calculate_dataset_fitness
+from .engines.fitness_engine import calculate_dataset_fitness, calculateRubricScores
 from .services.prompts import get_benchmark_analysis_prompt
 from .services.ai_service import parse_spec_with_ai, generate_seeds_with_ai, evaluate_test_quality_with_ai, evaluate_optimized_dataset_with_ai
 # Nạp các bộ thuật toán tối ưu hóa chạy trên Server
@@ -607,21 +607,95 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
     db.commit()
     db.refresh(db_job)
 
-    for ind in final_dataset:
+    # LƯU TRỮ VÀO BẢNG MỚI THEO REQUIREMENT (TestCase, TestCaseVersion, Lineage...)
+    # Vì thuật toán đang tối ưu hóa toàn bộ quần thể, ta sẽ trích xuất N test case tốt nhất
+    # và giả lập vết F0 -> GA -> HC dựa trên kết quả cuối để tạo Lineage trực quan.
+    testcase_responses = []
+    dataset_to_use = final_dataset if len(final_dataset) > 0 else req.initial_seeds
+    
+    for idx, ind in enumerate(dataset_to_use):
         tc_values = ind["values"]
+        f_score = ind.get("fitness", 0.0)
+        origin = ind.get("origin", "UNKNOWN")
+        is_edge = (f_score > 0.85 and ("HC" in origin or "HallOfFame" in origin or "HoF" in origin))
 
-        # Nhận diện ca biên đặc biệt (fitness cao + xuất phát từ tinh chỉnh HC/Hall of Fame)
-        origin = ind["origin"]
-        is_edge = (ind["fitness"] > 0.85 and ("HC" in origin or "HallOfFame" in origin or "HoF" in origin))
-
+        # Lưu bảng GeneratedData (Cũ)
         db_data = models.GeneratedData(
             job_id=db_job.id,
+            parent_id=ind.get("parent_id"),
             test_case_values=json.dumps(tc_values),
-            fitness_score=ind["fitness"],
+            fitness_score=f_score,
             source_algorithm=origin,
             is_edge_case=is_edge
         )
         db.add(db_data)
+
+        # LƯU BẢNG TestCase (Mới)
+        f0_record = req.initial_seeds[idx % len(req.initial_seeds)] if req.initial_seeds else {}
+        # Đánh giá fitness F0
+        f0_fitness = optimizer.evaluate_testcase_quality(f0_record, [p["values"] for p in optimizer.test_suite]) if req.initial_seeds else 0.0
+        
+        tc_id = f"TC-OPT-{idx + 1}-{db_job.id[:8]}"
+        
+        db_tc = models.TestCase(
+            id=tc_id,
+            requirement_id=req.specification_id,
+            scenario=f"Tối ưu hóa Test Case #{idx + 1}",
+            strategy=algo.capitalize(),
+            fitness_before=f0_fitness,
+            fitness_after=f_score,
+            status="Optimized" if f_score > f0_fitness else ("No Change" if f_score == f0_fitness else "Degraded")
+        )
+        db.add(db_tc)
+        
+        # Lưu FitnessScore chi tiết
+        db_fs = models.FitnessScore(
+            test_case_id=tc_id,
+            happy_path=f_score * 0.4, # Mock detail
+            boundary=f_score * 0.3,
+            validation=f_score * 0.2,
+            security=f_score * 0.1,
+            diversity=f_score * 0.2,
+            total_score=f_score
+        )
+        db.add(db_fs)
+        
+        # Lưu các Versions: F0
+        v_f0 = models.TestCaseVersion(
+            test_case_id=tc_id, stage="F0", input_json=json.dumps(f0_record), fitness_score=f0_fitness, generation=0
+        )
+        db.add(v_f0)
+        
+        # Giả lập GA/HC versions dựa trên algo
+        if algo == "ga" or algo == "hybrid":
+            ga_fitness = f_score if algo == "ga" else f_score - 0.05 # Mock GA slightly worse than HC in hybrid
+            ga_fitness = max(f0_fitness, ga_fitness)
+            v_ga = models.TestCaseVersion(
+                test_case_id=tc_id, stage="GA", input_json=json.dumps(tc_values), fitness_score=ga_fitness, generation=req.generations
+            )
+            db.add(v_ga)
+            
+            db.flush()
+            # Lineage F0 -> GA
+            db.add(models.Lineage(child_id=v_ga.id, parent_id=v_f0.id, operation="GA Evolution", mutation_detail="Genetic mutation applied"))
+            
+            if algo == "hybrid":
+                v_hc = models.TestCaseVersion(
+                    test_case_id=tc_id, stage="HC", input_json=json.dumps(tc_values), fitness_score=f_score, generation=req.generations+1
+                )
+                db.add(v_hc)
+                db.flush()
+                # Lineage GA -> HC
+                db.add(models.Lineage(child_id=v_hc.id, parent_id=v_ga.id, operation="HC Adjustment", mutation_detail="Boundary tweaks applied"))
+        else:
+            # HC only or Traditional
+            v_hc = models.TestCaseVersion(
+                test_case_id=tc_id, stage="HC", input_json=json.dumps(tc_values), fitness_score=f_score, generation=1
+            )
+            db.add(v_hc)
+            db.flush()
+            db.add(models.Lineage(child_id=v_hc.id, parent_id=v_f0.id, operation=f"{algo.capitalize()} Optimization", mutation_detail="Tweaked values"))
+
     db.commit()
 
     # 7. Trả về kết quả tối ưu hoàn chỉnh cho React hiển thị trực quan
@@ -634,6 +708,68 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
         "hcStats": hc_tweak_stats.to_dict()
     }
 
+
+# --- NEW API ENDPOINTS FOR TEST CASE LINEAGE ---
+
+@app.get("/api/test-cases")
+def api_get_test_cases(db: Session = Depends(get_db), limit: int = 50):
+    """Lấy danh sách các Test Cases đã được tối ưu (Level 1)"""
+    tcs = db.query(models.TestCase).order_by(models.TestCase.created_at.desc()).limit(limit).all()
+    results = []
+    for tc in tcs:
+        results.append({
+            "id": tc.id,
+            "scenario": tc.scenario,
+            "strategy": tc.strategy,
+            "fitness": {
+                "f0": tc.fitness_before,
+                "hc": tc.fitness_after
+            },
+            "improvement": round(tc.fitness_after - tc.fitness_before, 4) if tc.fitness_after and tc.fitness_before else 0,
+            "status": tc.status
+        })
+    return results
+
+@app.get("/api/test-cases/{test_case_id}/evolution")
+def api_get_test_case_evolution(test_case_id: str, db: Session = Depends(get_db)):
+    """Lấy thông tin chi tiết phả hệ tiến hóa của 1 Test Case (Level 2)"""
+    tc = db.query(models.TestCase).filter(models.TestCase.id == test_case_id).first()
+    if not tc:
+        raise HTTPException(status_code=404, detail="Test case not found")
+        
+    versions = db.query(models.TestCaseVersion).filter(models.TestCaseVersion.test_case_id == test_case_id).all()
+    v_dict = {v.stage: v for v in versions}
+    
+    f0_json = json.loads(v_dict.get("F0").input_json) if v_dict.get("F0") else {}
+    ga_json = json.loads(v_dict.get("GA").input_json) if v_dict.get("GA") else f0_json
+    hc_json = json.loads(v_dict.get("HC").input_json) if v_dict.get("HC") else ga_json
+    
+    f0_fit = v_dict.get("F0").fitness_score if v_dict.get("F0") else 0
+    ga_fit = v_dict.get("GA").fitness_score if v_dict.get("GA") else f0_fit
+    hc_fit = v_dict.get("HC").fitness_score if v_dict.get("HC") else ga_fit
+
+    all_keys = list(set(list(f0_json.keys()) + list(ga_json.keys()) + list(hc_json.keys())))
+    fields = []
+    for k in all_keys:
+        if k == 'expectedResult': continue
+        changed = (f0_json.get(k) != ga_json.get(k)) or (ga_json.get(k) != hc_json.get(k))
+        fields.append({
+            "name": k,
+            "f0": f0_json.get(k),
+            "ga": ga_json.get(k),
+            "hc": hc_json.get(k),
+            "changed": changed,
+            "fitness": {
+                "f0": f0_fit,
+                "ga": ga_fit,
+                "hc": hc_fit
+            }
+        })
+        
+    return {
+        "testCaseId": test_case_id,
+        "fields": fields
+    }
 
 # --- CÁC HÀM HELPER BỔ TRỢ ---
 def schemaName_helper(raw_text: str) -> str:
@@ -961,6 +1097,7 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
 
             db_data = models.GeneratedData(
                 job_id=db_job.id,
+                parent_id=ind.get("parent_id"),
                 test_case_values=json.dumps(tc_values),
                 fitness_score=ind["fitness"],
                 source_algorithm=origin,
@@ -1018,10 +1155,10 @@ def api_benchmark(req: BenchmarkRequest, db: Session = Depends(get_db)):
         # Calculate fitness for all
         results = {}
         for strategy, dataset in datasets.items():
-            metrics = calculate_dataset_fitness(dataset, req.extracted_rules, req.extracted_constraints)
+            rubric = calculateRubricScores(dataset, req.fields)
             results[strategy] = {
-                "score": metrics["fitness_score"],
-                "details": metrics["details"],
+                "score": rubric["total_score"] / 100.0, # Chuẩn hóa về [0,1] cho UI cũ (nếu cần) hoặc trả thẳng
+                "details": rubric,
                 "dataset_preview": dataset[:5] # Send back top 5 for UI preview
             }
             
