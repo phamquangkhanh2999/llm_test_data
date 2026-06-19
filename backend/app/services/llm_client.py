@@ -19,7 +19,10 @@ def call_llm_json(system_prompt: str, user_prompt: str, api_key_override: Option
         Exception: If network or JSON parsing fails.
     """
     # 1. Determine the active API key
-    active_key = api_key_override or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if llm_provider == "openai":
+        active_key = api_key_override or os.getenv("OPENAI_API_KEY")
+    else:
+        active_key = api_key_override or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
     
     if not active_key or active_key.strip() == "":
         raise ValueError("API_KEY_MISSING")
