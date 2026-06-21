@@ -3,6 +3,7 @@ import { Upload, Database, CheckCircle2, FileJson, Activity, ArrowRight } from '
 import { useAppStore } from '../store/useAppStore';
 import type { FieldConstraint } from '../algorithms/presets';
 import { toast } from '../store/useToastStore';
+import type { TestCase } from '../types/testcase';
 
 export const DataImport: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -119,9 +120,26 @@ export const DataImport: React.FC = () => {
           };
         });
 
+        const testCases: TestCase[] = data.map((row, idx) => ({
+          tcId: `TC-IMPORT-${idx + 1}`,
+          method: 'import',
+          scenario: 'Imported test case',
+          expectedResult: 'N/A',
+          errorDescription: '',
+          categories: ['positive'],
+          values: row,
+          validationScore: 100,
+          boundaryScore: 0,
+          negativeScore: 0,
+          llmFitness: 1.0,
+          gaFitness: undefined,
+          hcFitness: undefined,
+          origin: 'Import',
+        }));
+        
         setRawText(`[DỮ LIỆU NHẬP TỪ FILE ${fileType}]\nTên file: ${file.name}\nSố lượng bản ghi: ${data.length}`);
         setParsedSchema(inferredSchema);
-        setInitialSeeds(data);
+        setInitialSeeds(testCases);
         setFileName(file.name);
         setRecordCount(data.length);
         setIsImported(true);

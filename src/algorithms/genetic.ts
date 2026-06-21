@@ -1,4 +1,5 @@
 import type { FieldConstraint } from './presets';
+import type { CoverageBreakdown } from '../types/testcase';
 
 export type Chromosome = Record<string, any>;
 
@@ -6,7 +7,9 @@ export interface PopulationStats {
   generation: number;
   bestFitness: number;
   avgFitness: number;
+  /** @deprecated Dùng coverageBreakdown.overall thay thế */
   coverage: number;
+  coverageBreakdown: CoverageBreakdown;
   duplicateRate: number;
   chromosomes: { values: Chromosome; fitness: number; origin: string }[];
 }
@@ -800,13 +803,14 @@ export class GeneticEngine {
 
     // 4. Compute statistics
     const duplicateRate = this.computeDuplicateRate();
-    const coverage = this.computeFullCoverage();
+    const coverageBreakdown = this.computeCoverageBreakdown();
 
     return {
       generation: this.generation,
       bestFitness,
       avgFitness,
-      coverage,
+      coverage: coverageBreakdown.overall, // backward compat
+      coverageBreakdown,
       duplicateRate,
       chromosomes: this.population.map(p => ({
         values: p.values,
@@ -817,7 +821,7 @@ export class GeneticEngine {
   }
 
   // ═══════════════════════════════════════════════
-  // COVERAGE CALCULATION (full population + pairwise)
+  // COVERAGE CALCULATION — 3 Loại Coverage
   // ═══════════════════════════════════════════════
 
   computeDuplicateRate(): number {
@@ -841,71 +845,133 @@ export class GeneticEngine {
     return dupCount / this.config.popSize;
   }
 
-  private computeFullCoverage(): number {
+  /**
+   * Tính CoverageBreakdown — 3 loại coverage độc lập:
+   * - functional: mỗi field có ≥1 valid case VÀ ≥1 invalid case
+   * - boundary: các điểm BVA {min, max, min-1, max+1} đã cover
+   * - negative: mỗi required field có ≥1 invalid/negative case
+   * KHÔNG dùng weighted sum — thêm TC trùng không tăng coverage.
+   */
+  computeCoverageBreakdown(): CoverageBreakdown {
     const rawValues = this.population.map(p => p.values);
 
-    // --- Individual field coverage (full population) ---
-    let totalValid = 0;
-    const boundariesChecked = new Set<string>();
+    // ── 1. FUNCTIONAL: mỗi field có ≥1 valid VÀ ≥1 invalid ─────
+    let functionalCovered = 0;
+    const functionalTotal = this.schema.length * 2; // valid + invalid per field
+    for (const field of this.schema) {
+      const hasValid = rawValues.some(tc => this._isValidFieldValue(tc[field.name], field));
+      const hasInvalid = rawValues.some(tc => !this._isValidFieldValue(tc[field.name], field));
+      if (hasValid) functionalCovered++;
+      if (hasInvalid) functionalCovered++;
+    }
 
+    // ── 2. BOUNDARY: điểm BVA {min, max, min-1, max+1} ──────────
+    const boundaryRules = new Set<string>();
+    const coveredBoundary = new Set<string>();
+    for (const field of this.schema) {
+      if (field.type === 'number') {
+        if (field.minValue !== undefined) {
+          boundaryRules.add(`${field.name}_min`);
+          boundaryRules.add(`${field.name}_min_minus1`);
+        }
+        if (field.maxValue !== undefined) {
+          boundaryRules.add(`${field.name}_max`);
+          boundaryRules.add(`${field.name}_max_plus1`);
+        }
+      } else {
+        if (field.minLength !== undefined) {
+          boundaryRules.add(`${field.name}_minLen`);
+          boundaryRules.add(`${field.name}_minLen_minus1`);
+        }
+        if (field.maxLength !== undefined) {
+          boundaryRules.add(`${field.name}_maxLen`);
+          boundaryRules.add(`${field.name}_maxLen_plus1`);
+        }
+      }
+    }
     for (const tc of rawValues) {
       for (const field of this.schema) {
+        const val = tc[field.name];
         const name = field.name;
-        const val = tc[name];
-        const valStr = String(val);
-
-        let isOk = true;
-        if (field.required && (val === null || val === undefined || valStr === '')) {
-          isOk = false;
-        }
-
-        if (isOk) {
-          totalValid += 1;
-
-          // Boundary check (exact + near)
-          if (field.type === 'number') {
-            const num = Number(val);
-            if (!isNaN(num)) {
-              if (field.minValue !== undefined && num === field.minValue) boundariesChecked.add(`${name}_min`);
-              if (field.maxValue !== undefined && num === field.maxValue) boundariesChecked.add(`${name}_max`);
-              if (field.minValue !== undefined && num === field.minValue + 1) boundariesChecked.add(`${name}_min_near`);
-              if (field.maxValue !== undefined && num === field.maxValue - 1) boundariesChecked.add(`${name}_max_near`);
+        if (field.type === 'number') {
+          const num = Number(val);
+          if (!isNaN(num)) {
+            if (field.minValue !== undefined) {
+              if (num === field.minValue) coveredBoundary.add(`${name}_min`);
+              if (num === field.minValue - 1) coveredBoundary.add(`${name}_min_minus1`);
             }
-          } else {
-            if (field.minLength !== undefined && valStr.length === field.minLength) boundariesChecked.add(`${name}_min`);
-            if (field.maxLength !== undefined && valStr.length === field.maxLength) boundariesChecked.add(`${name}_max`);
-            if (field.minLength !== undefined && valStr.length === field.minLength + 1) boundariesChecked.add(`${name}_min_near`);
-            if (field.maxLength !== undefined && valStr.length === field.maxLength - 1) boundariesChecked.add(`${name}_max_near`);
+            if (field.maxValue !== undefined) {
+              if (num === field.maxValue) coveredBoundary.add(`${name}_max`);
+              if (num === field.maxValue + 1) coveredBoundary.add(`${name}_max_plus1`);
+            }
+          }
+        } else {
+          const sLen = String(val ?? '').length;
+          if (field.minLength !== undefined) {
+            if (sLen === field.minLength) coveredBoundary.add(`${name}_minLen`);
+            if (sLen === field.minLength - 1) coveredBoundary.add(`${name}_minLen_minus1`);
+          }
+          if (field.maxLength !== undefined) {
+            if (sLen === field.maxLength) coveredBoundary.add(`${name}_maxLen`);
+            if (sLen === field.maxLength + 1) coveredBoundary.add(`${name}_maxLen_plus1`);
           }
         }
       }
     }
 
-    const totalCases = rawValues.length;
-    const maxValid = totalCases * this.schema.length;
-    const valFactor = maxValid > 0 ? totalValid / maxValid : 0;
-
-    const possibleBounds = this.schema.length * 4; // 2 exact + 2 near per field
-    const boundFactor = possibleBounds > 0 ? boundariesChecked.size / possibleBounds : 0;
-
-    // Pairwise coverage
-    const pairwise = this.computePairwiseCoverage(rawValues);
-
-    // Composite: 60% validation + 20% boundary + 20% pairwise
-    let coverage = Math.min(
-      (valFactor * 0.60) + (boundFactor * 0.20) + (pairwise * 0.20),
-      1.0
-    );
-
-    // Discount by duplicate rate
-    const dupRate = this.computeDuplicateRate();
-    if (dupRate > 0.3) {
-      coverage *= (1.0 - (dupRate - 0.3) * 0.5);
+    // ── 3. NEGATIVE: mỗi required field có ≥1 invalid case ──────
+    const requiredFields = this.schema.filter(f => f.required);
+    let negativeCovered = 0;
+    for (const field of requiredFields) {
+      if (rawValues.some(tc => !this._isValidFieldValue(tc[field.name], field))) {
+        negativeCovered++;
+      }
     }
 
-    return Math.max(coverage, 0.01);
+    const functional = functionalTotal > 0 ? functionalCovered / functionalTotal : 0;
+    const boundary = boundaryRules.size > 0 ? coveredBoundary.size / boundaryRules.size : 0;
+    const negative = requiredFields.length > 0 ? negativeCovered / requiredFields.length : 0;
+    // Discount by duplicate rate
+    const dupRate = this.computeDuplicateRate();
+    const dupPenalty = dupRate > 0.3 ? (1.0 - (dupRate - 0.3) * 0.5) : 1.0;
+    const overall = Math.max(
+      ((functional * 0.4) + (boundary * 0.4) + (negative * 0.2)) * dupPenalty,
+      0.01
+    );
+
+    return {
+      functional: Math.min(functional, 1),
+      boundary: Math.min(boundary, 1),
+      negative: Math.min(negative, 1),
+      overall: Math.min(overall, 1),
+    };
   }
 
+  /** Kiểm tra value hợp lệ theo ràng buộc field */
+  private _isValidFieldValue(val: any, field: FieldConstraint): boolean {
+    if (val === null || val === undefined || String(val).trim() === '') {
+      return !field.required;
+    }
+    const strVal = String(val);
+    if (field.type === 'number') {
+      const num = Number(val);
+      if (isNaN(num)) return false;
+      if (field.minValue !== undefined && num < field.minValue) return false;
+      if (field.maxValue !== undefined && num > field.maxValue) return false;
+    } else if (field.type === 'email') {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(strVal)) return false;
+    } else if (field.type === 'card') {
+      if (!/^\d{16}$/.test(strVal)) return false;
+    } else if (field.type === 'phone') {
+      if (!/^(03|05|07|08|09)\d{8}$/.test(strVal)) return false;
+    } else {
+      if (field.minLength !== undefined && strVal.length < field.minLength) return false;
+      if (field.maxLength !== undefined && strVal.length > field.maxLength) return false;
+    }
+    return true;
+  }
+
+  // @ts-ignore - reserved for future use
   private computePairwiseCoverage(rawValues: Chromosome[]): number {
     if (this.schema.length < 2) return 1.0;
 

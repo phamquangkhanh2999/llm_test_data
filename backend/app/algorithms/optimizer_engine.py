@@ -322,203 +322,99 @@ class TestSuiteOptimizer:
     # FITNESS FUNCTION (with near-boundary credit)
     # ═══════════════════════════════════════════════════════════
 
-    def evaluate_testcase_quality(self, test_case, current_suite_values):
+    def evaluate_testcase_quality(self, test_case, current_suite_values, global_tag_counts=None):
         """
-        Đánh giá chất lượng của một Test Case (Hàm Fitness).
-        Trả về điểm số từ 0.01 đến 1.0 và cơ cấu điểm chi tiết.
+        Đánh giá chất lượng của một Test Case (Hàm Fitness) - PHIÊN BẢN NÂNG CẤP.
 
-        UPGRADED: Near-boundary values receive partial credit (0.5 per near-hit).
+        Kiến trúc 2 component tách biệt:
+          Component 1: coverage_fitness = coverage_base + novelty (đo độ bao phủ & đa dạng)
+          Component 2: boundary_fitness = trọng số BVA tăng cường (đo mức độ tập trung biên)
+
+        Công thức cuối: fitness = 0.55 * norm_coverage + 0.45 * norm_boundary
+        Normalize về [0, 1] để HC nhận biết được Δ rất nhỏ.
+
+        Boundary weights:
+          BOUNDARY (exact)   → +3.0  (tăng từ +1.0 — phần thưởng chính)
+          NEAR_BOUNDARY      → +1.5  (thêm mới — khuyến khích tiến gần biên)
+          INVALID (negative) → +0.5  (giữ nguyên — test case âm cũng có giá trị)
         """
-        # Ensure static cache is initialized
-        if not hasattr(self, 'static_cache'):
-            self.static_cache = {}
+        from .coverage_analyzer import analyze_coverage
 
-        # Compute unique key for the test case values
-        tc_key = str(sorted((k, str(v)) for k, v in test_case.items()))
+        # 1. Coverage Tags
+        tags = analyze_coverage(test_case, self.schema)
 
-        if tc_key in self.static_cache:
-            v_score, b_score = self.static_cache[tc_key]
+        # ── Component 1: Coverage Fitness ──────────────────────────────────────
+        # 1a. Base coverage: mỗi tag = 1 điểm
+        base_coverage = float(len(tags))
+
+        # 1b. Novelty Score (tag hiếm gặp = điểm cao hơn)
+        novelty_score = 0.0
+        if global_tag_counts:
+            pop_size = max(1, len(current_suite_values))
+            for tag in tags:
+                count = global_tag_counts.get(tag, 1)
+                rarity = 1.0 - (count / pop_size)
+                novelty_score += max(0.0, rarity)
         else:
-            validation_score = 0.0
-            boundary_score = 0.0
+            novelty_score = len(tags) * 0.5  # fallback khi chưa có global_tag_counts
 
-            num_fields = len(self.schema)
+        coverage_raw = base_coverage + (novelty_score * 2.0)
 
-            for field in self.schema:
-                name = field["name"]
-                val = test_case.get(name)
-                if val is None:
-                    continue
+        # ── Component 2: Boundary Fitness (tăng độ nhạy) ────────────────────────
+        boundary_raw = 0.0
+        for tag in tags:
+            outcome = tag.split(":")[-1] if ":" in tag else ""
+            tag_upper = tag.upper()
+            if "NEAR_BOUNDARY" in tag_upper:
+                boundary_raw += 1.5   # gần biên — thêm mới
+            elif "BOUNDARY" in tag_upper:
+                boundary_raw += 3.0   # đúng biên — tăng từ 1.0
+            elif "INVALID" in tag_upper:
+                boundary_raw += 0.5   # test case âm — giữ nguyên
 
-                val_str = str(val)
-                is_boundary = False
-                is_near_boundary = False
+        # ── Normalize về [0, 1] ─────────────────────────────────────────────────
+        # max_possible_coverage = num_tags * (1 + 2.0) [base + max novelty]
+        # max_possible_boundary = num_tags * 3.0
+        num_tags = max(1, len(tags))
+        max_coverage = num_tags * 3.0
+        max_boundary = num_tags * 3.0
 
-                # Split validations into Hard and Soft constraints
-                hard_passed = True
-                soft_passed = True
+        norm_coverage = min(coverage_raw / max_coverage, 1.0)
+        norm_boundary = min(boundary_raw / max_boundary, 1.0)
 
-                # --- 1. Hard Constraints ---
-                # Required check
-                if field.get("required") and (val is None or val_str.strip() == ""):
-                    hard_passed = False
+        # ── Tổng hợp Fitness ────────────────────────────────────────────────────
+        fitness = 0.55 * norm_coverage + 0.45 * norm_boundary
 
-                # Data type compliance and structural rules
-                if hard_passed and val is not None and val_str.strip() != "":
-                    field_regex = field.get("regex")
-                    if field_regex:
-                        # ƯU TIÊN: regex của đặc tả là ràng buộc CỨNG, thay cho luật định
-                        # dạng mặc định -> đặc tả mới (phone quốc tế, card 15 số, format
-                        # tùy biến) được chấm theo đúng luật của nó, không bị luật cứng đè.
-                        try:
-                            if not re.search(field_regex, val_str):
-                                hard_passed = False
-                        except re.error:
-                            pass  # regex hỏng -> bỏ qua, không phạt oan
-                    else:
-                        # Không có regex riêng -> dùng luật định dạng mặc định theo kiểu
-                        ftype = field["type"]
-                        if ftype == "email":
-                            if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
-                                hard_passed = False
-                        elif ftype == "card":
-                            if not re.match(r"^\d{16}$", val_str):
-                                hard_passed = False
-                        elif ftype == "phone":
-                            if not re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
-                                hard_passed = False
-                        elif ftype == "date":
-                            if not is_valid_iso_date(val_str):
-                                hard_passed = False
-                        elif ftype == "number":
-                            try:
-                                float(val)
-                            except (ValueError, TypeError):
-                                hard_passed = False
+        # Duplicate Penalty (nhẹ hơn vì đã normalize)
+        dup_count = sum(
+            1 for other in current_suite_values
+            if all(str(test_case.get(k["name"])) == str(other.get(k["name"])) for k in self.schema)
+        )
+        if dup_count > 1:
+            fitness -= (dup_count - 1) * 0.05  # penalty nhỏ hơn sau normalize
 
-                    # allowedValues (enum checks) - luôn là ràng buộc cứng
-                    if hard_passed and field.get("allowedValues") and field["allowedValues"]:
-                        if val_str not in [str(av) for av in field["allowedValues"]]:
-                            hard_passed = False
+        return max(0.001, min(fitness, 1.0))
 
-                # --- 2. Soft Constraints ---
-                if hard_passed and val is not None and val_str.strip() != "":
-                    # Ranges
-                    if field["type"] == "number":
-                        try:
-                            num = float(val)
-                            if field.get("minValue") is not None and num < field["minValue"]:
-                                soft_passed = False
-                            if field.get("maxValue") is not None and num > field["maxValue"]:
-                                soft_passed = False
-                        except (ValueError, TypeError):
-                            pass
-                    elif field["type"] != "date":
-                        # minLength / maxLength (không áp cho date vì độ dài cố định)
-                        if field.get("minLength") is not None and len(val_str) < field["minLength"]:
-                            soft_passed = False
-                        if field.get("maxLength") is not None and len(val_str) > field["maxLength"]:
-                            soft_passed = False
 
-                # Scoring validation
-                if not hard_passed:
-                    field_val_score = 0.0
-                elif not soft_passed:
-                    field_val_score = 0.70
-                else:
-                    field_val_score = 1.00
 
-                validation_score += field_val_score
+    def evaluate_suite(self):
+        from .coverage_analyzer import analyze_coverage
+        raw_values = [ind["values"] for ind in self.test_suite]
+        
+        # Tính Global Tag Counts cho thế hệ hiện tại
+        global_tag_counts = {}
+        for ind in self.test_suite:
+            tags = analyze_coverage(ind["values"], self.schema)
+            ind["coverage_tags"] = tags
+            for tag in set(tags):
+                global_tag_counts[tag] = global_tag_counts.get(tag, 0) + 1
+                
+        # Đánh giá fitness với Novelty
+        for ind in self.test_suite:
+            ind["fitness"] = self.evaluate_testcase_quality(ind["values"], raw_values, global_tag_counts)
 
-                # --- 3. Boundary Credit (only for structurally correct field_val_score == 1.0) ---
-                if field_val_score == 1.0:
-                    # [START: BOUNDARY_FITNESS_SCORING]
-                    if field["type"] == "number":
-                        try:
-                            num = float(val)
-                            min_v = field.get("minValue")
-                            max_v = field.get("maxValue")
-
-                            if min_v is not None:
-                                if num == min_v:
-                                    is_boundary = True
-                                elif num == min_v + 1:
-                                    is_near_boundary = True
-
-                            if max_v is not None:
-                                if num == max_v:
-                                    is_boundary = True
-                                elif num == max_v - 1:
-                                    is_near_boundary = True
-                        except (ValueError, TypeError):
-                            pass
-                    elif field["type"] == "date":
-                        # Biên ngày: đầu/cuối tháng, ngày nhuận, đầu/cuối năm
-                        if is_boundary_date(val_str):
-                            is_boundary = True
-                    else:
-                        min_l = field.get("minLength")
-                        max_l = field.get("maxLength")
-
-                        if min_l is not None:
-                            if len(val_str) == min_l:
-                                is_boundary = True
-                            elif len(val_str) == min_l + 1:
-                                is_near_boundary = True
-
-                        if max_l is not None:
-                            if len(val_str) == max_l:
-                                is_boundary = True
-                            elif len(val_str) == max_l - 1:
-                                is_near_boundary = True
-
-                    if is_boundary:
-                        boundary_score += 1.0
-                    elif is_near_boundary:
-                        boundary_score += 0.5
-                    # [END: BOUNDARY_FITNESS_SCORING]
-
-            # Normalize scores
-            v_score = validation_score / num_fields
-            b_score = min(boundary_score / num_fields, 1.0)
-
-            # Store in cache
-            self.static_cache[tc_key] = (v_score, b_score)
-
-        # --- 4. Diversity (Dynamic, evaluated on the fly) ---
-        sample_size = min(20, max(5, len(current_suite_values) // 2))
-        if sample_size > 0 and len(current_suite_values) > 0:
-            sample_subset = random.sample(current_suite_values, min(sample_size, len(current_suite_values)))
-        else:
-            sample_subset = []
-        d_score = calculate_diversity_score(test_case, sample_subset)
-
-        # --- 5. Duplicate Penalty (Dynamic, evaluated on the fly) ---
-        dup_count = sum(1 for other in current_suite_values if all(str(test_case[k]) == str(other.get(k, "")) for k in test_case.keys()))
-        penalty = min(0.15 * (dup_count - 1), 0.6) if dup_count > 1 else 0.0
-
-        # --- 6. Priority (Dynamic, evaluated on the fly) ---
-        # LƯU Ý: KHÔNG phạt happy-path. Trước đây positive=0.4 khiến một bản ghi
-        # hợp lệ bị chấm thấp hơn bản ghi sai/biên, làm GA tiến hóa TRÔI XA các seed
-        # sạch của LLM -> kết quả tệ hơn dữ liệu ban đầu. Nay positive ngang negative,
-        # boundary chỉ được ưu tiên nhẹ để vẫn khuyến khích dò biên.
-        category = self._categorize_testcase(test_case)
-        if category == "boundary":
-            p_score = 1.0
-        elif category == "negative":
-            p_score = 0.8
-        else:  # positive / happy-path
-            p_score = 0.8
-
-        # Trọng số dương đã CHUẨN HÓA (tổng = 1.0). Validation là thành phần trội nhất
-        # để các bản ghi vỡ cấu trúc do đột biến bị chấm điểm thấp, không lấn át seed sạch.
-        # penalty (trùng lặp) trừ riêng, biên độ vừa phải để không đè bẹp điểm gốc.
-        w_val, w_bound, w_div, w_prio = 0.50, 0.25, 0.15, 0.10
-        w_penalty = 0.30
-        fitness = (w_val * v_score) + (w_bound * b_score) + (w_div * d_score) + (w_prio * p_score) - (w_penalty * penalty)
-        fitness = max(0.01, min(fitness, 1.0))
-
-        return fitness
+        self.test_suite.sort(key=lambda x: x["fitness"], reverse=True)
+        self._update_hall_of_fame()
 
     # ═══════════════════════════════════════════════════════════
     # POPULATION INITIALIZATION
@@ -851,9 +747,17 @@ class TestSuiteOptimizer:
         mutated_tc = {**test_case}
         is_mutated = False
         rate = self.get_adaptive_mutation_rate()
+        
+        from .policy_registry import resolve_policy
 
         for field in self.schema:
             name = field["name"]
+            policy = resolve_policy(field)
+            
+            # FREEZE: Không bao giờ mutate
+            if policy == "freeze":
+                continue
+                
             if random.random() < rate:
                 is_mutated = True
                 val_str = str(mutated_tc[name])
@@ -878,18 +782,71 @@ class TestSuiteOptimizer:
                     except (ValueError, TypeError):
                         mutated_tc[name] = generate_random_field_value(field, "valid")
 
-                elif field["type"] in ["email", "card", "phone"]:
-                    if rand < 0.4:
-                        if len(val_str) > 3:
-                            idx = random.randint(0, len(val_str) - 1)
-                            mutated_tc[name] = val_str[:idx] + val_str[idx+1:]
+                elif field["type"] in ["email", "card", "phone"] or field.get("semantic_type") in ["email", "card", "phone"]:
+                    ftype = field["type"] if field["type"] in ["email", "card", "phone"] else field.get("semantic_type")
+                    if ftype == "email":
+                        if rand < 0.45:
+                            parts = val_str.split("@")
+                            if len(parts) == 2:
+                                mutated_tc[name] = parts[0] + str(random.randint(0,9)) + "@" + parts[1]
+                            else:
+                                mutated_tc[name] = val_str + str(random.randint(0,9))
+                        elif rand < 0.80:
+                            parts = val_str.split("@")
+                            if len(parts) == 2:
+                                target = field.get("maxLength")
+                                if not target:
+                                    target = 50
+                                mutated_tc[name] = parts[0][:target].ljust(target, 'a') + "@" + parts[1]
+                            else:
+                                mutated_tc[name] = val_str.ljust(50, 'a')
                         else:
-                            mutated_tc[name] = generate_random_field_value(field, "valid")
-                    elif rand < 0.75:
-                        mutated_tc[name] = generate_random_field_value(field, "boundary")
-                    else:
-                        mutated_tc[name] = generate_random_field_value(field, "invalid")
+                            mutated_tc[name] = val_str.replace("@", "") if "@" in val_str else val_str + "@"
+                    elif ftype == "phone":
+                        if rand < 0.45:
+                            mutated_tc[name] = val_str[:-1] + str(random.randint(0,9)) if len(val_str) > 0 else "0987654321"
+                        elif rand < 0.80:
+                            mutated_tc[name] = val_str.ljust(11, '0')
+                        else:
+                            mutated_tc[name] = val_str + "a"
+                    elif ftype == "card":
+                        if rand < 0.45:
+                            mutated_tc[name] = val_str[:-1] + str(random.randint(0,9)) if len(val_str) > 0 else "1234567890123456"
+                        elif rand < 0.80:
+                            mutated_tc[name] = val_str.ljust(16, '0')
+                        else:
+                            mutated_tc[name] = val_str + "X"
 
+                elif field.get("semantic_type") == "password" or field["type"] == "string":
+                    # NÂNG CẤP: DYNAMIC CONSTRAINT-AWARE MUTATION
+                    if field.get("allowedValues"):
+                        # ENUM-SAFE: luôn chọn giá trị hợp lệ trong allowedValues
+                        current_vals = [str(v) for v in field["allowedValues"]]
+                        others = [v for v in current_vals if v != val_str]
+                        mutated_tc[name] = random.choice(others) if others else val_str
+                    elif field.get("regex"):
+                        if rand < 0.5:
+                            mutated_tc[name] = val_str.swapcase()
+                        elif rand < 0.8:
+                            mutated_tc[name] = val_str + "@@"
+                        else:
+                            mutated_tc[name] = val_str.replace("@", "") if "@" in val_str else "!" + val_str
+                    else:
+                        if rand < 0.3:
+                            mutated_tc[name] = val_str[:-1] + ("1" if len(val_str) > 0 and val_str[-1].isalpha() else "a") if len(val_str) > 0 else "a"
+                        elif rand < 0.6:
+                            target = field.get("maxLength", 20)
+                            if len(val_str) < target:
+                                repeats = (target // max(1, len(val_str))) + 1
+                                mutated_tc[name] = (val_str * repeats)[:target]
+                            else:
+                                mutated_tc[name] = val_str
+                        elif rand < 0.8:
+                            target = field.get("maxLength", 20)
+                            mutated_tc[name] = val_str.ljust(target + 1, "X")
+                        else:
+                            mutated_tc[name] = ""
+                            
                 elif field["type"] == "date":
                     # Đột biến ngày: sinh lại ngày hợp lệ / biên / sai định dạng
                     if rand < 0.45:
@@ -1041,6 +998,10 @@ class TestSuiteOptimizer:
                 })
 
         # 3. Thay đổi bộ dữ liệu test và tái chấm điểm
+        # 3a. Enum Constraint Repair: đảm bảo các trường Enum không bị biến dạng
+        from .enum_constraint_validator import repair_population_enums
+        next_suite, enum_violations = repair_population_enums(next_suite, self.schema)
+        self._last_enum_violations = enum_violations
         self.test_suite = next_suite
         self.evaluate_suite()
 

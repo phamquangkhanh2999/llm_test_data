@@ -1,6 +1,8 @@
 import os
 import json
 import random
+import time
+import hashlib
 from sqlalchemy.orm import Session
 from .ai_logger import log_ai_call
 from ..validators.rule_validator import validate_rules
@@ -8,353 +10,785 @@ from ..validators.schema_validator import validate_schema
 from ..validators.seed_validator import validate_seeds
 from .llm_client import call_llm_json
 from ..engines.fitness_engine import calculate_dataset_fitness
-from .prompts import get_extract_rules_prompt, get_generate_schema_prompt, get_generate_initial_population_prompt, get_generate_seeds_prompt, get_evaluate_test_quality_prompt, get_evaluate_optimized_prompt, get_parse_spec_combined_prompt
+from .prompts import get_evaluate_test_quality_prompt, get_evaluate_optimized_prompt, get_parse_spec_combined_prompt
 from ..algorithms.optimizer_engine import is_valid_iso_date, random_valid_date
 
 def check_record_expected_result(record, fields):
-    import re
-    errors = []
+    """
+    Kiểm tra tính hợp lệ của record theo schema.
+    Trả về "Hợp lệ" hoặc chuỗi mô tả lỗi để tương thích ngược.
+    Sử dụng nội bộ hàm derive_expected_result.
+    """
+    oracle = derive_expected_result(record, fields)
+    if oracle["http_status"] == 200:
+        return "Hợp lệ"
+    return "Lỗi: " + ", ".join(oracle["violated_fields_desc"])
+
+
+def derive_expected_result(record: dict, fields: list) -> dict:
+    """
+    Expected Result Oracle: suy diễn HTTP status code và thông báo lỗi
+    tự động từ schema logic — KHÔNG hard-code.
+
+    Phân tầng ưu tiên:
+      1. Required field missing    → HTTP 400 Bad Request
+      2. Enum value invalid        → HTTP 400 Bad Request
+      3. Number range violation    → HTTP 400 Bad Request
+      4. String length violation   → HTTP 400 Bad Request
+      5. Format invalid (structural) → HTTP 422 Unprocessable Entity
+      6. All valid                 → HTTP 200 OK
+
+    Returns:
+        {
+            "http_status": int,          # 200 | 400 | 422
+            "status_text": str,          # "OK" | "Bad Request" | "Unprocessable Entity"
+            "message": str,              # Human-readable mô tả
+            "violated_fields": list,     # ["field_name", ...]
+            "violated_fields_desc": list # ["'field' sai định dạng email", ...]
+            "is_valid": bool
+        }
+    """
+    import re as _re
+    errors_400 = []   # Business logic / constraint errors → 400
+    errors_422 = []   # Format/structural errors → 422
+    violated_fields = []
+    violated_fields_desc = []
+
     for f in fields:
         name = f["name"]
         val = record.get(name)
-        ftype = f.get("semantic_type") or f.get("data_type", "string")
+        ftype = f.get("type") or f.get("semantic_type") or f.get("data_type", "string")
         required = f.get("required", False)
-        
+
+        # ── Priority 1: Required field missing ─────────────────────────────────
         if required and (val is None or str(val).strip() == ""):
-            errors.append(f"thiếu '{name}'")
+            errors_400.append(f"thiếu trường bắt buộc '{name}'")
+            violated_fields.append(name)
+            violated_fields_desc.append(f"thiếu '{name}'")
             continue
-        if val is None or str(val).strip() == "": continue
-            
+
+        if val is None or str(val).strip() == "":
+            continue  # Không bắt buộc, bỏ qua
+
         val_str = str(val)
-        field_regex = f.get("regex")
-        if field_regex:
-            try:
-                if not re.search(field_regex, val_str): errors.append(f"'{name}' không khớp định dạng quy định (regex)")
-            except re.error: pass
-        elif ftype == "email":
-            if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str): errors.append(f"'{name}' sai định dạng email")
-        elif ftype == "card":
-            if not re.match(r"^\d{16}$", val_str): errors.append(f"'{name}' phải gồm 16 chữ số")
-        elif ftype == "phone":
-            if not re.match(r"^(03|05|07|08|09)\d{8}$", val_str): errors.append(f"'{name}' sai đầu số di động VN")
-        elif ftype == "date":
-            if not is_valid_iso_date(val_str): errors.append(f"'{name}' sai định dạng ngày (YYYY-MM-DD)")
-        elif ftype == "number":
+
+        # ── Priority 2: Enum invalid ────────────────────────────────────────────
+        allowed = f.get("allowedValues")
+        if allowed:
+            if val_str not in [str(v) for v in allowed]:
+                errors_400.append(f"'{name}' không nằm trong danh sách cho phép {allowed}")
+                violated_fields.append(name)
+                violated_fields_desc.append(f"'{name}' không trong enum list")
+                continue
+
+        # ── Priority 3: Number range violation ─────────────────────────────────
+        if ftype == "number":
             try:
                 num = float(val)
                 min_v = f.get("minValue")
                 max_v = f.get("maxValue")
-                if min_v is not None and num < float(min_v): errors.append(f"'{name}' nhỏ hơn {min_v}")
-                if max_v is not None and num > float(max_v): errors.append(f"'{name}' lớn hơn {max_v}")
-            except: errors.append(f"'{name}' không phải số")
-        else:
-            if f.get("allowedValues") and f["allowedValues"]:
-                if val_str not in [str(v) for v in f["allowedValues"]]: errors.append(f"'{name}' không nằm trong danh sách cho phép")
+                if min_v is not None and num < float(min_v):
+                    errors_400.append(f"'{name}' nhỏ hơn giá trị tối thiểu {min_v}")
+                    violated_fields.append(name)
+                    violated_fields_desc.append(f"'{name}' nhỏ hơn {min_v}")
+                elif max_v is not None and num > float(max_v):
+                    errors_400.append(f"'{name}' vượt giá trị tối đa {max_v}")
+                    violated_fields.append(name)
+                    violated_fields_desc.append(f"'{name}' lớn hơn {max_v}")
+            except (ValueError, TypeError):
+                errors_422.append(f"'{name}' không phải số hợp lệ")
+                violated_fields.append(name)
+                violated_fields_desc.append(f"'{name}' không phải số")
+            continue
+
+        # ── Priority 4: String length violation ────────────────────────────────
+        if ftype not in ("email", "card", "phone", "date"):
+            min_l = f.get("minLength")
+            max_l = f.get("maxLength")
+            field_regex = f.get("regex")
+            if field_regex:
+                try:
+                    if not _re.search(field_regex, val_str):
+                        errors_422.append(f"'{name}' không khớp định dạng quy định")
+                        violated_fields.append(name)
+                        violated_fields_desc.append(f"'{name}' không khớp regex")
+                        continue
+                except _re.error:
+                    pass
             else:
-                min_l = f.get("minLength")
-                max_l = f.get("maxLength")
-                if min_l is not None and len(val_str) < int(min_l): errors.append(f"'{name}' ngắn hơn {min_l} ký tự")
-                if max_l is not None and len(val_str) > int(max_l): errors.append(f"'{name}' vượt quá {max_l} ký tự")
-    if errors: return "Lỗi: " + ", ".join(errors)
-    return "Hợp lệ"
+                if min_l is not None and len(val_str) < int(min_l):
+                    errors_400.append(f"'{name}' ngắn hơn {min_l} ký tự")
+                    violated_fields.append(name)
+                    violated_fields_desc.append(f"'{name}' ngắn hơn {min_l} ký tự")
+                    continue
+                if max_l is not None and len(val_str) > int(max_l):
+                    errors_400.append(f"'{name}' vượt quá {max_l} ký tự")
+                    violated_fields.append(name)
+                    violated_fields_desc.append(f"'{name}' vượt quá {max_l} ký tự")
+                    continue
+            continue
+
+        # ── Priority 5: Format/structural validation → HTTP 422 ────────────────
+        format_ok = True
+        format_desc = ""
+        if ftype == "email":
+            if not _re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
+                format_ok = False
+                format_desc = f"'{name}' sai định dạng email"
+        elif ftype == "card":
+            if not _re.match(r"^\d{16}$", val_str):
+                format_ok = False
+                format_desc = f"'{name}' phải gồm đúng 16 chữ số"
+        elif ftype == "phone":
+            if not _re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
+                format_ok = False
+                format_desc = f"'{name}' sai đầu số di động VN"
+        elif ftype == "date":
+            if not is_valid_iso_date(val_str):
+                format_ok = False
+                format_desc = f"'{name}' sai định dạng ngày ISO (YYYY-MM-DD)"
+
+        if not format_ok:
+            errors_422.append(format_desc)
+            violated_fields.append(name)
+            violated_fields_desc.append(format_desc)
+
+    # ── Xác định HTTP status và message ──────────────────────────────────────
+    if errors_400:
+        all_errors = errors_400 + errors_422
+        return {
+            "http_status": 400,
+            "status_text": "Bad Request",
+            "message": "HTTP 400 - " + "; ".join(all_errors),
+            "violated_fields": violated_fields,
+            "violated_fields_desc": violated_fields_desc,
+            "is_valid": False
+        }
+    elif errors_422:
+        return {
+            "http_status": 422,
+            "status_text": "Unprocessable Entity",
+            "message": "HTTP 422 - " + "; ".join(errors_422),
+            "violated_fields": violated_fields,
+            "violated_fields_desc": violated_fields_desc,
+            "is_valid": False
+        }
+    else:
+        return {
+            "http_status": 200,
+            "status_text": "OK",
+            "message": "HTTP 200 - Xử lý thành công, dữ liệu hợp lệ",
+            "violated_fields": [],
+            "violated_fields_desc": [],
+            "is_valid": True
+        }
+
+
+
+def build_coverage_matrix_contract(fields: list):
+    """
+    Rule Engine & Coverage Matrix Contract Builder
+    Generates requiredCases, required_boundaries, and equivalence_partitions.
+    """
+    required_cases = []
+    required_boundaries = {}
+    equivalence_partitions = {}
+    
+    # 1. Base happy path case (Positive)
+    required_cases.append({
+        "id": "POS_HAPPY_PATH",
+        "field": None,
+        "type": "positive",
+        "target": "Xác minh luồng hoạt động chuẩn (Happy path) với đầy đủ dữ liệu hợp lệ"
+    })
+    
+    for field in fields:
+        name = field.get("name")
+        ftype = field.get("semantic_type") or field.get("type") or field.get("data_type", "string")
+        required = field.get("required", False)
+        
+        # Required Check (Negative case)
+        if required:
+            required_cases.append({
+                "id": f"REQ_{name.upper()}_MISSING",
+                "field": name,
+                "type": "negative",
+                "target": f"Để trống trường bắt buộc '{name}'"
+            })
+            
+        bounds = []
+        
+        # Check numerical limits
+        min_v = field.get("minValue")
+        max_v = field.get("maxValue")
+        if min_v is not None:
+            try:
+                val = float(min_v)
+                val_int = int(val) if val.is_integer() else val
+                bounds.extend([val_int - 1, val_int, val_int + 1])
+                required_cases.extend([
+                    {"id": f"BVA_{name.upper()}_MIN_MINUS_1", "field": name, "type": "negative", "target": f"Giá trị {name} = {val_int - 1} (dưới biên minValue={min_v})"},
+                    {"id": f"BVA_{name.upper()}_MIN", "field": name, "type": "boundary", "target": f"Giá trị {name} = {val_int} (tại biên minValue={min_v})"},
+                    {"id": f"BVA_{name.upper()}_MIN_PLUS_1", "field": name, "type": "boundary", "target": f"Giá trị {name} = {val_int + 1} (trên biên minValue={min_v})"}
+                ])
+            except:
+                pass
+                
+        if max_v is not None:
+            try:
+                val = float(max_v)
+                val_int = int(val) if val.is_integer() else val
+                bounds.extend([val_int - 1, val_int, val_int + 1])
+                required_cases.extend([
+                    {"id": f"BVA_{name.upper()}_MAX_MINUS_1", "field": name, "type": "boundary", "target": f"Giá trị {name} = {val_int - 1} (dưới biên maxValue={max_v})"},
+                    {"id": f"BVA_{name.upper()}_MAX", "field": name, "type": "boundary", "target": f"Giá trị {name} = {val_int} (tại biên maxValue={max_v})"},
+                    {"id": f"BVA_{name.upper()}_MAX_PLUS_1", "field": name, "type": "negative", "target": f"Giá trị {name} = {val_int + 1} (vượt biên maxValue={max_v})"}
+                ])
+            except:
+                pass
+
+        # Check string length limits
+        min_l = field.get("minLength")
+        max_l = field.get("maxLength")
+        if min_l is not None:
+            try:
+                val = int(min_l)
+                bounds.extend([val - 1, val, val + 1])
+                required_cases.extend([
+                    {"id": f"BVA_{name.upper()}_LEN_MIN_MINUS_1", "field": name, "type": "negative", "target": f"Độ dài {name} = {val - 1} ký tự (dưới biên minLength={min_l})"},
+                    {"id": f"BVA_{name.upper()}_LEN_MIN", "field": name, "type": "boundary", "target": f"Độ dài {name} = {val} ký tự (tại biên minLength={min_l})"},
+                    {"id": f"BVA_{name.upper()}_LEN_MIN_PLUS_1", "field": name, "type": "boundary", "target": f"Độ dài {name} = {val + 1} ký tự (trên biên minLength={min_l})"}
+                ])
+            except:
+                pass
+                
+        if max_l is not None:
+            try:
+                val = int(max_l)
+                bounds.extend([val - 1, val, val + 1])
+                required_cases.extend([
+                    {"id": f"BVA_{name.upper()}_LEN_MAX_MINUS_1", "field": name, "type": "boundary", "target": f"Độ dài {name} = {val - 1} ký tự (dưới biên maxLength={max_l})"},
+                    {"id": f"BVA_{name.upper()}_LEN_MAX", "field": name, "type": "boundary", "target": f"Độ dài {name} = {val} ký tự (tại biên maxLength={max_l})"},
+                    {"id": f"BVA_{name.upper()}_LEN_MAX_PLUS_1", "field": name, "type": "negative", "target": f"Độ dài {name} = {val + 1} ký tự (vượt biên maxLength={max_l})"}
+                ])
+            except:
+                pass
+                
+        if bounds:
+            required_boundaries[name] = sorted(list(set(bounds)))
+            
+        # Equivalence partitions mapping
+        if ftype == "email":
+            equivalence_partitions[name] = {"valid": ["test@gmail.com"], "invalid": ["test_invalid"]}
+            required_cases.extend([
+                {"id": f"EP_{name.upper()}_VALID_FORMAT", "field": name, "type": "equivalence", "target": f"Định dạng email hợp lệ (vd: test@gmail.com)"},
+                {"id": f"EP_{name.upper()}_INVALID_FORMAT", "field": name, "type": "negative", "target": f"Định dạng email không hợp lệ (vd: test_invalid)"}
+            ])
+        elif ftype == "card":
+            equivalence_partitions[name] = {"valid": ["1234567890123456"], "invalid": ["123456"]}
+            required_cases.extend([
+                {"id": f"EP_{name.upper()}_VALID_CARD", "field": name, "type": "equivalence", "target": f"Số thẻ hợp lệ gồm 16 chữ số"},
+                {"id": f"EP_{name.upper()}_INVALID_CARD", "field": name, "type": "negative", "target": f"Số thẻ không hợp lệ"}
+            ])
+        elif ftype == "phone":
+            equivalence_partitions[name] = {"valid": ["0912345678"], "invalid": ["12345"]}
+            required_cases.extend([
+                {"id": f"EP_{name.upper()}_VALID_PHONE", "field": name, "type": "equivalence", "target": f"Số điện thoại hợp lệ VN đầu số 03/05/07/08/09"},
+                {"id": f"EP_{name.upper()}_INVALID_PHONE", "field": name, "type": "negative", "target": f"Số điện thoại không hợp lệ"}
+            ])
+        elif ftype == "date":
+            equivalence_partitions[name] = {"valid": ["2026-06-21"], "invalid": ["2026/06/21"]}
+            required_cases.extend([
+                {"id": f"EP_{name.upper()}_VALID_DATE", "field": name, "type": "equivalence", "target": f"Định dạng ngày ISO YYYY-MM-DD"},
+                {"id": f"EP_{name.upper()}_INVALID_DATE", "field": name, "type": "negative", "target": f"Ngày không đúng định dạng ISO (vd: 2026/06/21)"}
+            ])
+        elif ftype == "number":
+            valid_val = 20.0
+            if min_v is not None and max_v is not None:
+                valid_val = (float(min_v) + float(max_v)) / 2.0
+            elif min_v is not None:
+                valid_val = float(min_v) + 5.0
+            elif max_v is not None:
+                valid_val = float(max_v) - 5.0
+            invalid_below = float(min_v) - 5.0 if min_v is not None else -1.0
+            invalid_above = float(max_v) + 5.0 if max_v is not None else 999.0
+            
+            equivalence_partitions[name] = {
+                "valid": [valid_val],
+                "invalid": [invalid_below, invalid_above]
+            }
+            required_cases.extend([
+                {"id": f"EP_{name.upper()}_VALID_NUMBER", "field": name, "type": "equivalence", "target": f"Giá trị số hợp lệ: {valid_val}"},
+                {"id": f"EP_{name.upper()}_INVALID_BELOW", "field": name, "type": "negative", "target": f"Giá trị số không hợp lệ (dưới biên: {invalid_below})"},
+                {"id": f"EP_{name.upper()}_INVALID_ABOVE", "field": name, "type": "negative", "target": f"Giá trị số không hợp lệ (trên biên: {invalid_above})"}
+            ])
+        elif ftype == "boolean":
+            equivalence_partitions[name] = {"valid": [True, False], "invalid": ["not-a-boolean"]}
+        else:
+            allowed = field.get("allowedValues")
+            if allowed:
+                equivalence_partitions[name] = {"valid": allowed, "invalid": ["invalid_option"]}
+                required_cases.extend([
+                    {"id": f"EP_{name.upper()}_VALID_OPTION", "field": name, "type": "equivalence", "target": f"Lựa chọn hợp lệ từ danh sách {allowed}"},
+                    {"id": f"EP_{name.upper()}_INVALID_OPTION", "field": name, "type": "negative", "target": f"Lựa chọn ngoài danh sách (vd: invalid_option)"}
+                ])
+            else:
+                valid_len = 10
+                if min_l is not None and max_l is not None:
+                    valid_len = int((int(min_l) + int(max_l)) / 2)
+                elif min_l is not None:
+                    valid_len = int(min_l) + 2
+                elif max_l is not None:
+                    valid_len = int(max_l) - 2
+                valid_str = "a" * max(1, valid_len)
+                invalid_len_below = "a" * max(0, int(min_l) - 2) if min_l is not None else ""
+                invalid_len_above = "a" * (int(max_l) + 5) if max_l is not None else "a"*100
+                
+                equivalence_partitions[name] = {
+                    "valid": [valid_str],
+                    "invalid": [invalid_len_below, invalid_len_above]
+                }
+
+    # Dynamic Decision cases
+    decision_fields = [f for f in fields if f.get("allowedValues") or f.get("semantic_type") == "boolean" or f.get("type") == "boolean"]
+    if len(decision_fields) >= 2:
+        f1 = decision_fields[0]
+        f2 = decision_fields[1]
+        opts1 = f1.get("allowedValues") or [True, False]
+        opts2 = f2.get("allowedValues") or [True, False]
+        for idx, (o1, o2) in enumerate([(v1, v2) for v1 in opts1[:2] for v2 in opts2[:2]]):
+            required_cases.append({
+                "id": f"DEC_{f1['name'].upper()}_{f2['name'].upper()}_COMB_{idx+1}",
+                "field": None,
+                "type": "decision",
+                "target": f"Kết hợp quyết định: {f1['name']}={o1} và {f2['name']}={o2}"
+            })
+            
+    return required_cases, required_boundaries, equivalence_partitions
+
+def calculate_single_testcase_scores(tc, fields, required_boundaries, required_cases):
+    """
+    Computes individual testcase scores across Completeness, Negative, Boundary, Decision, and Coverage.
+    """
+    completeness = 0
+    if tc.get("tcId") and len(str(tc.get("tcId")).strip()) >= 3:
+        completeness += 10
+    
+    scenario = tc.get("scenario", "")
+    if scenario and len(str(scenario).strip()) >= 15:
+        completeness += 15
+        
+    expected = tc.get("expectedResult", "")
+    if expected and len(str(expected).strip()) >= 10:
+        completeness += 15
+        
+    categories = tc.get("categories", [])
+    if categories and isinstance(categories, list):
+        completeness += 10
+        
+    rationale = tc.get("rationale", "")
+    if rationale and len(str(rationale).strip()) >= 5:
+        completeness += 10
+        
+    tags = tc.get("coverageTags", [])
+    if tags and isinstance(tags, list):
+        completeness += 10
+        
+    gen_from = tc.get("generatedFrom", [])
+    if gen_from and isinstance(gen_from, list):
+        completeness += 10
+        
+    vals = tc.get("values", tc.get("data", {}))
+    total_fields = len(fields) if fields else 1
+    present_fields_count = sum(1 for f in fields if f["name"] in vals)
+    completeness += int((present_fields_count / total_fields) * 20)
+    
+    completeness_score = min(max(0, completeness), 100)
+    
+    # negativeScore check
+    check_msg = check_record_expected_result(vals, fields)
+    is_valid = (check_msg == "Hợp lệ")
+    
+    cats_lower = [c.lower() for c in categories] if isinstance(categories, list) else []
+    is_negative = ("negative" in cats_lower or tc.get("method") == "negative" or "negative" in str(tc.get("tcId", "")).lower())
+    
+    if is_negative:
+        negative_score = 100 if not is_valid else 0
+    else:
+        negative_score = 100 if is_valid else 0
+        
+    # boundaryScore check
+    hits_boundary = False
+    boundary_fields_count = len(required_boundaries)
+    
+    for name, b_vals in required_boundaries.items():
+        val = vals.get(name)
+        if val is not None and str(val).strip() != "":
+            try:
+                val_f = float(val)
+                if any(abs(val_f - b) < 1e-9 for b in b_vals):
+                    hits_boundary = True
+            except:
+                pass
+            val_len = len(str(val))
+            if val_len in b_vals:
+                hits_boundary = True
+                
+    is_boundary_labeled = ("boundary" in cats_lower or tc.get("method") == "bva" or "bva" in str(tc.get("tcId", "")).lower())
+    
+    if boundary_fields_count == 0:
+        boundary_score = 100
+    else:
+        if is_boundary_labeled:
+            boundary_score = 100 if hits_boundary else 50
+        else:
+            boundary_score = 70 if hits_boundary else 0
+            
+    # decisionScore check
+    is_decision_labeled = ("decision" in cats_lower or tc.get("method") == "decision")
+    decision_fields = [f for f in fields if f.get("allowedValues") or f.get("semantic_type") == "boolean" or f.get("type") == "boolean"]
+    
+    if len(decision_fields) < 2:
+        decision_score = 100
+    else:
+        non_empty_dec = sum(1 for f in decision_fields if vals.get(f["name"]) is not None and str(vals[f["name"]]).strip() != "")
+        if is_decision_labeled:
+            decision_score = 100 if (non_empty_dec >= 2 and is_valid) else 50
+        else:
+            decision_score = 100 if is_valid else 0
+            
+    # coverageScore check
+    cov_score = 0
+    if fields:
+        field_unit = 100.0 / len(fields)
+        for f in fields:
+            name = f["name"]
+            if name in vals:
+                val = vals[name]
+                if val is not None and str(val).strip() != "":
+                    val_str = str(val)
+                    ftype = f.get("semantic_type") or f.get("type") or f.get("data_type", "string")
+                    is_fmt_valid = True
+                    import re
+                    if ftype == "email" and not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
+                        is_fmt_valid = False
+                    elif ftype == "card" and not re.match(r"^\d{16}$", val_str):
+                        is_fmt_valid = False
+                    elif ftype == "phone" and not re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
+                        is_fmt_valid = False
+                    elif ftype == "date" and not is_valid_iso_date(val_str):
+                        is_fmt_valid = False
+                    elif ftype == "number":
+                        try:
+                            float(val)
+                        except:
+                            is_fmt_valid = False
+                            
+                    if is_fmt_valid:
+                        cov_score += field_unit
+                    else:
+                        cov_score += field_unit * 0.5
+                else:
+                    cov_score += field_unit * 0.2
+        coverage_score = int(round(cov_score))
+    else:
+        coverage_score = 100
+        
+    return {
+        "completenessScore": min(max(0, completeness_score), 100),
+        "negativeScore": min(max(0, negative_score), 100),
+        "boundaryScore": min(max(0, boundary_score), 100),
+        "decisionScore": min(max(0, decision_score), 100),
+        "coverageScore": min(max(0, coverage_score), 100),
+        "diversityScore": 100
+    }
+
+def validate_and_fix_seeds(seeds, fields):
+    """
+    TESTFORGE V4.1 Advanced Verification, Repair, Deduplication, and Scoring Engine.
+    """
+    if not isinstance(seeds, list):
+        return []
+        
+    required_cases, required_boundaries, equivalence_partitions = build_coverage_matrix_contract(fields)
+    decision_fields = [f for f in fields if f.get("allowedValues") or f.get("semantic_type") == "boolean" or f.get("type") == "boolean"]
+    
+    # STEP 1: Reject Engine
+    passed_reject_gate = []
+    for raw_seed in seeds:
+        seed = dict(raw_seed)
+        
+        # Normalize
+        data = seed.get("data", seed.get("values", seed))
+        if "data" not in seed and "values" not in seed:
+            data = {k: v for k, v in seed.items() if k not in ["tcId", "method", "scenario", "expectedResult", "errorDescription", "category", "categories", "origin", "fitness", "llmFitness", "gaFitness", "hcFitness", "coverageTags", "generatedFrom"]}
+        seed["values"] = data
+        
+        # Reject rules
+        reject_reason = None
+        if not isinstance(data, dict) or not data:
+            reject_reason = "Missing values dict"
+        else:
+            for f in fields:
+                if f.get("required") and f["name"] not in data:
+                    reject_reason = f"Missing required field {f['name']}"
+                    break
+                    
+        cats = seed.get("categories", [])
+        if not isinstance(cats, list) or not cats:
+            reject_reason = "Missing categories array"
+            
+        if reject_reason:
+            print(f">>> REJECTED: {seed.get('tcId', 'unknown')} because of {reject_reason}")
+            continue
+            
+        passed_reject_gate.append(seed)
+        
+    # STEP 2: Repair Engine
+    repaired_seeds = []
+    for idx, seed in enumerate(passed_reject_gate):
+        data = seed["values"]
+        
+        # Repair TC ID
+        seed["tcId"] = f"TC-{idx + 1:04d}"
+        
+        # Repair missing required/non-required fields
+        for f in fields:
+            name = f["name"]
+            if name not in data:
+                data[name] = ""
+                
+        # Repair Category based on actual rule validation
+        check_msg = check_record_expected_result(data, fields)
+        is_valid = (check_msg == "Hợp lệ")
+        cats = seed.get("categories", [])
+        
+        if is_valid and "negative" in cats:
+            cats = [c for c in cats if c != "negative"]
+            if not cats or "positive" not in cats:
+                cats.append("positive")
+        elif not is_valid and "negative" not in cats:
+            cats.append("negative")
+            cats = [c for c in cats if c != "positive"]
+        seed["categories"] = list(set(cats))
+        
+        # Repair Scenario
+        scn = seed.get("scenario")
+        scn = str(scn or "").strip()
+        if not scn or len(scn) < 15:
+            cats_str = ", ".join(seed["categories"])
+            active_fields = [f"{k}={v}" for k, v in data.items() if v != ""]
+            seed["scenario"] = f"Kiểm thử kịch bản {cats_str} với dữ liệu: {', '.join(active_fields[:3])}"
+            
+        # Repair Expected Result
+        exp = seed.get("expectedResult")
+        exp = str(exp or "").strip()
+        if not exp or len(exp) < 10 or exp.lower() in ["thành công", "valid", "invalid", "lỗi"]:
+            if is_valid:
+                seed["expectedResult"] = "HTTP 200 - Xử lý thành công, dữ liệu hợp lệ và được cập nhật vào cơ sở dữ liệu"
+            else:
+                seed["expectedResult"] = f"HTTP 400 - {check_msg}. Dữ liệu bị chặn."
+                
+        # Repair errorDescription
+        err_desc = seed.get("errorDescription")
+        if err_desc is None:
+            err_desc = ""
+        else:
+            err_desc = str(err_desc).strip()
+            
+        if "negative" in seed["categories"]:
+            if not err_desc or err_desc.lower() in ["lỗi", "error", "invalid", "none", "null", "không có", "không", "n/a", "-"]:
+                seed["errorDescription"] = check_msg.replace("Lỗi: ", "")
+            else:
+                seed["errorDescription"] = err_desc
+        else:
+            seed["errorDescription"] = "Không có"
+            
+        # Repair rationale
+        rat = seed.get("rationale")
+        if not rat or len(str(rat).strip()) < 5:
+            seed["rationale"] = f"Xác minh nghiệp vụ trường {'/'.join([c for c in data.keys() if data[c] != ''])[:50]}"
+            
+        # Ensure coverageTags and generatedFrom fields exist
+        if "coverageTags" not in seed or not isinstance(seed["coverageTags"], list):
+            seed["coverageTags"] = []
+            
+        if "generatedFrom" not in seed or not isinstance(seed["generatedFrom"], list):
+            seed["generatedFrom"] = []
+            for f in fields:
+                if data.get(f["name"]) is not None:
+                    seed["generatedFrom"].append({"field": f["name"], "rule": f.get("type", "schema_type")})
+                    
+        repaired_seeds.append(seed)
+        
+    # STEP 3: Deduplication
+    exact_seen = set()
+    unique_seeds = []
+    
+    for seed in repaired_seeds:
+        val_hash = hashlib.sha256(json.dumps(seed["values"], sort_keys=True, ensure_ascii=False).encode('utf-8')).hexdigest()
+        if val_hash in exact_seen:
+            continue
+        exact_seen.add(val_hash)
+        
+        # Layer 2 Semantic Duplicate check
+        is_semantic_dup = False
+        cat_key = tuple(sorted(seed.get("categories", [])))
+        tag_key = tuple(sorted(seed.get("coverageTags", [])))
+        expected = seed.get("expectedResult", "")
+        
+        for existing in unique_seeds:
+            ex_cat_key = tuple(sorted(existing.get("categories", [])))
+            ex_tag_key = tuple(sorted(existing.get("coverageTags", [])))
+            ex_expected = existing.get("expectedResult", "")
+            
+            if cat_key == ex_cat_key and tag_key == ex_tag_key and expected == ex_expected:
+                is_semantic_dup = True
+                break
+                
+        if not is_semantic_dup:
+            unique_seeds.append(seed)
+            
+    # STEP 4: Coverage Verification & Missing Boundary Auto-Gen
+    covered_tags = set()
+    for seed in unique_seeds:
+        actual_tags = []
+        for item in required_cases:
+            cid = item["id"]
+            c_field = item["field"]
+            c_type = item["type"]
+            c_target = item["target"]
+            
+            if c_type == "positive" and check_record_expected_result(seed["values"], fields) == "Hợp lệ":
+                actual_tags.append(cid)
+            elif c_type == "negative" and c_field:
+                err = check_record_expected_result(seed["values"], fields)
+                if f"'{c_field}'" in err or f"thiếu '{c_field}'" in err:
+                    actual_tags.append(cid)
+            elif c_type == "boundary" and c_field:
+                val = seed["values"].get(c_field)
+                if val is not None:
+                    target_num = None
+                    try:
+                        import re
+                        m = re.search(r"=\s*([-\d\.]+)", c_target)
+                        if m:
+                            target_num = float(m.group(1))
+                    except:
+                        pass
+                    
+                    if target_num is not None:
+                        try:
+                            if abs(float(val) - target_num) < 1e-9:
+                                actual_tags.append(cid)
+                        except:
+                            pass
+                    
+                    target_len = None
+                    try:
+                        import re
+                        m = re.search(r"=\s*(\d+)\s*ký tự", c_target)
+                        if m:
+                            target_len = int(m.group(1))
+                    except:
+                        pass
+                    if target_len is not None and len(str(val)) == target_len:
+                        actual_tags.append(cid)
+            elif c_type == "equivalence" and c_field:
+                val = seed["values"].get(c_field)
+                if val is not None and check_record_expected_result(seed["values"], fields) == "Hợp lệ":
+                    actual_tags.append(cid)
+                    
+        if actual_tags:
+            seed["coverageTags"] = list(set(actual_tags))
+            covered_tags.update(actual_tags)
+            
+    # Re-index TC ID
+    for idx, s in enumerate(unique_seeds):
+        s["tcId"] = f"TC-{idx + 1:04d}"
+        
+    # STEP 5: Scoring Engine (completeness, negative, boundary, coverage, decision, diversity)
+    # 5.1 Calculate base scores
+    for seed in unique_seeds:
+        scores = calculate_single_testcase_scores(seed, fields, required_boundaries, required_cases)
+        seed.update(scores)
+        
+    # 5.2 Calculate diversityScore
+    if len(unique_seeds) > 1:
+        for i, tc1 in enumerate(unique_seeds):
+            v1 = tc1["values"]
+            max_sim = 0.0
+            for j, tc2 in enumerate(unique_seeds):
+                if i == j: continue
+                v2 = tc2["values"]
+                matches = sum(1 for f in fields if str(v1.get(f["name"])) == str(v2.get(f["name"])))
+                sim = matches / len(fields) if fields else 1.0
+                if sim > max_sim:
+                    max_sim = sim
+            tc1["diversityScore"] = int(round((1.0 - max_sim) * 100))
+    else:
+        for seed in unique_seeds:
+            seed["diversityScore"] = 100
+            
+    # 5.3 Calculate dynamic seedQualityScore using the exact Fitness formula:
+    # Fitness = (0.4 × Coverage) + (0.3 × Boundary) + (0.1 × Priority) + (0.2 × Diversity) - Penalty
+    # Note: Penalty is 0 for initial F0 seeds. We map Priority to completenessScore.
+    for seed in unique_seeds:
+        cov = seed.get("coverageScore", 100)
+        bnd = seed.get("boundaryScore", 100)
+        pri = seed.get("completenessScore", 100)
+        div = seed.get("diversityScore", 100)
+        
+        final_score = (0.4 * cov) + (0.3 * bnd) + (0.1 * pri) + (0.2 * div)
+        seed["seedQualityScore"] = int(round(final_score))
+        
+    return unique_seeds
+
+def generate_coverage_summary(seeds: list, fields: list) -> dict:
+    """
+    Computes required vs actual coverage summary counts.
+    """
+    required_cases, _, _ = build_coverage_matrix_contract(fields)
+    summary = {
+        "positive": {"required": 0, "actual": 0},
+        "negative": {"required": 0, "actual": 0},
+        "boundary": {"required": 0, "actual": 0},
+        "equivalence": {"required": 0, "actual": 0},
+        "decision": {"required": 0, "actual": 0}
+    }
+    
+    for item in required_cases:
+        t = item["type"]
+        if t == "ep":
+            t = "equivalence"
+        if t in summary:
+            summary[t]["required"] += 1
+            
+    covered_tags = set()
+    for seed in seeds:
+        for tag in seed.get("coverageTags", []):
+            covered_tags.add(tag)
+            
+    for item in required_cases:
+        cid = item["id"]
+        t = item["type"]
+        if t == "ep":
+            t = "equivalence"
+        if cid in covered_tags:
+            if t in summary:
+                summary[t]["actual"] += 1
+                
+    return summary
 
 def enrich_result_with_expected_results(parsed_result):
     if parsed_result and "initialPopulation" in parsed_result:
         fields = parsed_result.get("fields", [])
         seeds = parsed_result.get("initialPopulation", [])
-        for seed in seeds:
-            if "expectedResult" not in seed:
-                seed["expectedResult"] = check_record_expected_result(seed, fields)
+        parsed_result["initialPopulation"] = validate_and_fix_seeds(seeds, fields)
+        parsed_result["coverageSummary"] = generate_coverage_summary(parsed_result["initialPopulation"], fields)
     return parsed_result
 
 # (Keeping local generation out for brevity or putting a simplified version, but let's copy the real one to be safe)
-def generate_seeds_locally(fields: list, test_method: str, boundary_count: int, partition_count: int) -> list:
-    """
-    Generates a realistic set of initial seeds locally using standard python algorithms
-    """
-    population = []
-    
-    # Helper to generate random/default value for a field
-    def get_default_value(field, mode='valid', length=None):
-        t = field.get("type", "string")
-        if t == "email":
-            if mode == 'invalid':
-                return "invalid-email"
-            if length is not None:
-                # Tạo email đúng độ dài yêu cầu
-                suffix = "@gmail.com"
-                if length <= len(suffix):
-                    return "a" * length
-                return "a" * (length - len(suffix)) + suffix
-            return f"test{random.randint(10,99)}@gmail.com"
-        elif t == "card":
-            if mode == 'invalid':
-                return "1234-invalid"
-            if length is not None:
-                return "".join(str(random.randint(0,9)) for _ in range(length))
-            return "".join(str(random.randint(0,9)) for _ in range(16))
-        elif t == "phone":
-            if mode == 'invalid':
-                return "028123"
-            if length is not None:
-                if length <= 2:
-                    return "09"[:length]
-                return "09" + "".join(str(random.randint(0,9)) for _ in range(length - 2))
-            return "09" + "".join(str(random.randint(0,9)) for _ in range(8))
-        elif t == "date":
-            if mode == 'invalid':
-                return random.choice(["2024-13-01", "2024-02-30", "not-a-date", "2024/01/01"])
-            if mode == 'boundary':
-                return random.choice(["2024-02-29", "2020-01-01", "2023-12-31", "2024-04-30"])
-            return random_valid_date()
-        elif t == "number":
-            try:
-                min_val = field.get("minValue")
-                max_val = field.get("maxValue")
-                min_val = float(min_val) if min_val is not None else 0.0
-                max_val = float(max_val) if max_val is not None else 1000.0
-            except (ValueError, TypeError):
-                min_val, max_val = 0.0, 1000.0
-
-            is_float = not min_val.is_integer() or not max_val.is_integer()
-            if mode == 'invalid':
-                offset = 5.0 if is_float else 5
-                return min_val - offset if random.random() > 0.5 else max_val + offset
-            if length is not None:
-                return length
-
-            if is_float:
-                return random.uniform(min_val, max_val)
-            else:
-                return random.randint(int(min_val), int(max_val))
-        else: # string
-            min_len = int(field.get("minLength", 3) or 3)
-            max_len = int(field.get("maxLength", 20) or 20)
-            if field.get("allowedValues"):
-                if mode == 'invalid':
-                    return "INVALID_VAL"
-                return random.choice(field["allowedValues"])
-            
-            # Check if this is a password field
-            name_lower = field.get("name", "").lower()
-            desc_lower = field.get("description", "").lower()
-            if "pass" in name_lower or "mật khẩu" in desc_lower:
-                if mode == 'invalid':
-                    return "123"
-                actual_len = length if length is not None else random.randint(min_len, max_len)
-                if actual_len < 4:
-                    actual_len = 4
-                u = random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-                l = random.choice("abcdefghijklmnopqrstuvwxyz")
-                d = random.choice("0123456789")
-                s = random.choice("!@#$%^&*")
-                remaining = actual_len - 4
-                chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
-                rest = "".join(random.choice(chars) for _ in range(remaining))
-                pw = list(u + l + d + s + rest)
-                random.shuffle(pw)
-                return "".join(pw)
-            
-            actual_len = length if length is not None else random.randint(min_len, max_len)
-            if mode == 'invalid' and length is None:
-                actual_len = max(0, min_len - 2) if random.random() > 0.5 else max_len + 5
-                
-            if actual_len == 0:
-                return ""
-            chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-            return "".join(random.choice(chars) for _ in range(actual_len))
-
-    # =========================================================================
-    # [BVA - PHÂN TÍCH GIÁ TRỊ BIÊN] KHỞI TẠO BỘ TẬP DỮ LIỆU KIỂM THỬ BAN ĐẦU (SEEDS)
-    # =========================================================================
-    if test_method == "bva":
-        field_targets = {}
-        for f in fields:
-            name = f["name"]
-            ftype = f.get("semantic_type") or f.get("data_type", "string")
-            targets = []
-            
-            def get_bva_offsets(b_count, is_min=True):
-                if b_count == 2:
-                    return [-1, 0] if is_min else [0, 1]
-                elif b_count == 3:
-                    return [-1, 0, 1]
-                elif b_count == 5:
-                    return [-2, -1, 0, 1, 2]
-                else:
-                    half = b_count // 2
-                    return list(range(-half, half + 1))
-
-            if ftype == "number":
-                min_v = f.get("minValue")
-                max_v = f.get("maxValue")
-                if min_v is not None:
-                    for o in get_bva_offsets(boundary_count, is_min=True):
-                        targets.append(min_v + o)
-                if max_v is not None:
-                    for o in get_bva_offsets(boundary_count, is_min=False):
-                        targets.append(max_v + o)
-            elif ftype in ["string", "email", "card", "phone"]:
-                min_l = f.get("minLength")
-                max_l = f.get("maxLength")
-                if min_l is not None:
-                    for o in get_bva_offsets(boundary_count, is_min=True):
-                        targets.append(max(0, min_l + o))
-                if max_l is not None:
-                    for o in get_bva_offsets(boundary_count, is_min=False):
-                        targets.append(max(0, max_l + o))
-            
-            if targets:
-                field_targets[name] = sorted(list(set(targets)))
-            else:
-                field_targets[name] = []
-
-        max_targets = max([len(t) for t in field_targets.values()] or [1])
-        num_records = max(25, max_targets)
-
-        for i in range(num_records):
-            record = {}
-            scenarios = []
-            for f in fields:
-                name = f["name"]
-                ftype = f.get("semantic_type") or f.get("data_type", "string")
-                targets = field_targets.get(name, [])
-
-                if targets:
-                    target_val = targets[i % len(targets)]
-                    if ftype == "number":
-                        record[name] = target_val
-                        scenarios.append(f"{name}={target_val} (biên số)")
-                    else:
-                        record[name] = get_default_value(f, length=target_val)
-                        scenarios.append(f"{name} độ dài={target_val} (biên chuỗi)")
-                else:
-                    mode = 'boundary' if i % 2 == 0 else 'valid'
-                    record[name] = get_default_value(f, mode=mode)
-                    if mode == 'boundary':
-                        scenarios.append(f"{name} ngẫu nhiên (biên)")
-            
-            record["method"] = "bva"
-            record["scenario"] = f"Phân tích biên BVA: " + ", ".join(scenarios[:3])
-            population.append(record)
-
-    # EP local generator
-    elif test_method == "ep":
-        field_targets = {}
-        for f in fields:
-            name = f["name"]
-            ftype = f.get("semantic_type") or f.get("data_type", "string")
-            targets = []
-            
-            if ftype == "number":
-                min_v = f.get("minValue", 0)
-                max_v = f.get("maxValue", 1000)
-                step = (max_v - min_v) / max(1, partition_count)
-                for p in range(partition_count):
-                    start = min_v + p * step
-                    end = min_v + (p + 1) * step
-                    mid = int((start + end) / 2)
-                    targets.append(mid)
-                targets.append(min_v - 3)
-                targets.append(max_v + 3)
-            elif ftype in ["string", "email", "card", "phone"]:
-                min_l = f.get("minLength", 3 if ftype == "string" else (16 if ftype == "card" else (10 if ftype == "phone" else 5)))
-                max_l = f.get("maxLength", 20 if ftype == "string" else (16 if ftype == "card" else (10 if ftype == "phone" else 50)))
-                if min_l is None: min_l = 3
-                if max_l is None: max_l = 20
-                step = (max_l - min_l) / max(1, partition_count)
-                for p in range(partition_count):
-                    start = min_l + p * step
-                    end = min_l + (p + 1) * step
-                    mid = max(0, int((start + end) / 2))
-                    targets.append(mid)
-                targets.append(max(0, min_l - 2))
-                targets.append(max_l + 4)
-                
-            if targets:
-                field_targets[name] = sorted(list(set(targets)))
-            else:
-                field_targets[name] = []
-
-        max_targets = max([len(t) for t in field_targets.values()] or [1])
-        num_records = max(20, max_targets)
-        for i in range(num_records):
-            record = {}
-            scenarios = []
-            for f in fields:
-                name = f["name"]
-                ftype = f.get("semantic_type") or f.get("data_type", "string")
-                targets = field_targets.get(name, [])
-                if targets:
-                    target_val = targets[i % len(targets)]
-                    if ftype == "number":
-                        record[name] = target_val
-                        scenarios.append(f"{name}={target_val} (phân vùng số)")
-                    else:
-                        record[name] = get_default_value(f, length=target_val)
-                        scenarios.append(f"{name} độ dài={target_val} (phân vùng chuỗi)")
-                else:
-                    mode = 'invalid' if i % 4 == 0 else 'valid'
-                    record[name] = get_default_value(f, mode=mode)
-                    if mode == 'invalid':
-                        scenarios.append(f"{name} không hợp lệ")
-            
-            record["method"] = "ep"
-            record["scenario"] = f"Phân vùng tương đương EP: " + ", ".join(scenarios[:3])
-            population.append(record)
-
-    # Decision Table local generator
-    elif test_method == "decision":
-        num_records = len(fields) + 15
-        for i in range(num_records):
-            record = {}
-            scenario = ""
-            for idx, f in enumerate(fields):
-                name = f["name"]
-                if i - 1 == idx:
-                    record[name] = get_default_value(f, mode='invalid')
-                    scenario = f"Kiểm thử lỗi validation của trường: {name}"
-                elif i == 0:
-                    record[name] = get_default_value(f, mode='valid')
-                    scenario = "Kịch bản thành công (Happy path) - Tất cả các trường hợp hợp lệ"
-                elif i == num_records - 1:
-                    record[name] = get_default_value(f, mode='valid')
-                    scenario = "Kiểm thử kịch bản thành công bổ sung"
-                elif i == num_records - 2:
-                    record[name] = get_default_value(f, mode='invalid')
-                    scenario = "Kiểm thử biên lỗi kết hợp"
-                else:
-                    record[name] = get_default_value(f, mode='valid')
-            
-            if not scenario:
-                scenario = "Phân tích bảng quyết định - Kiểm thử nghiệp vụ kết hợp"
-                
-            record["method"] = "decision"
-            record["scenario"] = scenario
-            population.append(record)
-
-    # Random/Hybrid
-    else:
-        modes = ['valid', 'valid', 'valid', 'boundary', 'boundary', 'invalid', 'valid', 'boundary']
-        for i in range(25):
-            record = {}
-            mode = modes[i % len(modes)]
-            for f in fields:
-                name = f["name"]
-                record[name] = get_default_value(f, mode=mode)
-            
-            mode_desc = {
-                'valid': "Dữ liệu hợp lệ ngẫu nhiên",
-                'boundary': "Dữ liệu biên ngẫu nhiên",
-                'invalid': "Định dạng không hợp lệ"
-            }.get(mode, "Kiểm thử ngẫu nhiên")
-            
-            record["method"] = "random"
-            record["scenario"] = f"Ngẫu nhiên/Lai ghép: {mode_desc}"
-            population.append(record)
-
-    return population
-
 def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, partition_count: int = 3, api_key: str = None, raw_text: str = "", db: Session = None) -> list:
     """
     Main entrypoint to generate seeds based on selected test method (AI-powered or local fallback).
@@ -399,23 +833,16 @@ def parse_spec_with_ai(raw_text: str, api_key_override: str = None, llm_provider
                 field["type"] = "number"
         validate_schema(schema_fields)
         
-        print(f">>> [STEP 1/2] ✓ Hoàn thành | {len(rules_data['rules'])} rules, {len(schema_fields)} fields | {_time.time()-t1:.1f}s", flush=True)
+        print(f">>> [STEP 1/1] ✓ Hoàn thành | {len(rules_data['rules'])} rules, {len(schema_fields)} fields | {_time.time()-t1:.1f}s", flush=True)
         
-        # STEP 2/2: Generate F0 Seeds
-        print(f"\n>>> [STEP 2/2] Sinh Hạt Giống F0 (Initial Seeds)...", flush=True)
-        t2 = _time.time()
-        schema_result = {"fields": schema_fields}
-        sys3, usr3 = get_generate_initial_population_prompt(schema_result, rules_data)
-        seeds_result, _, _ = call_llm_json(sys3, usr3, api_key_override, llm_provider)
-        print(f">>> [STEP 2/2] ✓ Hoàn thành | {len(seeds_result.get('initialPopulation',[]))} seeds | {_time.time()-t2:.1f}s", flush=True)
-        
-        # Combine everything
+        # [P0 OPT] STEP 2 (seed generation) removed — seeds generated on-demand
+        # via /api/generate-seeds to avoid blocking parse with an extra LLM call.
         final_result = {
             "business_rules": rules_data.get("rules", []),
             "constraints": rules_data.get("constraints", []),
             "ambiguities": rules_data.get("ambiguities", []),
             "fields": schema_fields,
-            "initialPopulation": seeds_result.get("initialPopulation", []),
+            "initialPopulation": [],
             "is_mock": False,
             "engine": engine_name
         }
@@ -430,28 +857,86 @@ def parse_spec_with_ai(raw_text: str, api_key_override: str = None, llm_provider
         error_msg = str(e)
         log_ai_call(db, "/api/specifications", "LLM", "unknown", "Error", None, "FAILED", error_message=error_msg)
         raise ValueError(f"AI Error: {error_msg}")
-def generate_seeds_with_ai(fields: list, test_method: str, boundary_count: int = 4, partition_count: int = 3, api_key: str = None, raw_text: str = "", db: Session = None) -> list:
-    system_instructions, user_prompt_text = get_generate_seeds_prompt(fields, test_method, raw_text)
-    prompt_feedback = ""
-    for attempt in range(1, 3):
-        user_prompt = user_prompt_text
-        if prompt_feedback: user_prompt += f"\\n\\nFeedback: {prompt_feedback}"
-        try:
-            parsed_result, engine_name, model_name = call_llm_json(system_instructions, user_prompt, api_key)
-            seeds = parsed_result.get("initialPopulation", [])
-            log_ai_call(db, f"/api/generate-seeds?method={test_method}", engine_name, model_name, "Prompt", json.dumps(seeds, ensure_ascii=False), "SUCCESS")
-            if seeds: return seeds
-        except Exception as e:
-            print(f"Attempt {attempt} failed: {e}")
-            log_ai_call(db, f"/api/generate-seeds?method={test_method}", "LLM", "unknown", "Prompt", None, "FAILED", error_message=str(e))
-    
-    print(f">>> INFO: Running local seed generator for method '{test_method}'...")
-    seeds = generate_seeds_locally(fields, test_method, boundary_count, partition_count)
-    for s in seeds:
-        if "expectedResult" not in s: s["expectedResult"] = check_record_expected_result(s, fields)
-    return seeds
 
-def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, raw_text: str, api_key_override: str = None, db: Session = None, extracted_rules: list = None, extracted_constraints: list = None) -> dict:
+PROMPT_VERSION = "4.1"
+SEED_ENGINE_VERSION = "1.0"
+SEED_CACHE = {}
+
+def calculate_cache_key(fields: list, raw_text: str, method: str, provider: str) -> str:
+    serialized_fields = json.dumps(fields, sort_keys=True, ensure_ascii=False)
+    raw_key = f"{serialized_fields}:{raw_text}:{method}:{provider}:{PROMPT_VERSION}:{SEED_ENGINE_VERSION}"
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+def generate_seeds_with_ai(
+    fields: list,
+    business_rules: list = None,
+    constraints: list = None,
+    test_method: str = "bva",
+    boundary_count: int = 4,
+    partition_count: int = 3,
+    api_key: str = None,
+    raw_text: str = "",
+    db: Session = None,
+    llm_provider: str = "gemini"
+) -> tuple:
+    import time as _time
+    import json
+    from .prompts import get_seed_generation_instructions
+    
+    t_start = _time.time()
+    print(f"\n>>> [SEEDS V5] Start LLM-First | fields={len(fields)} | method={test_method} | provider={llm_provider}", flush=True)
+
+    sys_prompt, usr_prompt = get_seed_generation_instructions(test_method, boundary_count, partition_count)
+    usr_prompt_full = f"{usr_prompt}\n\nFields Schema:\n{json.dumps(fields, ensure_ascii=False)}"
+    
+    if business_rules:
+        usr_prompt_full += f"\n\nBusiness Rules:\n{json.dumps(business_rules, ensure_ascii=False)}"
+    if constraints:
+        usr_prompt_full += f"\n\nConstraints:\n{json.dumps(constraints, ensure_ascii=False)}"
+    
+    try:
+        print("\n================ DEBUG PROMPT ==================", flush=True)
+        print("FINAL_SYSTEM_PROMPT:", flush=True)
+        print(sys_prompt, flush=True)
+        print("\nFINAL_USER_PROMPT_FULL:", flush=True)
+        print(usr_prompt_full, flush=True)
+        print("================================================\n", flush=True)
+
+        llm_result, engine_name, model_name = call_llm_json(sys_prompt, usr_prompt_full, api_key_override=api_key, llm_provider=llm_provider)
+        
+        print("\n================ DEBUG LOGS ==================", flush=True)
+        print("STEP1 LLM RAW", flush=True)
+        print(json.dumps(llm_result, indent=2, ensure_ascii=False), flush=True)
+        
+        seeds = llm_result.get("initialPopulation", [])
+        
+        for i, s in enumerate(seeds):
+            s["tcId"] = f"TC-{str(i+1).zfill(4)}"
+            if "values" not in s:
+                val_keys = {f["name"] for f in fields}
+                s["values"] = {k: v for k, v in s.items() if k in val_keys}
+                
+        print("\nSTEP2 AFTER PARSE", flush=True)
+        print(json.dumps(seeds, indent=2, ensure_ascii=False), flush=True)
+
+        summary = generate_coverage_summary(seeds, fields)
+        
+        log_ai_call(db, f"/api/generate-seeds?method={test_method}", engine_name, model_name, "V5 LLM-First Seed Generation", json.dumps(seeds[:3], ensure_ascii=False), "SUCCESS")
+        
+        elapsed = _time.time() - t_start
+        print(f">>> [SEEDS V5] Done | {len(seeds)} seeds | {elapsed:.1f}s", flush=True)
+        
+        print("\nSTEP3 FINAL RESPONSE", flush=True)
+        print(json.dumps(seeds, indent=2, ensure_ascii=False), flush=True)
+        print("==============================================\n", flush=True)
+        
+        return seeds, summary
+        
+    except Exception as e:
+        print(f">>> [SEEDS V5] Error: {e}", flush=True)
+        raise ValueError(f"Failed to generate seeds: {str(e)}")
+
+def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, raw_text: str, api_key_override: str = None, db: Session = None, extracted_rules: list = None, extracted_constraints: list = None, llm_provider: str = "gemini") -> dict:
     if extracted_rules is None: extracted_rules = []
     if extracted_constraints is None: extracted_constraints = []
     
@@ -460,14 +945,14 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
     
     system_instructions, user_prompt_text = get_evaluate_test_quality_prompt(fields, seeds, test_method, raw_text, deterministic_metrics)
     try:
-        res, engine_name, model_name = call_llm_json(system_instructions, user_prompt_text, api_key_override)
+        res, engine_name, model_name = call_llm_json(system_instructions, user_prompt_text, api_key_override, llm_provider)
         log_ai_call(db, "/api/evaluate-seeds", engine_name, model_name, "Prompt", json.dumps(res, ensure_ascii=False), "SUCCESS")
         return res
     except Exception as e:
         error_msg = str(e)
         log_ai_call(db, "/api/evaluate-seeds", "LLM", "unknown", "Prompt", None, "FAILED", error_message=error_msg)
         raise ValueError(f"AI Evaluation Error: {error_msg}")
-def evaluate_optimized_dataset_with_ai(fields: list, dataset: list, algorithm: str, raw_text: str, api_key_override: str = None, db: Session = None, extracted_rules: list = None, extracted_constraints: list = None) -> dict:
+def evaluate_optimized_dataset_with_ai(fields: list, dataset: list, algorithm: str, raw_text: str, api_key_override: str = None, db: Session = None, extracted_rules: list = None, extracted_constraints: list = None, llm_provider: str = "gemini") -> dict:
     if extracted_rules is None: extracted_rules = []
     if extracted_constraints is None: extracted_constraints = []
     
@@ -476,11 +961,190 @@ def evaluate_optimized_dataset_with_ai(fields: list, dataset: list, algorithm: s
     
     system_instructions, user_prompt_text = get_evaluate_optimized_prompt(fields, dataset, algorithm, raw_text, deterministic_metrics)
     try:
-        res, engine_name, model_name = call_llm_json(system_instructions, user_prompt_text, api_key_override)
+        res, engine_name, model_name = call_llm_json(system_instructions, user_prompt_text, api_key_override, llm_provider)
         log_ai_call(db, "/api/evaluate-optimized", engine_name, model_name, "Prompt", json.dumps(res, ensure_ascii=False), "SUCCESS")
         return res
     except Exception as e:
         error_msg = str(e)
         log_ai_call(db, "/api/evaluate-optimized", "LLM", "unknown", "Prompt", None, "FAILED", error_message=error_msg)
         raise ValueError(f"AI Evaluation Error: {error_msg}")
+
+
+def explain_optimization_with_ai(
+    before_values: dict,
+    after_values: dict,
+    algorithm: str,
+    api_key_override: str = None,
+    llm_provider: str = "gemini",
+    db: Session = None
+) -> dict:
+    import json
+    from .prompts import get_optimization_explanation_prompt
+    sys_prompt, base_usr_prompt = get_optimization_explanation_prompt()
+    usr_prompt = (
+        f"{base_usr_prompt}\n\n"
+        f"Algorithm Used: {algorithm}\n"
+        f"Before Values: {json.dumps(before_values, ensure_ascii=False)}\n"
+        f"After Values: {json.dumps(after_values, ensure_ascii=False)}"
+    )
+    try:
+        res, engine, model = call_llm_json(sys_prompt, usr_prompt, api_key_override, llm_provider)
+        return {
+            "improvementReason": res.get("improvementReason", f"Tinh chỉnh bằng thuật toán {algorithm}"),
+            "recommendation": res.get("recommendation", "")
+        }
+    except Exception as e:
+        print(f"Error explaining optimization: {e}")
+        return {
+            "improvementReason": f"Tinh chỉnh bằng thuật toán {algorithm}",
+            "recommendation": ""
+        }
+
+
+def semantic_polish_with_llm(
+    schema: list,
+    optimized_values: dict,
+    original_values: dict,
+    test_category: str = "positive",
+    api_key_override: str = None,
+    llm_provider: str = "gemini",
+    db: Session = None
+) -> dict:
+    """
+    LLM Semantic Polish: viết lại dữ liệu sau GA/HC để trông realistic.
+    Giữ nguyên constraint (type, length, range, enum).
+    
+    Trả về:
+      {
+        "polished_values": { field: value, ... },
+        "polish_notes": { field: reason, ... },
+        "was_polished": True/False
+      }
+    """
+    from .prompts import get_semantic_polish_prompt
+    from .llm_client import call_llm_json
+
+    # Nếu không có API key, không gọi LLM
+    active_key = api_key_override or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not active_key:
+        return {"polished_values": optimized_values, "polish_notes": {}, "was_polished": False}
+
+    try:
+        sys_prompt, usr_prompt = get_semantic_polish_prompt(
+            schema, optimized_values, original_values, test_category
+        )
+        result, engine, model = call_llm_json(sys_prompt, usr_prompt, api_key_override, llm_provider)
+        polished = result.get("polished_values", {})
+        notes = result.get("polish_notes", {})
+
+        if not polished or not isinstance(polished, dict):
+            return {"polished_values": optimized_values, "polish_notes": {}, "was_polished": False}
+
+        # Validate: kiểm tra enum không bị phá vỡ sau LLM polish
+        enum_safe_polished = {**optimized_values}  # start from optimized
+        for f in schema:
+            name = f.get("name")
+            if name not in polished:
+                continue
+            new_val = polished[name]
+            allowed = f.get("allowedValues")
+            if allowed and str(new_val) not in [str(v) for v in allowed]:
+                # LLM vi phạm enum → giữ nguyên optimized value
+                print(f">>> [POLISH] Enum violation cho '{name}': LLM sinh '{new_val}' không trong {allowed}. Giữ nguyên.")
+                enum_safe_polished[name] = optimized_values.get(name, new_val)
+            else:
+                enum_safe_polished[name] = new_val
+
+        log_ai_call(db, "/semantic-polish", engine, model,
+                    f"TC polish: {len(polished)} fields",
+                    json.dumps(enum_safe_polished, ensure_ascii=False), "SUCCESS")
+
+        return {"polished_values": enum_safe_polished, "polish_notes": notes, "was_polished": True}
+
+    except Exception as e:
+        print(f">>> [POLISH] LLM Polish failed: {e}. Sử dụng optimized values gốc.")
+        return {"polished_values": optimized_values, "polish_notes": {}, "was_polished": False}
+
+
+def batch_semantic_polish(
+    schema: list,
+    tc_list: list,
+    api_key_override: str = None,
+    llm_provider: str = "gemini",
+    db: Session = None,
+    max_polish: int = 20
+) -> list:
+    """
+    Áp dụng semantic_polish_with_llm cho batch TC.
+    Chỉ polish các TC có dữ liệu trông "robot" (length boundary hoặc pattern lạ).
+    Giới hạn max_polish TC để tránh rate limit.
+
+    Args:
+        tc_list: list of { "hc_values": {...}, "llm_values": {...}, "categories": [...], ... }
+    
+    Returns:
+        list với trường "polished_values" được thêm vào mỗi TC.
+    """
+    import time as _time
+
+    def looks_robot(values: dict, schema: list) -> bool:
+        """Heuristic: detect nếu dữ liệu trông 'robot' (boundary string dạng aaa...@bbb.com)"""
+        for f in schema:
+            name = f.get("name")
+            ftype = f.get("type") or f.get("semantic_type", "string")
+            val = values.get(name)
+            if val is None:
+                continue
+            val_str = str(val)
+            # Email pattern: nhiều ký tự lặp lại
+            if ftype == "email" and len(val_str) > 30:
+                local = val_str.split("@")[0] if "@" in val_str else ""
+                if local and len(set(local)) <= 3:  # 3 ký tự unique = rõ ràng là pattern lặp
+                    return True
+            # String: 70% ký tự giống nhau = robot
+            if ftype in ("string", "password") and len(val_str) > 15:
+                if len(set(val_str)) / len(val_str) < 0.3:
+                    return True
+        return False
+
+    results = []
+    polish_count = 0
+
+    for tc in tc_list:
+        hc_values = tc.get("hc_values", tc.get("values", {}))
+        llm_values = tc.get("llm_values", hc_values)
+        categories = tc.get("categories", ["positive"])
+        category_str = categories[0] if categories else "positive"
+
+        should_polish = (
+            polish_count < max_polish
+            and looks_robot(hc_values, schema)
+        )
+
+        if should_polish:
+            polish_count += 1
+            polish_result = semantic_polish_with_llm(
+                schema=schema,
+                optimized_values=hc_values,
+                original_values=llm_values,
+                test_category=category_str,
+                api_key_override=api_key_override,
+                llm_provider=llm_provider,
+                db=db
+            )
+            # Rate limit protection
+            if polish_count % 5 == 0:
+                _time.sleep(1.0)
+        else:
+            polish_result = {"polished_values": hc_values, "polish_notes": {}, "was_polished": False}
+
+        results.append({
+            **tc,
+            "polished_values": polish_result["polished_values"],
+            "polish_notes": polish_result["polish_notes"],
+            "was_polished": polish_result["was_polished"]
+        })
+
+    print(f">>> [POLISH] Đã polish {polish_count}/{len(tc_list)} TC")
+    return results
 

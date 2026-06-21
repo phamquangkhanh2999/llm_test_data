@@ -1,8 +1,9 @@
 // @ts-nocheck
 import { create } from 'zustand';
 import type { PresetSpec, FieldConstraint } from '../algorithms/presets';
-import type { Chromosome, PopulationStats } from '../algorithms/genetic';
+import type { PopulationStats } from '../algorithms/genetic';
 import type { HillClimbStats } from '../algorithms/hillClimbing';
+import type { TestCase, OptimizationSnapshot } from '../types/testcase';
 import { config } from '../config';
 import { toast } from './useToastStore';
 
@@ -12,7 +13,8 @@ export interface HistoryRun {
   size: number;
   coverage: number;
   bestFitness: number;
-  data: Chromosome[];
+  data: TestCase[];
+  snapshot?: OptimizationSnapshot;
 }
 export interface SanityCheckStep {
   status: string;
@@ -56,11 +58,12 @@ interface AppState {
   ambiguities: any[];
   constraints: any[];
   parsedSchema: FieldConstraint[];
-  initialSeeds: Chromosome[];
+  initialSeeds: TestCase[];
+  coverageSummary: any | null;
   schemaName: string;
   specificationId: string;
   apiKey: string;
-  optimizedDataset: Chromosome[];
+  optimizedDataset: OptimizationSnapshot | null;
   historyRuns: HistoryRun[];
   completedScreens: string[];
   activeSection: string;
@@ -90,12 +93,13 @@ interface AppState {
   setSelectedSuiteName: (name: string) => void;
   setRawText: (text: string) => void;
   setParsedSchema: (schema: FieldConstraint[] | ((prev: FieldConstraint[]) => FieldConstraint[])) => void;
-  setInitialSeeds: (seeds: Chromosome[] | ((prev: Chromosome[]) => Chromosome[])) => void;
+  setInitialSeeds: (seeds: TestCase[] | ((prev: TestCase[]) => TestCase[])) => void;
+  setCoverageSummary: (summary: any) => void;
   setMethodSeeds: (seeds: Record<string, any[]> | ((prev: Record<string, any[]>) => Record<string, any[]>)) => void;
   setSchemaName: (name: string) => void;
   setSpecificationId: (id: string) => void;
   setApiKey: (key: string) => void;
-  setOptimizedDataset: (dataset: Chromosome[]) => void;
+  setOptimizedDataset: (dataset: OptimizationSnapshot | null) => void;
   setActiveSection: (section: string) => void;
   markScreenCompleted: (screen: string) => void;
   setActiveScreen: (screen: string) => void;
@@ -112,8 +116,8 @@ interface AppState {
   handleRunBenchmark: () => Promise<void>;
   handleParseSpec: () => Promise<void>;
   handlePresetSelect: (preset: PresetSpec) => void;
-  handleEvolutionComplete: (results: Chromosome[], stats: PopulationStats[], hcStatsResult?: HillClimbStats) => void;
-  handleLoadPastRun: (pastData: Chromosome[]) => void;
+  handleEvolutionComplete: (snapshot: OptimizationSnapshot) => void;
+  handleLoadPastRun: (pastData: OptimizationSnapshot) => void;
   handleClearHistory: () => void;
   handleEvaluateSeeds: (testMethod: string) => Promise<void>;
   handleEvaluateOptimized: (algorithm: string) => Promise<void>;
@@ -146,10 +150,11 @@ export const useAppStore = create<AppState>((set, get) => {
     constraints: [],
     parsedSchema: [],
     initialSeeds: [],
+    coverageSummary: null,
     schemaName: '',
     specificationId: '',
     apiKey: initialApiKey,
-    optimizedDataset: [],
+    optimizedDataset: null,
     historyRuns: initialHistoryRuns,
     completedScreens: [],
     activeSection: '',
@@ -190,6 +195,7 @@ export const useAppStore = create<AppState>((set, get) => {
     setInitialSeeds: (seeds) => set((state) => ({ 
       initialSeeds: typeof seeds === 'function' ? seeds(state.initialSeeds) : seeds 
     })),
+    setCoverageSummary: (summary) => set({ coverageSummary: summary }),
     setMethodSeeds: (seeds) => set((state) => ({ 
       methodSeeds: typeof seeds === 'function' ? seeds(state.methodSeeds) : seeds 
     })),
@@ -239,7 +245,8 @@ export const useAppStore = create<AppState>((set, get) => {
           extracted_rules: state.businessRules || [],
           extracted_constraints: state.constraints || [],
           initialPopulation: state.initialSeeds,
-          api_key_override: state.apiKey || undefined
+          api_key_override: state.apiKey || undefined,
+          llm_provider: state.llmProvider
         })
       });
       
@@ -290,6 +297,7 @@ export const useAppStore = create<AppState>((set, get) => {
           ambiguities: res.ambiguities || [],
           parsedSchema: res.fields,
           initialSeeds: res.initialPopulation,
+          coverageSummary: res.coverageSummary || null,
           specificationId: res.specification_id,
           schemaName: rawText.substring(0, 25) + (rawText.length > 25 ? '...' : ''),
           optimizedDataset: [],
@@ -332,16 +340,16 @@ export const useAppStore = create<AppState>((set, get) => {
       });
     },
 
-    handleEvolutionComplete: (results, stats, hcStatsResult) => {
+    handleEvolutionComplete: (snapshot) => {
       const { schemaName, historyRuns } = get();
-      const finalGenStats = stats[stats.length - 1];
       const newRun: HistoryRun = {
         timestamp: new Date().toLocaleTimeString(),
         schemaName: schemaName,
-        size: results.length,
-        coverage: finalGenStats?.coverage || 0.95,
-        bestFitness: hcStatsResult?.optimizedFitness || finalGenStats?.bestFitness || 0.98,
-        data: results
+        size: snapshot.finalResult.length,
+        coverage: snapshot.summary.improved / Math.max(1, snapshot.summary.total) * 100, // mock coverage logic
+        bestFitness: snapshot.metrics?.finalFitness || 0.98,
+        data: snapshot.finalResult,
+        snapshot: snapshot
       };
       
       const updatedHistoryRuns = [newRun, ...historyRuns];
@@ -352,7 +360,7 @@ export const useAppStore = create<AppState>((set, get) => {
       }
 
       set({
-        optimizedDataset: results,
+        optimizedDataset: snapshot,
         historyRuns: updatedHistoryRuns,
         optimizedEvaluationResult: null
       });
@@ -428,7 +436,8 @@ export const useAppStore = create<AppState>((set, get) => {
 
     handleEvaluateOptimized: async (algorithm: string) => {
       const { rawText, parsedSchema, optimizedDataset, apiKey, llmProvider } = get();
-      if (!optimizedDataset || optimizedDataset.length === 0) return;
+      const datasetToEvaluate = optimizedDataset?.finalResult || [];
+      if (datasetToEvaluate.length === 0) return;
       
       set({ isEvaluatingOptimized: true, optimizedEvaluationResult: null });
       try {
@@ -439,7 +448,7 @@ export const useAppStore = create<AppState>((set, get) => {
           },
           body: JSON.stringify({
             fields: parsedSchema,
-            dataset: optimizedDataset,
+            dataset: datasetToEvaluate,
             algorithm: algorithm,
             raw_text: rawText,
             api_key_override: apiKey ? apiKey.trim() : null,

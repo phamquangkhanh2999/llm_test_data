@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { message } from 'antd';
 import {
   ArrowRight,
   BrainCircuit,
@@ -21,6 +22,7 @@ import { FitnessEvaluation } from './FitnessEvaluation';
 import { LoadingSpinner } from './LoadingSpinner';
 import { SanityCheckCard } from './SanityCheckCard';
 import { SeedsTable } from './SeedsTable';
+import { TruncatedText } from './TruncatedText';
 
 export const SpecInput: React.FC = () => {
   const {
@@ -61,6 +63,7 @@ export const SpecInput: React.FC = () => {
     partitionCount,
     setPartitionCount,
     llmProvider,
+    setCoverageSummary,
   } = useAppStore();
 
   const hasApiKey = apiKey.trim().length > 10;
@@ -80,7 +83,10 @@ export const SpecInput: React.FC = () => {
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<any | null>(null);
 
   // State quản lý việc buộc AI phân tích lại (Bỏ qua bộ nhớ đệm)
-  const [forceReanalyze, setForceReanalyze] = useState(false);
+  const [forceReanalyze, setForceReanalyze] = useState(true);
+
+  // State theo dõi text cuối cùng đã phân tích, để tránh phân tích lại nếu user không đổi text
+  const [lastAnalyzedText, setLastAnalyzedText] = useState('');
 
   // States to control collapsible UI elements
   const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
@@ -121,9 +127,9 @@ const isInvalid = idx % 9 === 0;
         weights: { validation: 0.4, boundary: 0.3, security: 0.1, diversity: 0.2 }
       });
 
-      const rawPop = initialSeeds.map(s => s.data ? s.data : s);
+      const rawPop = initialSeeds.map(s => s.values ? s.values : (s.data ? s.data : s));
       return initialSeeds.map((seed, idx) => {
-        const testCaseData = seed.data ? seed.data : seed;
+        const testCaseData = seed.values ? seed.values : (seed.data ? seed.data : seed);
         const result = engine.computeFitness(testCaseData, rawPop);
         const { vScore, bScore, pScore, dScore } = result.scoreBreakdown;
         const finalFitness = result.fitness;
@@ -151,6 +157,7 @@ const isInvalid = idx % 9 === 0;
 
   // --- CẢI TIẾN DRAG-AND-DROP & HIGHLIGHTING ---
   const [isDragging, setIsDragging] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const highlightRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -203,14 +210,14 @@ const isInvalid = idx % 9 === 0;
           setProcessingStep(0);
         } catch (error) {
           console.error('Lỗi parse file Word:', error);
-          alert(
+          message.error(
             'Lỗi: Không thể phân tích file Word. Hãy chắc chắn máy bạn đang kết nối internet để tải thư viện Mammoth JS.',
           );
         }
       };
       reader.readAsArrayBuffer(file);
     } else {
-      alert('Định dạng file không hỗ trợ. Vui lòng chỉ kéo thả tệp .txt hoặc .docx.');
+      message.error('Định dạng file không hỗ trợ. Vui lòng chỉ kéo thả tệp .txt hoặc .docx.');
     }
   };
 
@@ -341,7 +348,7 @@ const isInvalid = idx % 9 === 0;
   const handleRegenerateSeedsOnly = async () => {
     if (!parsedSchema || parsedSchema.length === 0) return;
     if (selectedMethods.length === 0) {
-      alert('Vui lòng chọn ít nhất một phương pháp thiết kế ca kiểm thử để sinh F0!');
+      message.warning('Vui lòng chọn ít nhất một phương pháp thiết kế ca kiểm thử để sinh F0!');
       return;
     }
     setIsRegenerating(true);
@@ -355,6 +362,8 @@ const isInvalid = idx % 9 === 0;
           },
           body: JSON.stringify({
             fields: parsedSchema,
+            business_rules: businessRules,
+            constraints: [], // Constraints not available in this context without reanalyzing, or maybe pass from state if available
             test_method: method,
             boundary_count: boundaryCount,
             partition_count: partitionCount,
@@ -403,8 +412,9 @@ const isInvalid = idx % 9 === 0;
       const combinedSeeds: any[] = [];
       populations.flat().forEach((item) => {
         const dataOnly = {} as any;
+        const vals = item.values || item;
         parsedSchema.forEach((f: any) => {
-          dataOnly[f.name] = item[f.name];
+          dataOnly[f.name] = vals[f.name];
         });
         const str = JSON.stringify(dataOnly);
         if (!seen.has(str)) {
@@ -414,23 +424,19 @@ const isInvalid = idx % 9 === 0;
       });
 
       setInitialSeeds(combinedSeeds);
+      // setCoverageSummary(calculateCoverageSummary(combinedSeeds, parsedSchema));
     } catch (e: any) {
       console.error('Lỗi khi tái sinh F0:', e);
-      alert(e.message || 'Lỗi khi tái sinh F0');
+      message.error(e.message || 'Lỗi khi tái sinh F0');
     } finally {
       setIsRegenerating(false);
     }
   };
 
-  const handleParseAndGenerateSeeds = async () => {
+  const handleAnalyzeSpec = async () => {
     if (!rawText.trim()) return;
-    if (selectedMethods.length === 0) {
-      alert('Vui lòng chọn ít nhất một phương pháp thiết kế ca kiểm thử để sinh F0!');
-      return;
-    }
     setIsParsing(true);
     try {
-      // 1. Phân tích đặc tả bóc tách Schema
       const response = await fetch(`${config.API_BASE_URL}/api/specifications`, {
         method: 'POST',
         headers: {
@@ -450,26 +456,65 @@ const isInvalid = idx % 9 === 0;
       }
 
       const res = await response.json();
-
+      
+      // Update store (Wait, we use local setParsedSchema but businessRules is in store)
+      // Actually we just set parsed schema locally to trigger the view
       setParsedSchema(res.fields);
       setSpecificationId(res.specification_id);
       setSchemaName(rawText.substring(0, 25) + (rawText.length > 25 ? '...' : ''));
+      setLastAnalyzedText(rawText);
+      
+      // Update useAppStore directly for business rules since no setter exposed here
+      useAppStore.setState({
+        businessRules: res.business_rules || [],
+        constraints: res.constraints || []
+      });
+
+      if (res?.reanalyzed) {
+        message.success(`Đã ép phân tích lại đặc tả bằng AI thành công! Vui lòng kiểm tra Schema Visualizer bên dưới.`);
+      } else if (res?.cached) {
+        message.success(`Nạp dữ liệu phân tích đặc tả thành công từ bộ nhớ đệm!`);
+      } else {
+        message.success(`Phân tích đặc tả thành công bằng AI!`);
+      }
+      setShowSchemaDetails(true); // Tự động mở Schema Visualizer
+    } catch (e: any) {
+      console.error(e);
+      message.error(`Lỗi phân tích đặc tả: ${e.message}`);
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handleGenerateSeeds = async () => {
+    if (parsedSchema.length === 0) return;
+    if (selectedMethods.length === 0) {
+      message.warning('Vui lòng chọn ít nhất một phương pháp thiết kế ca kiểm thử để sinh F0!');
+      return;
+    }
+    
+    setIsParsing(true); // Reuse loading state for now
+    try {
       setOptimizedDataset([]);
-
-      // 2. Gọi tuần tự sinh hạt giống F0 cho các phương pháp đã chọn (tránh lỗi Rate Limit 429)
       const results = [];
+      const currentInitialPopulation = methodSeeds.random && methodSeeds.random.length > 0 
+          ? methodSeeds.random 
+          : (initialSeeds || []);
 
-      // Tái sử dụng hạt giống F0 được sinh ra trực tiếp từ bước Phân tích đặc tả cho phương pháp 'random'
-      // Việc này giúp tránh gọi LLM hai lần liên tục, tiết kiệm tối đa lượng token tiêu thụ.
-      if (selectedMethods.includes('random')) {
+      if (!forceReanalyze && selectedMethods.includes('random') && currentInitialPopulation.length > 0) {
         results.push({
           method: 'random',
-          population: res.initialPopulation || [],
-          isMock: res.is_mock || false,
+          population: currentInitialPopulation,
+          isMock: false,
         });
       }
 
-      const otherMethods = selectedMethods.filter((method) => method !== 'random');
+      const otherMethods = selectedMethods.filter((method) => method !== 'random' || forceReanalyze || currentInitialPopulation.length === 0);
+      
+      // Get latest rules from store
+      const currentBusinessRules = useAppStore.getState().businessRules || [];
+      const currentConstraints = useAppStore.getState().constraints || [];
+
       for (const method of otherMethods) {
         const response = await fetch(`${config.API_BASE_URL}/api/generate-seeds`, {
           method: 'POST',
@@ -477,7 +522,9 @@ const isInvalid = idx % 9 === 0;
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            fields: res.fields,
+            fields: parsedSchema,
+            business_rules: currentBusinessRules,
+            constraints: currentConstraints,
             test_method: method,
             boundary_count: boundaryCount,
             partition_count: partitionCount,
@@ -489,9 +536,7 @@ const isInvalid = idx % 9 === 0;
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(
-            errorData.detail || `Không thể sinh hạt giống bằng phương pháp ${method}`,
-          );
+          throw new Error(errorData.detail || `Không thể sinh hạt giống bằng phương pháp ${method}`);
         }
 
         const data = await response.json();
@@ -501,7 +546,6 @@ const isInvalid = idx % 9 === 0;
           isMock: data.is_mock || false,
         });
 
-        // Nghỉ ngắn 250ms giữa các lần gọi nếu chọn nhiều phương pháp
         if (otherMethods.length > 1) {
           await new Promise((resolve) => setTimeout(resolve, 250));
         }
@@ -509,79 +553,56 @@ const isInvalid = idx % 9 === 0;
 
       const isAnyMock = results.some((r) => r.isMock);
 
-      // Cập nhật local state methodSeeds cho từng phương pháp
-      const newMethodSeeds: Record<string, any[]> = {
-        random: [],
-        bva: [],
-        ep: [],
-        decision: [],
-      };
-      results.forEach((r) => {
-        newMethodSeeds[r.method] = r.population;
-      });
+      const newMethodSeeds: Record<string, any[]> = { random: [], bva: [], ep: [], decision: [] };
+      results.forEach((r) => { newMethodSeeds[r.method] = r.population; });
       setMethodSeeds(newMethodSeeds);
-
-      const populations = results.map((r) => r.population);
 
       const seen = new Set<string>();
       const combinedSeeds: any[] = [];
-      populations.flat().forEach((item) => {
-        const dataOnly = {} as any;
-        res.fields.forEach((f: any) => {
-          dataOnly[f.name] = item[f.name];
+      
+      results.forEach((r) => {
+        const methodName = r.method === 'bva' ? 'BVA' : r.method === 'ep' ? 'EP' : r.method === 'decision' ? 'Bảng quyết định' : 'Ngẫu nhiên';
+        r.population.forEach((item: any) => {
+          if (!item.method) {
+            item.method = methodName;
+          }
+          const dataOnly = {} as any;
+          const vals = item.values || item;
+          parsedSchema.forEach((f: any) => { dataOnly[f.name] = vals[f.name]; });
+          const str = JSON.stringify(dataOnly);
+          if (!seen.has(str)) {
+            seen.add(str);
+            combinedSeeds.push(item);
+          }
         });
-        const str = JSON.stringify(dataOnly);
-        if (!seen.has(str)) {
-          seen.add(str);
-          combinedSeeds.push(item);
-        }
       });
 
-      if (setInitialSeeds) {
-        setInitialSeeds(combinedSeeds);
-      }
+      const finalSeeds = combinedSeeds.map((seed, index) => {
+        if (!seed.tcId) seed.tcId = `TC-F0-${String(index + 1).padStart(3, '0')}`;
+        return seed;
+      });
 
-      const methodNames = selectedMethods
-        .map((m) =>
-          m === 'bva'
-            ? 'BVA'
-            : m === 'ep'
-              ? 'EP'
-              : m === 'decision'
-                ? 'Bảng quyết định'
-                : 'Ngẫu nhiên',
-        )
-        .join(', ');
+      if (setInitialSeeds) setInitialSeeds(finalSeeds);
 
-      if (res.is_mock || isAnyMock) {
-        alert(
-          `⚠️ Cảnh báo: Chưa gán API Key (Gemini/OpenAI) hợp lệ!\n\nHệ thống đã sinh dữ liệu mẫu F0 ở chế độ OFFLINE bằng thuật toán cục bộ.\nĐã gộp và lọc sạch trùng lặp từ các phương pháp: ${methodNames}.\nNhận được tổng cộng ${combinedSeeds.length} ca test mầm cục bộ.\n\n(Vui lòng cấu hình API Key ở góc trên bên phải màn hình để thực hiện sinh bằng AI thật)`,
-        );
-      } else if (res.reanalyzed) {
-        alert(
-          `Đã ép phân tích lại đặc tả bằng AI thành công (Bỏ qua bộ nhớ đệm)!\nTái sinh thành công ${combinedSeeds.length} ca test mầm F0 từ các phương pháp: ${methodNames}.`,
-        );
-      } else if (res.cached) {
-        alert(
-          `Nạp dữ liệu phân tích đặc tả thành công (Lấy từ bộ nhớ đệm hệ thống)!\nTái sinh thành công ${combinedSeeds.length} ca test mầm F0 từ các phương pháp: ${methodNames}.`,
-        );
+      const methodNames = selectedMethods.map((m) =>
+        m === 'bva' ? 'BVA' : m === 'ep' ? 'EP' : m === 'decision' ? 'Bảng quyết định' : 'Ngẫu nhiên'
+      ).join(', ');
+
+      if (isAnyMock) {
+        message.warning(`⚠️ Cảnh báo: Sinh mầm F0 OFFLINE.\nĐã gộp từ: ${methodNames}. Nhận được ${combinedSeeds.length} ca test.`);
       } else {
-        alert(
-          `Phân tích đặc tả & Sinh tập hạt giống F0 thành công bằng AI!\n\nĐã gộp và lọc sạch trùng lặp từ các phương pháp: ${methodNames}.\nNhận được tổng cộng ${combinedSeeds.length} ca test mầm chuẩn nhất.`,
-        );
+        message.success(`Sinh tập hạt giống F0 thành công bằng AI!\nĐã gộp từ: ${methodNames}. Tổng cộng ${combinedSeeds.length} ca test.`);
       }
     } catch (e: any) {
       console.error(e);
-      alert(
-        `Đã xảy ra lỗi kết nối: ${e.message || 'Hãy đảm bảo FastAPI Backend đang chạy ở cổng 8000!'}`,
-      );
+      message.error(`Lỗi sinh dữ liệu: ${e.message}`);
     } finally {
       setIsParsing(false);
     }
   };
 
   const PROCESSING_STEPS = [
-    { icon: '🔌', text: 'Khởi tạo kết nối tới Gemini Flash 3.5 API...' },
+    { icon: '🔌', text: `Khởi tạo kết nối tới ${llmProvider === 'openai' ? 'OpenAI API' : 'Gemini Flash API'}...` },
     { icon: '🧠', text: 'AI đang đọc và hiểu đặc tả nghiệp vụ...' },
     { icon: '🔍', text: 'Trích xuất các trường dữ liệu và ràng buộc...' },
     { icon: '⚙️', text: 'Sinh tập dữ liệu hạt giống F0 ban đầu...' },
@@ -630,7 +651,7 @@ const isInvalid = idx % 9 === 0;
 
     // Kiểm tra trùng lặp tên trường (không phân biệt chữ hoa, chữ thường)
     if (parsedSchema.some((f) => f.name.toLowerCase() === newFieldName.toLowerCase().trim())) {
-      alert('Tên trường đã tồn tại!');
+      message.warning('Tên trường đã tồn tại!');
       return;
     }
 
@@ -803,12 +824,11 @@ const isInvalid = idx % 9 === 0;
     <>
       <div
         className={
-          showSchemaDetails
-            ? 'grid-2'
-            : initialSeeds && initialSeeds.length > 0
-              ? 'max-w-5xl mx-auto w-full'
-              : 'max-w-3xl mx-auto w-full'
+          showSchemaDetails || (initialSeeds && initialSeeds.length > 0)
+            ? 'max-w-5xl mx-auto w-full'
+            : 'max-w-3xl mx-auto w-full'
         }
+        style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
       >
         {/* 1. CỘT BÊN TRÁI: KHU VỰC NHẬP VĂN BẢN ĐẶC TẢ NGỮ NGHĨA VÀ CHỌN PRESETS */}
         <div className='glass-card flex flex-col gap-md teal-border glow-teal'>
@@ -907,11 +927,35 @@ const isInvalid = idx % 9 === 0;
 
           {/* Vùng nhập đặc tả nghiệp vụ tự do */}
           <div
-            style={{ position: 'relative', width: '100%', minHeight: '200px' }}
+            style={{ 
+              position: 'relative', 
+              width: '100%', 
+              minHeight: '220px',
+              borderRadius: '16px',
+              background: 'var(--bg-card)',
+              border: isFocused ? '2px solid var(--color-teal)' : '1px solid var(--border-subtle)',
+              boxShadow: isFocused ? '0 8px 30px rgba(13, 148, 136, 0.15)' : '0 4px 15px rgba(0,0,0,0.03)',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              overflow: 'hidden'
+            }}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
+            {/* Trang trí icon nền mờ để UI bớt nhàm chán */}
+            <BrainCircuit 
+              size={120} 
+              style={{ 
+                position: 'absolute', 
+                right: '-20px', 
+                bottom: '-20px', 
+                color: 'var(--color-teal)', 
+                opacity: 0.03, 
+                pointerEvents: 'none',
+                zIndex: 0
+              }} 
+            />
+
             {isDragging && (
               <div
                 style={{
@@ -920,7 +964,7 @@ const isInvalid = idx % 9 === 0;
                   zIndex: 10,
                   background: 'rgba(234, 251, 249, 0.95)',
                   border: '2px dashed var(--color-teal)',
-                  borderRadius: 'var(--radius-sm)',
+                  borderRadius: '16px',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
@@ -929,8 +973,8 @@ const isInvalid = idx % 9 === 0;
                   animation: 'pulse-dot 2s infinite',
                 }}
               >
-                <Plus size={36} style={{ color: 'var(--color-teal)' }} />
-                <span style={{ color: 'var(--color-teal)', fontWeight: 'bold', fontSize: '14px' }}>
+                <Plus size={40} style={{ color: 'var(--color-teal)', background: 'rgba(13,148,136,0.1)', padding: '8px', borderRadius: '50%' }} />
+                <span style={{ color: 'var(--color-teal)', fontWeight: 'bold', fontSize: '15px' }}>
                   Thả file đặc tả vào đây (.txt, .docx)
                 </span>
               </div>
@@ -944,15 +988,14 @@ const isInvalid = idx % 9 === 0;
                 left: 0,
                 width: '100%',
                 height: '100%',
-                padding: '9px 13px',
+                padding: '20px',
                 margin: 0,
-                border: '1px solid transparent',
-                borderRadius: 'var(--radius-sm)',
+                border: 'none',
                 fontFamily: 'inherit',
-                fontSize: '14px',
-                lineHeight: '1.6',
+                fontSize: '15px',
+                lineHeight: '1.7',
                 color: 'var(--text-secondary)',
-                backgroundColor: 'var(--bg-card)',
+                backgroundColor: 'transparent',
                 whiteSpace: 'pre-wrap',
                 wordWrap: 'break-word',
                 overflow: 'hidden',
@@ -973,14 +1016,17 @@ const isInvalid = idx % 9 === 0;
                 setIsConnected(false);
                 setProcessingStep(0);
               }}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
               onScroll={handleScroll}
-              className='input-field'
               style={{
-                minHeight: '200px',
+                width: '100%',
+                minHeight: '220px',
+                padding: '20px',
                 resize: 'vertical',
                 fontFamily: 'inherit',
-                fontSize: '14px',
-                lineHeight: '1.6',
+                fontSize: '15px',
+                lineHeight: '1.7',
                 background: 'transparent',
                 color: 'transparent',
                 caretColor: 'var(--text-primary)',
@@ -989,160 +1035,12 @@ const isInvalid = idx % 9 === 0;
                 whiteSpace: 'pre-wrap',
                 wordWrap: 'break-word',
                 outline: 'none',
+                border: 'none'
               }}
               placeholder=''
             />
           </div>
 
-          {/* GEMINI API STATUS INDICATOR */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '10px 14px',
-              background: isParsing
-                ? 'rgba(59, 130, 246, 0.06)'
-                : isConnected
-                  ? 'rgba(13, 148, 136, 0.06)'
-                  : 'var(--surface-subtle)',
-              border: '1px solid',
-              borderColor: isParsing
-                ? 'rgba(59, 130, 246, 0.3)'
-                : isConnected
-                  ? 'rgba(13, 148, 136, 0.25)'
-                  : 'var(--border-subtle)',
-              borderRadius: '10px',
-              transition: 'all 0.4s ease',
-              marginTop: '4px',
-              marginBottom: '4px',
-              boxShadow: isParsing ? 'var(--shadow-sm)' : isConnected ? 'var(--shadow-sm)' : 'none',
-            }}
-          >
-            {/* Icon trạng thái */}
-            <div style={{ flexShrink: 0 }}>
-              {isParsing ? (
-                <div
-                  style={{
-                    width: '20px',
-                    height: '20px',
-                    border: '2.5px solid rgba(59,130,246,0.2)',
-                    borderTopColor: '#3b82f6',
-                    borderRadius: '50%',
-                    animation: 'spin 0.9s linear infinite',
-                  }}
-                />
-              ) : isConnected ? (
-                <CheckCircle size={20} style={{ color: 'var(--color-teal)' }} />
-              ) : (
-                <BrainCircuit size={20} style={{ color: 'var(--text-muted)' }} />
-              )}
-            </div>
-
-            {/* Nội dung trạng thái */}
-            <div style={{ flex: 1 }}>
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}
-              >
-                <span
-                  style={{
-                    fontSize: '11.5px',
-                    fontWeight: 'bold',
-                    color: isParsing
-                      ? '#3b82f6'
-                      : isConnected
-                        ? 'var(--color-teal)'
-                        : 'var(--text-secondary)',
-                  }}
-                >
-                  {isParsing
-                    ? hasApiKey
-                      ? '⏳ Gọi Gemini API thật...'
-                      : '⏳ Đang phân tích bằng Mock AI...'
-                    : isConnected
-                      ? hasApiKey
-                        ? '✅ Gemini Real API - Phân Tích Thành Công'
-                        : '✅ Mock AI - Phân Tích Thành Công'
-                      : hasApiKey
-                        ? '🧠 Gemini Flash 1.5 - Đã kết nối'
-                        : '🤖 Mock AI Mode - Sẵn sàng'}
-                </span>
-                {/* Model Badge */}
-                <span
-                  style={{
-                    fontSize: '9.5px',
-                    padding: '1px 6px',
-                    borderRadius: '8px',
-                    background: hasApiKey ? 'rgba(13,148,136,0.1)' : 'rgba(250,204,21,0.08)',
-                    border: hasApiKey
-                      ? '1px solid rgba(13,148,136,0.25)'
-                      : '1px solid rgba(250,204,21,0.2)',
-                    color: hasApiKey ? 'var(--color-teal)' : '#facc15',
-                    fontFamily: 'var(--font-mono)',
-                    fontWeight: 'bold',
-                    letterSpacing: '0.03em',
-                  }}
-                >
-                  {hasApiKey ? 'gemini-2.5-flash' : 'mock-ai-local'}
-                </span>
-              </div>
-
-              {/* Bước xử lý đang chạy */}
-              {isParsing && PROCESSING_STEPS[processingStep] && (
-                <div
-                  style={{
-                    fontSize: '11px',
-                    color: 'rgba(59,130,246,0.8)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                  }}
-                >
-                  <span>{PROCESSING_STEPS[processingStep].icon}</span>
-                  <span>{PROCESSING_STEPS[processingStep].text}</span>
-                </div>
-              )}
-              {isConnected && !isParsing && (
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  {hasApiKey
-                    ? `📊 ${parsedSchema.length} trường ràng buộc • Gemini API xử lý thành công`
-                    : `📊 ${parsedSchema.length} trường ràng buộc • Mock AI sinh dữ liệu F0 sẵn sàng`}
-                </div>
-              )}
-              {!isParsing && !isConnected && (
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  {hasApiKey
-                    ? '🔑 API Key hợp lệ → bấm nút để gọi Gemini thật'
-                    : 'Nhập đặc tả và bấm nút bên dưới → Mock AI sẽ phân tích nội bộ'}
-                </div>
-              )}
-            </div>
-
-            {/* Dot live */}
-            <div
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: isParsing
-                  ? '#3b82f6'
-                  : isConnected
-                    ? 'var(--color-teal)'
-                    : 'var(--border-subtle)',
-                boxShadow: isParsing
-                  ? '0 0 8px #3b82f6'
-                  : isConnected
-                    ? '0 0 8px var(--color-teal)'
-                    : 'none',
-                animation: isParsing
-                  ? 'pulse 1s infinite'
-                  : isConnected
-                    ? 'pulse 3s infinite'
-                    : 'none',
-                flexShrink: 0,
-              }}
-            />
-          </div>
 
           {/* THANH ĐIỀU KHIỂN TINH GỌN (CONTROL TOOLBAR) */}
           <div
@@ -1260,35 +1158,42 @@ const isInvalid = idx % 9 === 0;
 
             
 
-            {/* Nút Phân Tích & Sinh F0 */}
-            <button
-              onClick={handleParseAndGenerateSeeds}
-              disabled={isParsing || !rawText.trim()}
-              className={`btn btn-primary ${isParsing || !rawText.trim() ? 'btn-disabled' : ''}`}
-              style={{ padding: '9px 20px', whiteSpace: 'nowrap' }}
-            >
-              {isParsing ? (
-                <>
-                  <div
-                    style={{
-                      width: '14px',
-                      height: '14px',
-                      border: '2px solid rgba(255,255,255,0.2)',
-                      borderTopColor: '#fff',
-                      borderRadius: '50%',
-                      animation: 'spin 0.9s linear infinite',
-                      marginRight: '6px',
-                    }}
-                  />
-                  Đang Phân Tích...
-                </>
-              ) : (
-                <>
-                  <Sparkles size={15} />
-                  {parsedSchema.length > 0 ? 'Tái Sinh & Phân Tích Lại' : 'Phân Tích & Sinh F0'}
-                </>
-              )}
-            </button>
+            {/* Nút Phân Tích */}
+            {parsedSchema.length === 0 ? (
+              <button
+                onClick={handleAnalyzeSpec}
+                disabled={isParsing || !rawText.trim()}
+                className={`btn btn-primary ${isParsing || !rawText.trim() ? 'btn-disabled' : ''}`}
+                style={{ padding: '9px 20px', whiteSpace: 'nowrap' }}
+              >
+                {isParsing ? (
+                  <>
+                    <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.9s linear infinite', marginRight: '6px' }} /> Đang Phân Tích...
+                  </>
+                ) : (
+                  <>
+                    <BrainCircuit size={15} /> Phân Tích Đặc Tả
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleGenerateSeeds}
+                disabled={isParsing || selectedMethods.length === 0}
+                className={`btn btn-primary ${isParsing || selectedMethods.length === 0 ? 'btn-disabled' : ''}`}
+                style={{ padding: '9px 20px', whiteSpace: 'nowrap', background: 'var(--color-teal)', borderColor: 'var(--color-teal)' }}
+              >
+                {isParsing ? (
+                  <>
+                    <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.9s linear infinite', marginRight: '6px' }} /> Đang Sinh Hạt Giống...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={15} /> Sinh Hạt Giống F0
+                  </>
+                )}
+              </button>
+            )}
 
             {/* Nút Tiếp Theo: Tối Ưu & So Sánh */}
             {parsedSchema.length > 0 && initialSeeds.length > 0 && (
@@ -1360,7 +1265,7 @@ const isInvalid = idx % 9 === 0;
                     onChange={() => toggleMethod('random')}
                     style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
                   />
-                  <span>Ngẫu Nhiên / Lai Ghép</span>
+                  <span>Ngẫu Nhiên / Lai Ghép (Hybrid)</span>
                 </label>
 
                 <label
@@ -1417,7 +1322,7 @@ const isInvalid = idx % 9 === 0;
                     onChange={() => toggleMethod('decision')}
                     style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
                   />
-                  <span>Bảng Quyết Định</span>
+                  <span>Bảng Quyết Định (Decision)</span>
                 </label>
               </div>
 
@@ -1515,38 +1420,24 @@ const isInvalid = idx % 9 === 0;
 
         {/* 2. CỘT BÊN PHẢI: KHU VỰC CHỈNH SỬA SCHEMA RÀNG BUỘC CỦA ĐỒNG SÁNG LẬP */}
         {showSchemaDetails && (
-          <div className='glass-card flex flex-col gap-md violet-border'>
-            <div className='flex align-center gap-sm'>
-              <FileJson
-                className='text-yellow'
-                size={24}
-                style={{ color: 'var(--color-yellow)' }}
-              />
-              <h2>RÀNG BUỘC MIỀN GIÁ TRỊ (EXTRACTED SCHEMA)</h2>
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            
 
-            <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-              Xem và tinh chỉnh lại các ràng buộc miền giá trị (Domain Constraints) mà AI đã bóc
-              tách từ yêu cầu nghiệp vụ.
-            </p>
 
-            {/* Render Business Rules if available */}
-            {businessRules && businessRules.length > 0 && (
-              <div style={{ marginBottom: '16px', background: 'var(--surface-subtle)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-                <h3 style={{ fontSize: '13px', margin: '0 0 8px 0', color: 'var(--color-teal)' }}>LUẬT KINH DOANH (BUSINESS RULES)</h3>
-                <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '13px', color: 'var(--text-primary)' }}>
-                  {businessRules.map((br: any, idx: number) => (
-                    <li key={idx}>
-                      <strong style={{ color: 'var(--color-violet)' }}>{br.field || br.rule_id}</strong>
-                      <ul style={{ margin: '4px 0 8px 0', paddingLeft: '16px' }}>
-                        <li>Operator: <span style={{color: 'var(--color-orange)'}}>{br.rule_operator}</span> | Value: <span>{br.rule_value}</span></li>
-                        {br.source_text && <li style={{color: 'var(--text-secondary)', fontStyle: 'italic'}}>Nguồn: "{br.source_text}"</li>}
-                      </ul>
-                    </li>
-                  ))}
-                </ul>
+            {/* Thẻ Cấu Trúc Các Trường Dữ Liệu */}
+            <div className='glass-card flex flex-col gap-md violet-border'>
+              <div className='flex align-center gap-sm'>
+                <FileJson
+                  className='text-violet'
+                  size={24}
+                  style={{ color: 'var(--color-violet)' }}
+                />
+                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: 'var(--text-primary)' }}>RÀNG BUỘC MIỀN GIÁ TRỊ (EXTRACTED SCHEMA)</h2>
               </div>
-            )}
+
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                Xem và tinh chỉnh lại các ràng buộc miền giá trị (Domain Constraints) tương ứng với từng trường.
+              </p>
 
             {/* Danh sách cuộn mượt các trường dữ liệu */}
             <div
@@ -1900,77 +1791,49 @@ const isInvalid = idx % 9 === 0;
               </button>
             </div>
           </div>
+        </div>
+        )}
+
+        {/* HIỂN THỊ LUẬT KINH DOANH DƯỚI CÙNG LÀM FULL WIDTH */}
+        {showSchemaDetails && businessRules && businessRules.length > 0 && (
+          <div className='glass-card flex flex-col gap-sm' style={{ marginTop: '20px', borderTop: '3px solid var(--color-teal)', gridColumn: '1 / -1' }}>
+            <div className='flex align-center gap-sm'>
+              <CheckCircle size={24} style={{ color: 'var(--color-teal)' }} />
+              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: 'var(--text-primary)' }}>LUẬT KINH DOANH (BUSINESS RULES)</h2>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px' }}>
+              Các quy tắc ràng buộc logic được AI bóc tách từ yêu cầu nghiệp vụ.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
+              {businessRules.map((br: any, idx: number) => (
+                <div key={idx} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <strong style={{ color: 'var(--color-violet)', fontSize: '13px' }}>{br.field || br.rule_id}</strong>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                      <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '4px', background: 'rgba(249, 115, 22, 0.1)', color: 'var(--color-orange)', fontWeight: 'bold', textAlign: 'right' }}>
+                        {String(br.rule_operator).toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>
+                    {String(br.rule_value)}
+                  </div>
+                  {br.source_text && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic', borderLeft: '2px solid var(--color-teal)', paddingLeft: '8px', background: 'rgba(13,148,136,0.03)', padding: '6px 8px', borderRadius: '0 4px 4px 0', marginTop: '4px' }}>
+                      "{br.source_text}"
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* 3. PHẦN DƯỚI: HIỂN THỊ DỮ LIỆU HẠT GIỐNG F0 (PREVIEW INITIAL SEEDS) */}
         {(isParsing || (initialSeeds && initialSeeds.length > 0)) && (
           <div
-            className='glass-card flex flex-col gap-md violet-border glow-violet'
-            style={{ gridColumn: showSchemaDetails ? 'span 2' : 'span 1', marginTop: '20px' }}
+            style={{ gridColumn: showSchemaDetails ? 'span 2' : 'span 1', marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}
           >
-            <div
-              className='flex justify-between align-center'
-              style={{
-                flexWrap: 'wrap',
-                gap: '12px',
-                borderBottom: '1px solid var(--border-subtle)',
-                paddingBottom: '14px',
-                marginBottom: '10px',
-              }}
-            >
-              <div className='flex flex-col gap-xs'>
-                <div className='flex align-center gap-sm'>
-                  <Database
-                    className='text-violet'
-                    size={20}
-                    style={{ color: 'var(--color-violet)' }}
-                  />
-                  <h2 style={{ fontSize: '16px', margin: 0 }}>
-                    DANH SÁCH TẬP HẠT GIỐNG F0 (INITIAL SEEDS)
-                  </h2>
-                </div>
-                {parsedSchema.length > 0 && (
-                  <span
-                    style={{
-                      fontSize: '12px',
-                      color: 'var(--color-teal)',
-                      fontWeight: '500',
-                      marginLeft: '26px',
-                    }}
-                  >
-                    ✓ Đã bóc tách {parsedSchema.length} trường &amp; {initialSeeds.length} ca test
-                    mầm
-                  </span>
-                )}
-              </div>
-
-              <div className='flex align-center gap-sm'>
-                {isRegenerating && (
-                  <span
-                    style={{
-                      fontSize: '12px',
-                      color: 'var(--color-violet)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <span
-                      className='status-dot-pulse'
-                      style={{
-                        width: '6px',
-                        height: '6px',
-                        background: 'var(--color-violet)',
-                        borderRadius: '50%',
-                        display: 'inline-block',
-                      }}
-                    />
-                    Đang cập nhật...
-                  </span>
-                )}
-              </div>
-            </div>
-
             {/* Bảng giải thích chiến lược kiểm thử */}
             {/* <div style={{
               background: 'var(--brand-50)',
@@ -2757,16 +2620,14 @@ const isInvalid = idx % 9 === 0;
                                       style={{
                                         minWidth: '120px',
                                         maxWidth: '280px',
-                                        maxHeight: '80px',
-                                        overflowY: 'auto',
                                         wordBreak: 'break-word',
                                         whiteSpace: 'normal',
                                         paddingRight: '4px',
                                       }}
                                     >
-                                      {typeof seed[f.name] === 'object'
-                                        ? JSON.stringify(seed[f.name])
-                                        : String(seed[f.name] ?? '')}
+                                      <TruncatedText text={typeof (seed.values ? seed.values[f.name] : seed[f.name]) === 'object'
+                                        ? JSON.stringify((seed.values ? seed.values[f.name] : seed[f.name]))
+                                        : String((seed.values ? seed.values[f.name] : seed[f.name]) ?? '')} />
                                     </div>
                                   </td>
                                 ))}
@@ -3059,7 +2920,7 @@ const isInvalid = idx % 9 === 0;
                   lineHeight: 1.6,
                 }}
               >
-                Hệ thống đang gọi API {hasApiKey ? 'Gemini 3.5 Flash' : 'Mock AI'} để phân tích
+                Hệ thống đang gọi {llmProvider === 'openai' ? 'OpenAI GPT-4o' : 'Gemini Flash'} để phân tích
                 nghiệp vụ, sinh cấu trúc dữ liệu miền giá trị và tạo các ca kiểm thử mầm F0.
               </p>
             </div>

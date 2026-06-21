@@ -1,166 +1,111 @@
 import json
 from typing import List, Dict
 
-def get_extract_rules_prompt(raw_text: str) -> tuple[str, str]:
-    system_instruction = (
-        "You are an expert Enterprise Business Analyst.\n"
-        "Your task is to analyze the natural language specification of a web application and extract formal Business Rules, Constraints, and detect Ambiguities.\n"
-        "Return pure JSON with no markdown wrapping.\n\n"
-        "{\n"
-        "  \"rules\": [\n"
-        "    {\n"
-        "      \"rule_id\": \"R_EMAIL_REQUIRED\",\n"
-        "      \"field\": \"<field_name>\",\n"
-        "      \"rule_category\": \"validation\",\n"
-        "      \"rule_operator\": \"<required|length_min|length_max|value_min|value_max|format|allowed_values|unique|dependency>\",\n"
-        "      \"rule_value\": \"<threshold_or_regex_or_null>\",\n"
-        "      \"source_text\": \"<exact original text mapped to this rule>\",\n"
-        "      \"priority\": \"<high|medium|low>\",\n"
-        "      \"confidence\": <float 0.0-1.0>,\n"
-        "      \"description\": \"<clear Vietnamese description>\"\n"
-        "    }\n"
-        "  ],\n"
-        "  \"constraints\": [\n"
-        "    {\n"
-        "      \"constraint_id\": \"C_AGE_VERIFICATION\",\n"
-        "      \"when\": {\n"
-        "        \"field\": \"<source_field>\",\n"
-        "        \"operator\": \"<equal|not_equal|greater_than|less_than|in>\",\n"
-        "        \"value\": \"<condition_value>\"\n"
-        "      },\n"
-        "      \"then\": {\n"
-        "        \"field\": \"<target_field>\",\n"
-        "        \"operator\": \"<required|equal|greater_than|less_than>\",\n"
-        "        \"value\": \"<target_value>\"\n"
-        "      },\n"
-        "      \"source_text\": \"<exact original text>\",\n"
-        "      \"confidence\": <float 0.0-1.0>,\n"
-        "      \"description\": \"<clear Vietnamese description>\"\n"
-        "    }\n"
-        "  ],\n"
-        "  \"ambiguities\": [\n"
-        "    {\n"
-        "      \"text\": \"<ambiguous phrase>\",\n"
-        "      \"reason\": \"<why it is ambiguous>\",\n"
-        "      \"candidate_values\": [\"<possible_value_1>\", \"<possible_value_2>\"]\n"
-        "    }\n"
-        "  ]\n"
-        "}\n"
-    )
-    user_prompt = f"Extract enterprise business rules from this specification:\n{raw_text}"
-    return system_instruction, user_prompt
-
 def get_parse_spec_combined_prompt(raw_text: str) -> tuple[str, str]:
-    """
-    Combined prompt: extract Rules + Schema in ONE LLM call.
-    Role: Senior QA Engineer + Business Analyst focused on test data generation.
-    """
     system_instruction = (
-        "You are a Senior QA Test Engineer and Enterprise Business Analyst.\n"
-        "Your PRIMARY GOAL is to extract ALL validation rules from a software specification\n"
-        "so that an automated test data generation system can produce high-quality test cases using:\n"
-        "  - BVA (Boundary Value Analysis): test at min-1, min, min+1, max-1, max, max+1\n"
-        "  - EP (Equivalence Partitioning): valid class, invalid-too-short, invalid-too-long, invalid-format\n"
-        "  - Decision Table: combinations of valid/invalid fields\n"
-        "  - Security: SQL injection, XSS script attempts\n\n"
-        "EXTRACTION RULES:\n"
-        "1. Every constraint mentioned in the spec must become a separate rule entry.\n"
-        "2. For each numeric/string boundary, create BOTH a min rule AND a max rule.\n"
-        "3. For 'allowed values', list ALL valid enum options in rule_value as JSON array string.\n"
-        "4. For security constraints (no SQL, no script), use rule_operator='no_injection'.\n"
-        "5. For regex constraints (only uppercase+digits), provide the actual regex pattern.\n"
-        "6. 'required' fields must have a rule with rule_operator='required'.\n"
-        "7. Optional fields must have a rule with rule_operator='optional'.\n\n"
-        "Return ONLY pure JSON, no markdown, no explanation:\n\n"
+        "# ROLE\n"
+        "Bạn là Senior Test Architect và Enterprise Business Analyst.\n"
+        "Kinh nghiệm:\n"
+        "- 15 năm Software Testing & Requirement Analysis\n"
+        "- ISTQB Advanced Level Test Analyst\n"
+        "- Thiết kế JSON Schema và Đặc tả hệ thống doanh nghiệp\n\n"
+        
+        "# MISSION\n"
+        "Nhiệm vụ chính:\n"
+        "Phân tích đặc tả yêu cầu nghiệp vụ để trích xuất danh sách các Trường dữ liệu (Fields Schema), Quy tắc nghiệp vụ (Business Rules), Ràng buộc (Constraints) và các Điểm mơ hồ (Ambiguities).\n"
+        "Mục tiêu:\n"
+        "- Trích xuất chính xác 100% các trường dữ liệu và ràng buộc kiểu dữ liệu đầu vào\n"
+        "- Xác định đầy đủ các giá trị biên (min, max, length) phục vụ kiểm thử Boundary Value Analysis (BVA)\n"
+        "- Xác định đầy đủ các lớp tương đương phục vụ kiểm thử Equivalence Partitioning (EP)\n"
+        "- Phát hiện toàn bộ các điểm mơ hồ chưa rõ ràng trong tài liệu đặc tả\n"
+        "Không tối ưu số lượng. Chỉ tối ưu chất lượng.\n\n"
+        
+        "# CONTEXT\n"
+        f"Raw Specification:\n{raw_text}\n\n"
+        
+        "# HARD RULES\n"
+        "1. BẮT BUỘC trích xuất tất cả các trường dữ liệu xuất hiện trong đặc tả. Không được tự ý tạo thêm hoặc bỏ bớt trường.\n"
+        "2. Không được suy diễn dữ liệu ngoài thông tin đặc tả đã cung cấp. Không sử dụng ví dụ mặc định ngoài đặc tả.\n"
+        "3. Mỗi quy tắc nghiệp vụ phải có thông báo lỗi tương ứng bằng tiếng Việt ('errorMessage').\n"
+        "4. Bắt buộc điền đúng loại dữ liệu 'type' của trường từ danh sách: ['string', 'number', 'email', 'card', 'phone', 'date', 'boolean']. Không dùng các loại khác.\n"
+        "5. Xác định đúng kiểu nhập liệu 'inputType' của trường (ví dụ: 'textbox', 'dropdown', 'datepicker', 'checkbox').\n"
+        "6. Với các trường có giới hạn độ dài chuỗi hoặc khoảng giá trị số, bắt buộc điền chi tiết đối tượng 'bva_boundary' chứa các điểm biên kiểm thử.\n"
+        "7. Định dạng đầu ra phải là chuỗi JSON thuần khiết, không có thẻ markdown wrapped (ví dụ: không có ```json).\n\n"
+        
+        "# EXECUTION PROCESS\n"
+        "Thực hiện theo đúng thứ tự sau:\n"
+        "Bước 1: Đọc và phân tích kỹ tài liệu đặc tả nghiệp vụ.\n"
+        "Bước 2: Liệt kê tất cả các trường dữ liệu đầu vào, xác định kiểu dữ liệu, kiểu nhập liệu và các ràng buộc độ dài/giá trị.\n"
+        "Bước 3: Trích xuất các quy tắc xác thực (Business Rules) riêng lẻ cho từng trường. Tạo các điểm biên BVA tương ứng.\n"
+        "Bước 4: Trích xuất các ràng buộc logic chéo giữa các trường (Constraints).\n"
+        "Bước 5: Phát hiện các thuật từ mơ hồ, thiếu rõ ràng trong tài liệu đặc tả (Ambiguities).\n"
+        "Bước 6: Tự kiểm tra định dạng dữ liệu đầu ra và cấu trúc JSON.\n\n"
+        
+        "# OUTPUT CONTRACT\n"
         "{\n"
         "  \"rules\": [\n"
         "    {\n"
-        "      \"rule_id\": \"R_PRODUCT_NAME_REQUIRED\",\n"
-        "      \"field\": \"product_name\",\n"
-        "      \"rule_category\": \"presence\",\n"
-        "      \"rule_operator\": \"required\",\n"
-        "      \"rule_value\": null,\n"
-        "      \"bva_boundary\": null,\n"
-        "      \"source_text\": \"productName: Bắt buộc\",\n"
-        "      \"priority\": \"high\",\n"
-        "      \"test_strategies\": [\"ep\", \"decision\"],\n"
-        "      \"description\": \"Trường productName là bắt buộc\",\n"
-        "      \"errorMessage\": \"Vui lòng nhập tên sản phẩm\"\n"
-        "    },\n"
-        "    {\n"
-        "      \"rule_id\": \"R_PRODUCT_NAME_MIN_LENGTH\",\n"
-        "      \"field\": \"product_name\",\n"
-        "      \"rule_category\": \"length\",\n"
-        "      \"rule_operator\": \"length_min\",\n"
-        "      \"rule_value\": \"3\",\n"
-        "      \"bva_boundary\": {\"min\": 3, \"bva_invalid_below\": 2, \"bva_valid_at\": 3, \"bva_valid_above\": 4},\n"
-        "      \"source_text\": \"độ dài từ 3 đến 50 ký tự\",\n"
-        "      \"priority\": \"high\",\n"
-        "      \"test_strategies\": [\"bva\", \"ep\"],\n"
-        "      \"description\": \"Độ dài tối thiểu 3 ký tự\",\n"
-        "      \"errorMessage\": \"Tên sản phẩm phải từ 3 đến 50 ký tự\"\n"
-        "    },\n"
-        "    {\n"
-        "      \"rule_id\": \"R_CATEGORY_ALLOWED_VALUES\",\n"
-        "      \"field\": \"category\",\n"
-        "      \"rule_category\": \"domain\",\n"
-        "      \"rule_operator\": \"allowed_values\",\n"
-        "      \"rule_value\": \"[\\\"Electronics\\\",\\\"Fashion\\\",\\\"Food\\\",\\\"Book\\\",\\\"Other\\\"]\",\n"
-        "      \"bva_boundary\": null,\n"
-        "      \"source_text\": \"phải thuộc một trong các nhóm\",\n"
-        "      \"priority\": \"high\",\n"
-        "      \"test_strategies\": [\"ep\", \"decision\"],\n"
-        "      \"description\": \"Chỉ chấp nhận các giá trị trong danh sách\",\n"
-        "      \"errorMessage\": \"Danh mục không hợp lệ\"\n"
+        "      \"rule_id\": \"R_<FIELD_NAME>_<RULE_TYPE>\",\n"
+        "      \"field\": \"<field_name_in_snake_case>\",\n"
+        "      \"rule_category\": \"<presence|length|value|format|domain|security>\",\n"
+        "      \"rule_operator\": \"<required|length_min|length_max|value_min|value_max|format|allowed_values|no_injection>\",\n"
+        "      \"rule_value\": \"<threshold_value_or_allowed_values_array_or_regex>\",\n"
+        "      \"bva_boundary\": {\n"
+        "        \"min\": 3,\n"
+        "        \"bva_invalid_below\": 2,\n"
+        "        \"bva_valid_at\": 3,\n"
+        "        \"bva_valid_above\": 4\n"
+        "      },\n"
+        "      \"source_text\": \"<exact sentence from spec mapping to this constraint>\",\n"
+        "      \"priority\": \"<high|medium|low>\",\n"
+        "      \"test_strategies\": [\"bva\", \"ep\", \"decision\"],\n"
+        "      \"description\": \"<Clear description of this specific rule in Vietnamese>\",\n"
+        "      \"errorMessage\": \"<Validation error message displayed to user in Vietnamese>\"\n"
         "    }\n"
         "  ],\n"
         "  \"constraints\": [\n"
         "    {\n"
-        "      \"constraint_id\": \"C_ALL_REQUIRED_VALID\",\n"
-        "      \"when\": {\"field\": \"_all_required_fields\", \"operator\": \"all_valid\", \"value\": \"true\"},\n"
-        "      \"then\": {\"field\": \"_operation\", \"operator\": \"equal\", \"value\": \"SUCCESS\"},\n"
-        "      \"source_text\": \"Chức năng thêm sản phẩm chỉ được thực hiện khi tất cả các trường bắt buộc hợp lệ\",\n"
+        "      \"constraint_id\": \"C_<CONSTRAINT_NAME>\",\n"
+        "      \"when\": {\"field\": \"<source_field_name>\", \"operator\": \"<equal|not_equal|greater_than|less_than|in>\", \"value\": \"<condition_value>\"},\n"
+        "      \"then\": {\"field\": \"<target_field_name>\", \"operator\": \"<required|equal|greater_than|less_than>\", \"value\": \"<target_value>\"},\n"
+        "      \"source_text\": \"<exact conditional sentence from spec>\",\n"
         "      \"confidence\": 1.0,\n"
-        "      \"description\": \"Hệ thống chỉ lưu khi toàn bộ dữ liệu hợp lệ\"\n"
+        "      \"description\": \"<Clear description of relation in Vietnamese>\"\n"
         "    }\n"
         "  ],\n"
         "  \"ambiguities\": [\n"
         "    {\n"
-        "      \"text\": \"<vague phrase>\",\n"
-        "      \"reason\": \"<why it is unclear for test generation>\",\n"
-        "      \"candidate_values\": [\"<option1>\", \"<option2>\"]\n"
+        "      \"text\": \"<vague phrase from spec>\",\n"
+        "      \"reason\": \"<why it is unclear for automation in Vietnamese>\",\n"
+        "      \"candidate_values\": [\"<value_option_1>\", \"<value_option_2>\"]\n"
         "    }\n"
         "  ],\n"
         "  \"fields\": [\n"
         "    {\n"
-        "      \"name\": \"product_name\",\n"
-        "      \"type\": \"string\",\n"
-        "      \"data_type\": \"string\",\n"
-        "      \"semantic_type\": \"text\",\n"
+        "      \"name\": \"<field_name_in_snake_case>\",\n"
+        "      \"type\": \"<string|number|email|card|phone|date|boolean>\",\n"
+        "      \"data_type\": \"<string|number|boolean>\",\n"
+        "      \"semantic_type\": \"<email|card|phone|date|text|amount|percentage>\",\n"
         "      \"required\": true,\n"
         "      \"minLength\": 3,\n"
         "      \"maxLength\": 50,\n"
         "      \"minValue\": null,\n"
         "      \"maxValue\": null,\n"
-        "      \"regex\": \"^[a-zA-Z0-9\\\\s]+$\",\n"
+        "      \"regex\": \"<regex pattern string or null>\",\n"
         "      \"allowedValues\": null,\n"
-        "      \"description\": \"Tên sản phẩm, chỉ chứa chữ cái, số và khoảng trắng\",\n"
-        "      \"security_risk\": \"xss\",\n"
-        "      \"inputType\": \"textbox\",\n"
-        "      \"mapped_rules\": [\"R_PRODUCT_NAME_REQUIRED\", \"R_PRODUCT_NAME_MIN_LENGTH\"]\n"
+        "      \"description\": \"<Brief Vietnamese business meaning of this field>\",\n"
+        "      \"security_risk\": \"<xss|sql_injection|null>\",\n"
+        "      \"inputType\": \"<textbox|dropdown|datepicker|checkbox>\",\n"
+        "      \"mapped_rules\": [\"R_<FIELD_NAME>_<RULE_TYPE>\"]\n"
         "    }\n"
         "  ]\n"
         "}\n\n"
-        "CRITICAL INSTRUCTIONS:\n"
-        "- Extract ONE rule per constraint (do not merge min and max into one rule).\n"
-        "- For price/quantity with min/max: create separate R_xxx_MIN_VALUE and R_xxx_MAX_VALUE rules.\n"
-        "- For string format rules: provide the actual regex in the 'fields' schema.\n"
-        "- For security constraints (no SQL injection, no XSS): set rule_operator='no_injection' and set field's security_risk='sql_injection' or 'xss'.\n"
-        "- Do NOT leave bva_boundary null for length or value rules - always fill in the boundary numbers.\n"
-        "- The 'test_strategies' array tells the test generator which algorithms to use for this rule.\n"
-        "- CRITICAL: MUST deduce a clear, user-facing 'errorMessage' in Vietnamese for EVERY rule (e.g., 'Email không hợp lệ').\n"
-        "- CRITICAL: MUST deduce 'inputType' for fields (e.g., 'textbox', 'dropdown', 'datepicker', 'checkbox').\n"
-        "- CRITICAL: Every field MUST have a 'type' from EXACTLY this list: [\"string\", \"number\", \"email\", \"card\", \"phone\", \"date\", \"boolean\"]. Do not use 'object' or 'array'. Flatten objects if necessary.\n"
+        
+        "# SELF VALIDATION\n"
+        "- Schema Validation: Đảm bảo chuỗi JSON đầu ra khớp cấu trúc 100%.\n"
+        "- Type Validation: Đảm bảo kiểu dữ liệu fields thuộc nhóm được cho phép.\n"
+        "- Rule Mappings: Đảm bảo mọi field bắt buộc có rule 'required' tương ứng.\n"
+        "Nếu phát hiện lỗi: Tự sửa trước khi trả kết quả."
     )
     user_prompt = (
         f"Analyze this software specification from a QA Test Engineering perspective.\n"
@@ -170,149 +115,297 @@ def get_parse_spec_combined_prompt(raw_text: str) -> tuple[str, str]:
     )
     return system_instruction, user_prompt
 
-
-
-def get_generate_schema_prompt(rules: dict) -> tuple[str, str]:
-    system_instruction = (
-        "You are an expert System Architect.\n"
-        "Based on the provided formal Business Rules, generate a JSON Schema for the data fields.\n"
-        "Return pure JSON with no markdown wrapping.\n\n"
-        "{\n"
-        "  \"fields\": [\n"
-        "    {\n"
-        "      \"name\": \"<field_name in snake_case>\",\n"
-        "      \"data_type\": \"<string|number|boolean>\",\n"
-        "      \"semantic_type\": \"<email|card|phone|date|text|amount|percentage>\",\n"
-        "      \"required\": <boolean>,\n"
-        "      \"minLength\": <int|null>,\n"
-        "      \"maxLength\": <int|null>,\n"
-        "      \"minValue\": <float|null>,\n"
-        "      \"maxValue\": <float|null>,\n"
-        "      \"regex\": \"<regex string|null>\",\n"
-        "      \"allowedValues\": [\"<val1>\"] | null,\n"
-        "      \"description\": \"<Brief business meaning>\",\n"
-        "      \"mapped_rules\": [\"R_EMAIL_REQUIRED\"]\n"
-        "    }\n"
-        "  ]\n"
-        "}\n"
-    )
-    user_prompt = f"Generate schema based on these rules:\n{json.dumps(rules, ensure_ascii=False)}"
-    return system_instruction, user_prompt
-
-def get_generate_initial_population_prompt(schema: dict, rules: dict) -> tuple[str, str]:
-    system_instruction = (
-        "You are an expert QA Engineer.\n"
-        "Generate a highly diverse Initial Population (F0 Dataset) of 5-8 test cases based on the schema and rules.\n"
-        "Target: Valid cases, Boundary cases, and explicitly Invalid cases (violating EXACTLY one rule).\n"
-        "Return pure JSON with no markdown wrapping.\n\n"
-        "{\n"
-        "  \"initialPopulation\": [\n"
-        "    {\n"
-        "      \"testcase_id\": \"TC-F0-001\",\n"
-        "      \"data\": {\n"
-        "        \"<field1>\": \"<val>\",\n"
-        "        \"<field2>\": \"<val>\"\n"
-        "      },\n"
-        "      \"method\": \"<random|bva|ep|decision>\",\n"
-        "      \"scenario\": \"<Vietnamese description>\",\n"
-        "      \"expectedResult\": \"<VALID|INVALID>\",\n"
-        "      \"violatedRule\": \"<rule_id or null>\",\n"
-        "      \"coveredRules\": [\"<rule_id>\"]\n"
-        "    }\n"
-        "  ]\n"
-        "}\n"
-    )
-    user_prompt = f"Schema:\n{json.dumps(schema, ensure_ascii=False)}\n\nRules:\n{json.dumps(rules, ensure_ascii=False)}\n\nGenerate F0 dataset."
-    return system_instruction, user_prompt
-
-def get_generate_seeds_prompt(fields: List[Dict], test_method: str, raw_text: str = "") -> tuple[str, str]:
-    fields_str = json.dumps(fields, ensure_ascii=False)
-    system_instruction = (
-        "You are an expert QA Engineer and Data Generator.\n"
-        f"Generate a JSON payload of 35-50 high-quality test cases based on the schema using the '{test_method}' method.\n"
-        "IMPORTANT: Adhere strictly to the requested distribution of scenarios (e.g. 40% Valid, 30% Boundary, 20% Negative, 10% Pairwise) to maximize coverage.\n\n"
-        "The returned JSON must EXACTLY follow this structure:\n"
-        "{\n"
-        "  \"initialPopulation\": [\n"
-        "    {\n"
-        "      \"data\": {\n"
-        "        \"<field_name>\": \"<value>\"\n"
-        "      },\n"
-        "      \"method\": \"<test_method>\",\n"
-        "      \"scenario\": \"<Vietnamese description of the scenario>\",\n"
-        "      \"expectedResult\": \"<VALID|INVALID>\"\n"
-        "    }\n"
-        "  ]\n"
-        "}\n"
-        "DO NOT include markdown, explanations, or code blocks. Output pure JSON."
-    )
-    user_prompt = f"Fields Schema: {fields_str}\nTesting Method: {test_method}\nOriginal Context (optional): {raw_text}\nGenerate test cases."
-    return system_instruction, user_prompt
-
 def get_evaluate_test_quality_prompt(fields: list, seeds: list, test_method: str, raw_text: str, deterministic_metrics: dict) -> tuple[str, str]:
     system_instruction = (
-        "You are an expert QA Manager.\n"
-        "Your role is to ANALYZE the deterministically calculated metrics of a dataset.\n"
-        "Your response MUST be pure JSON matching this exact structure:\n"
+        "# ROLE\n"
+        "Bạn là Senior QA Test Manager.\n"
+        "Kinh nghiệm:\n"
+        "- 15 năm kinh nghiệm quản lý chất lượng phần mềm\n"
+        "- Chuyên gia về độ phủ kiểm thử (Test Coverage Analysis) và đánh giá rủi ro (Risk Assessment)\n"
+        "- Chuyên phân tích hiệu suất và chất lượng các bộ dữ liệu kiểm thử tự động\n\n"
+        
+        "# MISSION\n"
+        "Nhiệm vụ chính:\n"
+        "Phân tích tập dữ liệu kiểm thử hạt giống dựa trên các chỉ số đo lường độ phủ thực tế từ công cụ tính toán của hệ thống.\n"
+        "Mục tiêu:\n"
+        "- Đánh giá chính xác điểm chất lượng của bộ dữ liệu (0-100)\n"
+        "- Chỉ ra các điểm mạnh, điểm yếu nghiệp vụ của bộ dữ liệu đối với các trường trong schema đầu vào\n"
+        "- Đề xuất các ca kiểm thử còn thiếu (missing cases) để cải thiện độ phủ kiểm thử lên 100%\n"
+        "Không tối ưu số lượng. Chỉ tối ưu chất lượng.\n\n"
+        
+        "# CONTEXT\n"
+        f"Fields Schema:\n{json.dumps(fields, ensure_ascii=False)}\n\n"
+        f"Testing Method:\n{test_method}\n\n"
+        f"Deterministic Metrics from Engine:\n{json.dumps(deterministic_metrics, ensure_ascii=False)}\n\n"
+        f"Dataset to Evaluate:\n{json.dumps(seeds, ensure_ascii=False)}\n\n"
+        
+        "# HARD RULES\n"
+        "1. Nhận định phải dựa trên số liệu thực tế từ công cụ tính toán trong Metrics, không được tự ý phóng đại hoặc suy đoán sai lệch. Không dùng các ví dụ mặc định nằm ngoài danh sách các trường đầu vào.\n"
+        "2. Đề xuất các ca kiểm thử thiếu ('missing_cases') phải cụ thể theo trường dữ liệu và ràng buộc bị thiếu có trong schema đầu vào (ví dụ: 'Thiếu kiểm thử giá trị biên max của trường <tên_trường_thực_tế>').\n"
+        "3. Toàn bộ nhận xét, điểm mạnh, điểm yếu và các ca kiểm thử còn thiếu phải viết bằng tiếng Việt.\n"
+        "4. Định dạng đầu ra phải là chuỗi JSON thuần khiết, không có thẻ markdown wrapped (ví dụ: không có ```json).\n\n"
+        
+        "# EXECUTION PROCESS\n"
+        "Thực hiện theo đúng thứ tự sau:\n"
+        "Bước 1: Phân tích kỹ các chỉ số đo lường độ phủ của Engine (functional, boundary, negative, overall).\n"
+        "Bước 2: Xem xét kỹ các giá trị của test cases để tìm ra điểm mạnh (ví dụ: bao phủ tốt biên) và điểm yếu (ví dụ: thiếu phân vùng lỗi) dựa trên schema thực tế.\n"
+        "Bước 3: Tổng hợp danh sách các kịch bản kiểm thử bị bỏ sót.\n"
+        "Bước 4: Xác định các rủi ro bảo mật tiềm ẩn (security_risks) như XSS, SQL Injection cho các trường nhạy cảm tương ứng.\n"
+        "Bước 5: Tự kiểm tra tính nhất quán của dữ liệu nhận xét trước khi xuất JSON.\n\n"
+        
+        "# OUTPUT CONTRACT\n"
         "{\n"
         "  \"score\": 85,\n"
-        "  \"strengths\": [\"<strength 1 in Vietnamese>\"],\n"
-        "  \"weaknesses\": [\"<weakness 1 in Vietnamese>\"],\n"
-        "  \"missing_cases\": [\"<missing case>\"],\n"
-        "  \"security_risks\": []\n"
-        "}\n"
+        "  \"strengths\": [\"<Nhận xét điểm mạnh nghiệp vụ cụ thể của bộ dữ liệu đối với các trường trong schema đầu vào bằng tiếng Việt>\"],\n"
+        "  \"weaknesses\": [\"<Nhận xét điểm yếu hoặc phần thiếu kiểm thử đối với các trường đầu vào bằng tiếng Việt>\"],\n"
+        "  \"missing_cases\": [\"<Kịch bản kiểm thử cụ thể còn thiếu đối với các trường và quy tắc nghiệp vụ bằng tiếng Việt>\"],\n"
+        "  \"security_risks\": [\"<Mô tả nguy cơ bảo mật nếu trường nhạy cảm trong schema chưa được bao phủ kiểm thử SQLi/XSS bằng tiếng Việt>\"]\n"
+        "}\n\n"
+        
+        "# SELF VALIDATION\n"
+        "- Schema Validation: Đảm bảo JSON đầu ra đúng các thuộc tính bắt buộc.\n"
+        "- Content Localization: Kiểm tra toàn bộ nội dung nhận xét viết bằng tiếng Việt 100%.\n"
+        "Nếu phát hiện lỗi: Tự sửa trước khi trả kết quả."
     )
     user_prompt = (
-        f"Metrics from Engine: {json.dumps(deterministic_metrics)}\n\n"
-        f"Fields Schema: {json.dumps(fields, ensure_ascii=False)}\n"
-        f"Testing Method: {test_method}\n"
-        f"Dataset: {json.dumps(seeds, ensure_ascii=False)}\n\n"
-        "Explain the engine's evaluation in your JSON output."
+        f"Metrics: {json.dumps(deterministic_metrics)}\n"
+        f"Dataset: {json.dumps(seeds, ensure_ascii=False)}\n"
+        "Hãy thực hiện đánh giá chất lượng bộ dữ liệu kiểm thử."
     )
     return system_instruction, user_prompt
 
 def get_evaluate_optimized_prompt(fields: list, dataset: list, algorithm: str, raw_text: str, deterministic_metrics: dict) -> tuple[str, str]:
     system_instruction = (
-        "You are an elite QA Optimizer.\n"
-        "Your role is to EXPLAIN the deterministic fitness and coverage scores produced by the Python backend engines.\n"
-        "Your response MUST be pure JSON matching this exact structure:\n"
+        "# ROLE\n"
+        "Bạn là Principal QA Optimization Engineer.\n"
+        "Kinh nghiệm:\n"
+        "- 15 năm tối ưu hóa bộ dữ liệu kiểm thử phần mềm\n"
+        "- Chuyên sâu về giải thuật di truyền (GA) và tìm kiếm địa phương (Hill Climbing - HC)\n"
+        "- Chuyên gia đánh giá hiệu năng tối ưu hóa dữ liệu kiểm thử biểu mẫu (Test Suite Minimization & Optimization)\n\n"
+        
+        "# MISSION\n"
+        "Nhiệm vụ chính:\n"
+        "Đánh giá và giải thích chi tiết chất lượng của bộ dữ liệu sau khi tối ưu hóa bằng thuật toán di truyền hoặc leo đồi, đối chiếu với các chỉ số thích nghi (Fitness) nhận từ công cụ tính toán.\n"
+        "Mục tiêu:\n"
+        "- Đánh giá điểm chất lượng tối ưu của bộ dữ liệu (0-100)\n"
+        "- Phân tích trạng thái kiểm thử biên ('boundary_edge_check') và xác định số lần bắn trúng cận biên ('critical_hits')\n"
+        "- Xác minh độ phủ kịch bản và chỉ ra các ca kiểm thử còn thiếu tiềm ẩn\n"
+        "Không tối ưu số lượng. Chỉ tối ưu chất lượng.\n\n"
+        
+        "# CONTEXT\n"
+        f"Fields Schema:\n{json.dumps(fields, ensure_ascii=False)}\n\n"
+        f"Optimization Algorithm:\n{algorithm}\n\n"
+        f"Engine Fitness Metrics:\n{json.dumps(deterministic_metrics, ensure_ascii=False)}\n\n"
+        f"Optimized Dataset:\n{json.dumps(dataset[:30], ensure_ascii=False)}\n\n"
+        
+        "# HARD RULES\n"
+        "1. Nhận định phải dựa trên số liệu thực tế từ Engine Fitness Metrics, không được tự ý phóng đại hoặc suy đoán sai lệch. Không sử dụng ví dụ về các trường không tồn tại trong schema đầu vào.\n"
+        "2. Đánh giá trạng thái biên phải phân loại rõ: STRONG (Mạnh) hoặc WEAK (Yếu).\n"
+        "3. Toàn bộ nhận xét, mô tả trạng thái biên, các ca kiểm thử còn thiếu phải viết bằng tiếng Việt.\n"
+        "4. Định dạng đầu ra phải là chuỗi JSON thuần khiết, không có thẻ markdown wrapped (ví dụ: không có ```json).\n\n"
+        
+        "# EXECUTION PROCESS\n"
+        "Thực hiện theo đúng thứ tự sau:\n"
+        "Bước 1: Phân tích kỹ các chỉ số đo lường thích nghi của Engine (overall fitness, boundary score, negative score).\n"
+        "Bước 2: Kiểm tra đối chiếu các giá trị trong tập dữ liệu tối ưu hóa để xác nhận thuật toán đã tinh chỉnh biên thành công hay chưa.\n"
+        "Bước 3: Xác định số lần bắn trúng cận biên thực tế ('critical_hits') dựa trên dữ liệu.\n"
+        "Bước 4: Đưa ra nhận xét chi tiết về hiệu quả tối ưu hóa biên của các trường đầu vào bằng tiếng Việt.\n"
+        "Bước 5: Tự kiểm tra định dạng JSON đầu ra đảm bảo không bị lỗi cú pháp.\n\n"
+        
+        "# OUTPUT CONTRACT\n"
         "{\n"
         "  \"score\": 95,\n"
         "  \"boundary_edge_check\": {\n"
-        "    \"status\": \"<STRONG/WEAK>\",\n"
-        "    \"boundary_coverage\": \"<string representation of boundary_coverage_percent>\",\n"
-        "    \"critical_hits\": 10,\n"
-        "    \"description\": \"<Vietnamese explanation>\"\n"
+        "    \"status\": \"STRONG\",\n"
+        "    \"boundary_coverage\": \"<overall_boundary_coverage_percentage>\",\n"
+        "    \"critical_hits\": 12,\n"
+        "    \"description\": \"<Nhận xét chi tiết về hiệu quả tối ưu hóa biên của các trường dữ liệu số/chuỗi trong schema đầu vào bằng tiếng Việt>\"\n"
         "  },\n"
-        "  \"missing_cases\": [\"<missing case in Vietnamese>\"],\n"
+        "  \"missing_cases\": [\"<Kịch bản tối ưu hóa kết hợp hoặc kịch bản biên còn thiếu cụ thể cho các trường bằng tiếng Việt>\"],\n"
         "  \"security_risks\": []\n"
-        "}\n"
+        "}\n\n"
+        
+        "# SELF VALIDATION\n"
+        "- Schema Validation: Đảm bảo JSON đầu ra đúng các thuộc tính bắt buộc.\n"
+        "- Content Localization: Kiểm tra toàn bộ nội dung nhận xét viết bằng tiếng Việt 100%.\n"
+        "Nếu phát hiện lỗi: Tự sửa trước khi trả kết quả."
     )
     user_prompt = (
-        f"Metrics from Engine: {json.dumps(deterministic_metrics)}\n\n"
-        f"Algorithm Used: {algorithm}\n"
-        f"Optimized Dataset (Top 30): {json.dumps(dataset[:30], ensure_ascii=False)}\n\n"
-        "Explain the deterministic scores."
+        f"Metrics: {json.dumps(deterministic_metrics)}\n"
+        f"Dataset: {json.dumps(dataset[:30], ensure_ascii=False)}\n"
+        "Hãy thực hiện giải thích và đánh giá chất lượng bộ dữ liệu sau tối ưu hóa."
     )
     return system_instruction, user_prompt
 
-def get_benchmark_analysis_prompt(benchmark_results: dict) -> tuple[str, str]:
+def get_benchmark_analysis_prompt(results: dict) -> tuple[str, str]:
     system_instruction = (
-        "You are an expert QA Benchmarker and AI Test Platform Analyst.\n"
-        "Review the quantitative results of the 6 test generation strategies (LLM, GA, HC, LLM_GA, LLM_HC, LLM_GA_HC).\n"
-        "Provide a comprehensive Benchmark Scorecard in pure JSON.\n\n"
-        "{\n"
-        "  \"winner\": \"<Strategy Name>\",\n"
-        "  \"ranking\": [\"<1st>\", \"<2nd>\", \"<3rd>\", \"<4th>\", \"<5th>\", \"<6th>\"],\n"
-        "  \"strategy_scores\": {\n"
-        "    \"LLM\": <0-100>,\n"
-        "    \"LLM_GA_HC\": <0-100>\n"
-        "  },\n"
-        "  \"strengths\": [\"Điểm mạnh chung của các phương pháp hybrid\"],\n"
-        "  \"weaknesses\": [\"Điểm yếu của phương pháp truyền thống\"],\n"
-        "  \"recommendations\": [\"Khuyến nghị sử dụng trong dự án thực tế\"],\n"
-        "  \"research_conclusion\": \"<Vietnamese deep conclusion>\"\n"
-        "}\n"
+        "# ROLE\n"
+        "Bạn là Senior Test Architect và QA Manager.\n\n"
+        "# MISSION\n"
+        "Phân tích kết quả benchmark của các chiến lược sinh test case khác nhau và đưa ra nhận xét, đánh giá chi tiết.\n"
+        "Đưa ra kết luận chiến lược nào phù hợp nhất với schema hiện tại.\n\n"
+        "# OUTPUT CONTRACT\n"
+        "Trả về định dạng JSON thuần khiết với các trường sau:\n"
+        "- summary: Tóm tắt tổng quan kết quả benchmark\n"
+        "- best_strategy: Tên chiến lược tốt nhất\n"
+        "- recommendations: Danh sách các đề xuất cải thiện\n"
     )
-    user_prompt = f"Benchmark Results:\n{json.dumps(benchmark_results, ensure_ascii=False)}"
+    user_prompt = f"Phân tích dữ liệu benchmark sau và trả về đánh giá JSON:\n{json.dumps(results, ensure_ascii=False)}"
     return system_instruction, user_prompt
+
+def get_seed_generation_instructions(test_method: str, boundary_count: int=4, partition_count: int=3) -> tuple[str, str]:
+    """
+    Hàm sinh prompt cho LLM để sinh toàn bộ dữ liệu F0 (bao gồm cả values) theo kiến trúc V5.
+    """
+    system_instruction = (
+        "**VAI TRÒ (ROLE):**\nBạn là Test Data Engineer xuất sắc với chuyên môn sâu về Kỹ thuật thiết kế Testcase.\n\n"
+        f"**NHIỆM VỤ (TASK):**\nSinh bộ dữ liệu kiểm thử F0 (Test Seeds) bằng phương pháp {test_method} dựa trên Fields Schema được cung cấp.\n\n"
+        "**YÊU CẦU CỤ THỂ (REQUIREMENTS):**\n"
+    )
+    
+    if test_method == 'bva':
+        system_instruction += f"- Áp dụng Phân tích Giá trị biên (BVA) tập trung vào {boundary_count} giá trị xung quanh giới hạn của số/chuỗi.\n- Tạo testcase vét cạn TOÀN BỘ các giá trị sát biên (min-1, min, min+1...). Dữ liệu các trường còn lại phải hợp lệ.\n"
+    elif test_method == 'ep':
+        system_instruction += f"- Áp dụng Phân vùng Tương đương (EP) chia miền thành các khoảng (partition_count={partition_count}).\n- Tạo testcase bao phủ TẤT CẢ các phân vùng (valid và invalid). Không sinh các case giống hệt nhau.\n"
+    elif test_method == 'decision':
+        system_instruction += "- Áp dụng Bảng Quyết định (Decision Table). Test các tổ hợp: all valid, exactly one invalid, multiple invalid.\n- Tạo testcase bao phủ các tổ hợp logic có thể xảy ra.\n"
+    else:
+        system_instruction += "- Tạo bộ dữ liệu hạt giống TOÀN DIỆN VÀ NHIỀU NHẤT CÓ THỂ, bao phủ: happy path, boundary, negative. Mỗi testcase là một trường hợp khác biệt.\n"
+        
+    system_instruction += (
+        "\n**RÀNG BUỘC (CONSTRAINTS):**\n"
+        "- Sinh dữ liệu kiểm thử THỰC TẾ và có NGỮ CẢNH NGHIỆP VỤ rõ ràng.\n"
+        "- KHÔNG sử dụng các giá trị giả lập rác như: aaa, test, value1, sample, placeholder.\n"
+        "- Ưu tiên dữ liệu giống hệ thống thật (Ví dụ: tên sản phẩm là 'Apple iPhone 15 Pro', mã sản phẩm là 'IPH15P'). Dù test biên ngắn (VD 2 ký tự) thì cũng phải mang ý nghĩa thực tế như 'TV', 'PC'.\n"
+        "- Boundary vẫn phải giữ chính xác theo Schema.\n"
+        "- PHẢI bao gồm đủ các loại: positive, boundary, negative.\n"
+        "- **BẮT BUỘC:** Sinh số lượng testcase CÀNG NHIỀU CÀNG TỐT (Ít nhất 15-25 testcases). Tuyệt đối không được sinh lèo tèo 3-5 cases.\n"
+        "- 'scenario' phải mô tả chi tiết kịch bản bằng Tiếng Việt.\n"
+        "- 'rationale' giải thích lý do vì sao thiết kế test case này bằng Tiếng Việt.\n"
+        "- 'expectedResult' PHẢI nhất quán với scenario (VD: 'Thành công' hoặc 'Thất bại: lý do').\n"
+        "- Ước lượng các điểm số fitness (validation, boundary, diversity, negative) và seedQualityScore một cách tương đối.\n\n"
+        "**ĐỊNH DẠNG ĐẦU RA (OUTPUT FORMAT):**\n"
+        "Trả về ĐÚNG cấu trúc JSON sau, không bọc bằng markdown (không có ```json):\n"
+        "{\n"
+        "  \"initialPopulation\": [\n"
+        "    {\n"
+        "      \"scenario\": \"Mô tả kịch bản\",\n"
+        "      \"rationale\": \"Lý do test case\",\n"
+        "      \"categories\": [\"positive\", \"boundary\"],\n"
+        "      \"expectedResult\": \"Kết quả mong đợi\",\n"
+        "      \"errorDescription\": \"Mô tả lỗi (nếu có)\",\n"
+        "      \"coverageTags\": [\"R_PRODUCT_NAME_LENGTH\", \"...\"],\n"
+        "      \"fitnessBreakdown\": {\n"
+        "          \"validation\": 95,\n"
+        "          \"boundary\": 80,\n"
+        "          \"diversity\": 70,\n"
+        "          \"negative\": 90\n"
+        "      },\n"
+        "      \"seedQualityScore\": 84,\n"
+        "      \"values\": { \"<field_name>\": \"<generated_value>\" }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "Lưu ý: values phải dùng chính xác key là name của field trong schema."
+    )
+    return system_instruction, "Sinh TỐI ĐA số lượng dữ liệu kiểm thử F0 (càng nhiều càng tốt, ít nhất 15-20 testcases) đảm bảo vét cạn các kịch bản theo schema được cung cấp."
+
+def get_optimization_explanation_prompt() -> tuple[str, str]:
+    """
+    Prompt yêu cầu LLM giải thích sự thay đổi của thuật toán GA/HC (Step 4 của V5).
+    """
+    system_instruction = (
+        "**VAI TRÒ (ROLE):**\nBạn là AI Optimization Explainer chuyên nghiệp.\n\n"
+        "**NHIỆM VỤ (TASK):**\nBạn sẽ nhận được giá trị của một Test Case 'trước' (Before) và 'sau' (After) khi chạy thuật toán tiến hóa (GA) hoặc leo đồi (HC), cùng với thuật toán đã sử dụng.\n"
+        "Hãy viết một câu nhận xét ngắn gọn, thông minh bằng Tiếng Việt để giải thích lý do thay đổi và sự cải thiện của test case đó.\n\n"
+        "**YÊU CẦU:**\n"
+        "- Phân tích xem field nào đã thay đổi, thay đổi như thế nào.\n"
+        "- Giải thích tác động (VD: 'Tăng thêm 1 ký tự để chạm ngưỡng biên minLength', 'Đột biến sinh ra email không hợp lệ để tăng độ phủ negative').\n"
+        "- Văn phong chuyên nghiệp, tự nhiên, giống như một trợ lý AI đang giải thích cho QA Engineer.\n\n"
+        "**ĐỊNH DẠNG ĐẦU RA:**\n"
+        "Trả về ĐÚNG cấu trúc JSON sau, không bọc markdown:\n"
+        "{\n"
+        "  \"improvementReason\": \"<Lý do giải thích chi tiết vì sao dữ liệu thay đổi và tác dụng của nó>\",\n"
+        "  \"recommendation\": \"<Đề xuất hoặc insight thêm (nếu có)>\"\n"
+        "}"
+    )
+    return system_instruction, "Hãy giải thích sự thay đổi tối ưu hóa."
+
+
+def get_semantic_polish_prompt(schema: list, optimized_values: dict, original_values: dict, test_category: str) -> tuple[str, str]:
+    """
+    Prompt cho bước LLM Semantic Polish (sau GA/HC).
+    LLM nhận boundary-optimized values từ GA/HC và viết lại thành dữ liệu
+    trông realistic/natural trong khi PHẢI giữ nguyên tất cả constraint.
+
+    Nguyên tắc: thuật toán tìm ĐÚNG boundary (min, max, length) — LLM làm đẹp NỘI DUNG.
+    """
+    field_constraints = []
+    for f in schema:
+        constraint = {
+            "name": f["name"],
+            "type": f.get("type") or f.get("semantic_type", "string"),
+            "required": f.get("required", False)
+        }
+        if f.get("allowedValues"):
+            constraint["allowedValues"] = f["allowedValues"]
+        if f.get("minLength") is not None:
+            constraint["minLength"] = f["minLength"]
+        if f.get("maxLength") is not None:
+            constraint["maxLength"] = f["maxLength"]
+        if f.get("minValue") is not None:
+            constraint["minValue"] = f["minValue"]
+        if f.get("maxValue") is not None:
+            constraint["maxValue"] = f["maxValue"]
+        if f.get("regex"):
+            constraint["regex"] = f["regex"]
+        field_constraints.append(constraint)
+
+    system_instruction = (
+        "# VAI TRÒ\n"
+        "Bạn là Test Data Semantic Engineer — chuyên gia viết lại dữ liệu kiểm thử để trông realistic và có ý nghĩa nghiệp vụ.\n\n"
+
+        "# NHIỆM VỤ\n"
+        "Bạn nhận được một bộ giá trị test case đã được thuật toán tối ưu (GA/HC) tạo ra.\n"
+        "Các giá trị này ĐÃ ĐÚNG về mặt boundary/constraint nhưng trông vô nghĩa (VD: 'aaaa@bbbb.com', 'TqwY...^').\n"
+        "Hãy VIẾT LẠI từng giá trị để trông realistic và có ý nghĩa nghiệp vụ — trong khi PHẢI ĐẢM BẢO:\n"
+        "  1. Giữ ĐÚNG LOẠI giá trị (số vẫn là số, email vẫn là email, enum vẫn trong allowedValues)\n"
+        "  2. Giữ ĐÚNG ĐỘ DÀI nếu giá trị gốc đang test boundary length\n"
+        "     (nếu gốc có len=5 và minLength=5, thì bản viết lại cũng phải có len=5)\n"
+        "  3. Giữ ĐÚNG RANGE nếu giá trị gốc đang test boundary value\n"
+        "     (nếu gốc = minValue thì bản viết lại cũng phải = minValue)\n"
+        "  4. Giữ ĐÚNG TÍNH HỢP LỆ: nếu gốc là INVALID (sai format), bản viết lại cũng phải sai format tương tự\n\n"
+
+        "# CHIẾN LƯỢC VIẾT LẠI\n"
+        "- Email boundary-max: thay 'aaa...@bbb.com' bằng email dài nhưng có tên thật: 'nguyen.van.a.test.boundary.max.email@company.com.vn'\n"
+        "- Password boundary: thay chuỗi random thành mật khẩu có pattern rõ: 'Boundary@Max123456789!TestCase'\n"
+        "- String min-boundary: thay 'aa' bằng từ viết tắt có nghĩa như 'TV', 'IT', 'PM'\n"
+        "- Number boundary: giữ nguyên (đã đúng), không thay đổi\n"
+        "- Enum (allowedValues): PHẢI chọn đúng giá trị từ allowedValues, không thay đổi\n"
+        "- Date: format giống gốc, nhưng dùng ngày có ý nghĩa test (đầu tháng, cuối năm, v.v.)\n\n"
+
+        "# HARD RULES\n"
+        "1. KHÔNG được thay đổi giá trị số (number) nếu nó đang tại boundary min/max\n"
+        "2. KHÔNG được thay đổi length quá ±0 nếu giá trị gốc đang test boundary length\n"
+        "3. Enum fields: BẮT BUỘC giữ trong allowedValues\n"
+        "4. Trả về JSON thuần, không markdown\n"
+        "5. Keys phải khớp chính xác với tên field trong schema\n\n"
+
+        f"# SCHEMA CONSTRAINTS\n{json.dumps(field_constraints, ensure_ascii=False, indent=2)}\n\n"
+
+        "# OUTPUT FORMAT\n"
+        "{\n"
+        "  \"polished_values\": { \"<field_name>\": \"<realistic_value>\" },\n"
+        "  \"polish_notes\": { \"<field_name>\": \"<lý do viết lại ngắn gọn>\" }\n"
+        "}"
+    )
+
+    user_prompt = (
+        f"Test category: {test_category}\n\n"
+        f"Original LLM values (trước GA/HC):\n{json.dumps(original_values, ensure_ascii=False, indent=2)}\n\n"
+        f"GA/HC optimized values (cần viết lại):\n{json.dumps(optimized_values, ensure_ascii=False, indent=2)}\n\n"
+        "Hãy viết lại optimized_values để trông realistic và có ý nghĩa nghiệp vụ, "
+        "đồng thời giữ nguyên tất cả constraint (type, length, range, enum)."
+    )
+    return system_instruction, user_prompt
+

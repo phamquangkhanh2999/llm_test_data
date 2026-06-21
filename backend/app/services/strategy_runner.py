@@ -80,9 +80,42 @@ def run_all_strategies(schema: list, rules: list, constraints: list, initial_see
     
     # 6. Strategy: LLM + GA + HC
     # Takes the output of LLM+GA and refines it with HC
-    results["LLM_GA_HC"] = _run_hc_on_dataset(
+    llm_ga_hc_raw = _run_hc_on_dataset(
         results["LLM_GA"],
         schema, rules, constraints, max_iterations=15
     )
+    
+    # [TÍCH HỢP] VALIDATION GATE: Chặn dữ liệu rác từ HC
+    from ..validators.anomaly_detector import AnomalyDetector
+    
+    # Lọc HC thuần
+    results["HC"] = AnomalyDetector.validate_dataset(results["HC"], random_seeds, schema)
+    # Lọc LLM_HC
+    results["LLM_HC"] = AnomalyDetector.validate_dataset(results["LLM_HC"], initial_seeds, schema)
+    # Lọc LLM_GA_HC
+    llm_ga_hc_validated = AnomalyDetector.validate_dataset(llm_ga_hc_raw, results["LLM_GA"], schema)
+    
+    # [TÍCH HỢP] SPRINT 1: P2 Semantic-Preserving Merge & Provenance
+    from ..algorithms.policy_registry import resolve_policy
+    def _apply_merge_and_provenance(dataset):
+        final_dataset = []
+        for tc in dataset:
+            final_tc = {**tc}
+            provenance = {}
+            for field in schema:
+                name = field["name"]
+                policy = resolve_policy(field)
+                if policy == "freeze":
+                    # Đã bị khóa ở GA/HC, nên giá trị này chắc chắn từ LLM
+                    provenance[name] = "LLM"
+                elif policy in ["format_preserving", "constraint_preserving"]:
+                    provenance[name] = "LLM/Refined"
+                else:
+                    provenance[name] = "GA/HC"
+            final_tc["_provenance"] = provenance
+            final_dataset.append(final_tc)
+        return final_dataset
+
+    results["LLM_GA_HC"] = _apply_merge_and_provenance(llm_ga_hc_validated)
     
     return results

@@ -131,41 +131,117 @@ export const HillClimbingComparison: React.FC<HillClimbingComparisonProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'llm' | 'ga' | 'hc_only' | 'hc' | 'comparison'>('comparison');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 40;
+  const [pageSize, setPageSize] = useState(30);
+  const [customPageSize, setCustomPageSize] = useState('');
 
   const handleTabChange = (tab: 'llm' | 'ga' | 'hc_only' | 'hc' | 'comparison') => {
     setActiveTab(tab);
     setCurrentPage(1);
   };
 
-  const totalPages = Math.ceil(comparisons.length / itemsPerPage);
+  const totalPages = Math.ceil(comparisons.length / pageSize);
 
   const visibleComparisons = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return comparisons.slice(startIndex, startIndex + itemsPerPage);
-  }, [comparisons, currentPage]);
+    const startIndex = (currentPage - 1) * pageSize;
+    return comparisons.slice(startIndex, startIndex + pageSize);
+  }, [comparisons, currentPage, pageSize]);
+
+  const handleCustomPageSizeChange = (val: string) => {
+    setCustomPageSize(val);
+    const parsed = parseInt(val, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      setPageSize(parsed);
+      setCurrentPage(1);
+    }
+  };
 
   const renderPagination = () => {
-    if (totalPages <= 1) return null;
+    if (comparisons.length === 0) return null;
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
-        <button
-          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-          disabled={currentPage === 1}
-          style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: currentPage === 1 ? 'transparent' : 'rgba(255,255,255,0.05)', color: currentPage === 1 ? 'var(--text-muted)' : 'var(--text-primary)', cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}
-        >
-          Trước
-        </button>
-        <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-          Trang {currentPage} / {totalPages}
-        </span>
-        <button
-          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-          disabled={currentPage === totalPages}
-          style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: currentPage === totalPages ? 'transparent' : 'rgba(255,255,255,0.05)', color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--text-primary)', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer' }}
-        >
-          Sau
-        </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginTop: '16px', borderTop: '1px solid var(--border-subtle)', paddingTop: '16px' }}>
+        {/* Page Size Selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+          <span>Số dòng/trang:</span>
+          {[30, 60, 100].map(size => (
+            <button
+              key={size}
+              onClick={() => {
+                setPageSize(size);
+                setCustomPageSize('');
+                setCurrentPage(1);
+              }}
+              style={{
+                padding: '4px 8px',
+                borderRadius: '4px',
+                border: '1px solid var(--border-subtle)',
+                background: pageSize === size && !customPageSize ? 'var(--color-teal)' : 'transparent',
+                color: pageSize === size && !customPageSize ? '#fff' : 'var(--text-primary)',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'all 0.15s'
+              }}
+            >
+              {size}
+            </button>
+          ))}
+          <input
+            type="number"
+            placeholder="Khác..."
+            value={customPageSize}
+            onChange={(e) => handleCustomPageSizeChange(e.target.value)}
+            min="1"
+            max="500"
+            style={{
+              width: '65px',
+              padding: '4px 8px',
+              fontSize: '12px',
+              borderRadius: '4px',
+              border: '1px solid var(--border-subtle)',
+              background: 'transparent',
+              color: 'var(--text-primary)',
+              outline: 'none',
+              textAlign: 'center'
+            }}
+          />
+        </div>
+
+        {/* Pagination Navigation */}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px' }}>
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-subtle)',
+                background: 'transparent',
+                color: currentPage === 1 ? 'var(--text-muted)' : 'var(--text-primary)',
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+              }}
+            >
+              Trước
+            </button>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              Trang <strong>{currentPage}</strong> / {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-subtle)',
+                background: 'transparent',
+                color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--text-primary)',
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+              }}
+            >
+              Sau
+            </button>
+          </div>
+        )}
       </div>
     );
   };

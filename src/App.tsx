@@ -9,7 +9,6 @@ import {
 import React from 'react';
 import { AILogsViewer } from './components/AILogsViewer';
 import { DataImport } from './components/DataImport';
-import { BenchmarkDashboard } from './components/BenchmarkDashboard';
 import { HistoryManager } from './components/HistoryManager';
 import { Layout } from './components/Layout';
 import { OptimizationDashboard } from './components/OptimizationDashboard';
@@ -24,7 +23,6 @@ import { useAppStore } from './store/useAppStore';
 function App() {
   // Tab state within steps
   const [prepareTab, setPrepareTab] = React.useState<string>('ai');
-  const [optimizeTab, setOptimizeTab] = React.useState<string>('optimize');
   const [isAILogsOpen, setIsAILogsOpen] = React.useState(false);
 
   const {
@@ -34,15 +32,15 @@ function App() {
     activeScreen,
     setActiveScreen,
     completedScreens,
-    initialSeeds,
     historyRuns,
     optimizedDataset,
     llmProvider,
     setLlmProvider,
+    initialSeeds,
   } = useAppStore();
 
   const hasInputData = parsedSchema.length > 0 && initialSeeds.length > 0;
-  const hasOptimizedResult = optimizedDataset.length > 0;
+  const hasOptimizedData = !!(optimizedDataset?.finalResult && optimizedDataset.finalResult.length > 0);
   const hasHistory = historyRuns.length > 0;
 
   const menuItems = [
@@ -328,16 +326,9 @@ function App() {
               },
             ]}
           >
-            <Tabs
-              tabs={[
-                { id: 'benchmark', label: '2.1. Chiến Trường Benchmark', icon: <Zap size={15} />, color: '#D97706' },
-                { id: 'optimize', label: '2.2. Tiến Hóa GA/HC', icon: <Activity size={15} />, color: '#7C3AED' }
-              ]}
-              activeTab={optimizeTab}
-              onChange={setOptimizeTab}
-            />
+            {/* Tab 2.1 Benchmark đã được ẩn theo yêu cầu — code giữ nguyên tại BenchmarkDashboard.tsx */}
             <div style={{ marginTop: '16px' }}>
-              {optimizeTab === 'benchmark' ? <BenchmarkDashboard /> : <OptimizationDashboard />}
+              <OptimizationDashboard />
             </div>
           </PageLayout>
         </div>
@@ -358,7 +349,7 @@ function App() {
             accentColor='#0D9488'
             prerequisites={[
               {
-                met: hasHistory || hasOptimizedResult,
+                met: hasHistory || hasOptimizedData,
                 warningText:
                   'Chưa có kết quả tối ưu nào. Hãy chạy thuật toán ở Bước 2 ít nhất một lần.',
                 goBackScreen: 'optimize',

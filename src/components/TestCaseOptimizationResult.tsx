@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Tag, Modal, Tabs, Spin, Typography, Space, Row, Col, Card } from 'antd';
-import { EvolutionTraceTable } from './EvolutionTraceTable';
-import { Activity, GitMerge, FileText, CheckCircle, Database, Search } from 'lucide-react';
-
-const { Title, Text } = Typography;
+import { Table, Tag, Modal, Tabs, Spin } from 'antd';
+import { Activity, CheckCircle, Database, Search } from 'lucide-react';
 
 interface TestCaseSummary {
   id: string;

@@ -1,5 +1,6 @@
 import random
 import math
+from .coverage_analyzer import analyze_coverage
 
 
 class BoundaryTweakStats:
@@ -39,7 +40,7 @@ class BoundaryTweakStats:
 #      để thoát khỏi các cực trị cục bộ.
 #   4. Khởi động lại ngẫu nhiên (Random Restarts) từ nhiều điểm xuất phát khác nhau để tìm biên tốt nhất.
 # =========================================================================
-def optimize_testcase_boundaries(test_case, schema, fitness_evaluator, max_iterations=15):
+def optimize_testcase_boundaries(test_case, schema, fitness_evaluator, max_iterations=15, global_coverage_set=None):
     """
     BỘ TINH CHỈNH BIÊN CỤC BỘ NÂNG CẤP (Hill Climbing local search).
 
@@ -69,7 +70,8 @@ def optimize_testcase_boundaries(test_case, schema, fitness_evaluator, max_itera
         optimized, stats = _simulated_annealing_hc(
             starting_point, schema, fitness_evaluator,
             max_iterations=max_iterations,
-            restart_idx=restart_idx
+            restart_idx=restart_idx,
+            global_coverage_set=global_coverage_set
         )
 
         if stats.optimized_fitness > best_overall_fitness:
@@ -96,10 +98,15 @@ def _generate_restart_point(original, schema, restart_idx):
     import random as _random
     point = {**original}
 
+    from .policy_registry import resolve_policy
     for field in schema:
         name = field["name"]
         val = point.get(name)
         val_str = str(val)
+        
+        policy = resolve_policy(field)
+        if policy == "freeze":
+            continue
 
         if field["type"] == "number":
             try:
@@ -133,7 +140,7 @@ def _generate_restart_point(original, schema, restart_idx):
 
 
 def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
-                             max_iterations=15, restart_idx=0):
+                             max_iterations=15, restart_idx=0, global_coverage_set=None):
     """
     Leo đồi (Hill Climbing) được tăng cường bằng Mô phỏng luyện kim (Simulated Annealing) và Tìm kiếm cấm (Tabu Search).
 
@@ -177,12 +184,17 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
         # Giảm dần nhiệt độ (cooling)
         temperature = initial_temperature * (alpha ** iteration)
 
+        from .policy_registry import resolve_policy
         # --- Thử tinh chỉnh từng trường dữ liệu ---
         for field in schema:
             field_name = field["name"]
             field_type = field["type"]
             current_val = optimized[field_name]
             neighbors = []
+            
+            policy = resolve_policy(field)
+            if policy == "freeze":
+                continue
 
             # =========================================================================
             # [BVA] SINH TẬP CÁC PHƯƠNG ÁN LÂN CẬN (NEIGHBORHOOD GENERATION FOR LOCAL SEARCH)
@@ -220,43 +232,93 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
                 except (ValueError, TypeError):
                     pass
             elif field_type == "date":
-                # --- [BVA] Lân cận cho kiểu ngày: biên ngày kinh điển + ca sai định dạng ---
-                neighbors.extend([
-                    "2024-02-29", "2020-01-01", "2023-12-31", "2024-04-30", "2021-02-28",
-                    "2024-13-01", "2024-02-30", "not-a-date", "2024/01/01", ""
-                ])
+                from .optimizer_engine import generate_random_field_value
+                for _ in range(3):
+                    neighbors.append(generate_random_field_value(field, "valid"))
+                for _ in range(2):
+                    neighbors.append(generate_random_field_value(field, "boundary"))
+                    neighbors.append(generate_random_field_value(field, "invalid"))
+                neighbors.append("")
+            elif field_type in ["email", "phone", "card"] or field.get("semantic_type") in ["email", "phone", "card"]:
+                ftype = field_type if field_type in ["email", "phone", "card"] else field.get("semantic_type")
+                str_val = str(current_val)
+                if ftype == "email":
+                    parts = str_val.split("@")
+                    if len(parts) == 2:
+                        neighbors.extend([
+                            parts[0] + "1@" + parts[1],
+                            parts[0] + "@test.com",
+                            parts[0][:50].ljust(50, 'a') + "@" + parts[1],
+                            str_val.replace("@", ""),
+                            str_val + "@@",
+                            ""
+                        ])
+                    else:
+                        neighbors.extend([str_val + "@gmail.com", str_val + "1", str_val + "@@", ""])
+                elif ftype == "phone":
+                    neighbors.extend([
+                        str_val[:-1] + "1" if len(str_val) > 0 else "0987654321",
+                        str_val.ljust(10, '0'),
+                        str_val.ljust(11, '0'),
+                        str_val + "a",
+                        ""
+                    ])
+                elif ftype == "card":
+                    neighbors.extend([
+                        str_val[:-1] + "1" if len(str_val) > 0 else "1234567890123456",
+                        str_val.ljust(16, '0'),
+                        str_val + "X",
+                        ""
+                    ])
             else:
                 str_val = str(current_val)
+                
+                # NÂNG CẤP: DYNAMIC CONSTRAINT-AWARE MUTATION
+                
+                # 1. Enum-based Mutation (allowedValues)
+                # ENUM-SAFE: chỉ thêm các giá trị hợp lệ — KHÔNG bao giờ sinh INVALID_ENUM_VALUE
+                if field.get("allowedValues"):
+                    current_vals = [str(v) for v in field["allowedValues"]]
+                    # Thêm tất cả giá trị hợp lệ khác làm lân cận (để HC luân chuyển trong enum)
+                    neighbors.extend([v for v in current_vals if v != str_val])
+                    
+                # 2. Regex-based Mutation
+                elif field.get("regex"):
+                    # SAFE: Đảo hoa thường một số ký tự (vẫn có thể pass/fail tùy regex)
+                    neighbors.append(str_val.swapcase())
+                    # NEGATIVE: Chèn ký tự phá vỡ định dạng
+                    neighbors.append(str_val + "@@")
+                    neighbors.append("!" + str_val)
+                    if "@" in str_val:
+                        neighbors.append(str_val.replace("@", ""))
 
-                # --- Biến đổi ký tự (Thêm/Bớt/Nhúng mã độc để kiểm tra robustness) ---
-                for char in special_chars[:8]:  # tập con để giới hạn số lân cận
-                    neighbors.append(str_val + char)
-                    neighbors.append(char + str_val)
-
-                # Xóa ký tự để thay đổi độ dài chuỗi
-                if len(str_val) > 0:
-                    neighbors.append(str_val[:-1])
-                    neighbors.append(str_val[1:])
+                # 3. Generic String with Length Constraints
+                else:
+                    # SAFE: Thay đổi nhẹ ký tự
+                    if len(str_val) > 0:
+                        neighbors.append(str_val[:-1] + ("1" if str_val[-1].isalpha() else "a"))
+                        neighbors.append("A" + str_val[1:])
+                        
+                    # BOUNDARY: Tinh chỉnh độ dài chuỗi tiệm cận biên đặc tả
+                    if field.get("minLength") is not None:
+                        target = field["minLength"]
+                        if len(str_val) > target:
+                            # Cắt chuỗi để bằng đúng độ dài tối thiểu
+                            neighbors.append(str_val[:target])
+                    if field.get("maxLength") is not None:
+                        target = field["maxLength"]
+                        if len(str_val) < target:
+                            # Lặp lại chuỗi gốc để đạt độ dài tối đa (bảo toàn cấu trúc semantic nếu có)
+                            repeats = (target // max(1, len(str_val))) + 1
+                            padded = (str_val * repeats)[:target]
+                            neighbors.append(padded)
+                        # Đệm thêm ký tự vượt quá độ dài tối đa 1 đơn vị (NEGATIVE BOUNDARY)
+                        neighbors.append(str_val.ljust(target + 1, "X"))
+                        
+                    # NEGATIVE: Xóa chuỗi, hoặc rút cực ngắn
                     neighbors.append("")
-
-
-
-                # --- [BVA] Tinh chỉnh độ dài chuỗi tiệm cận biên đặc tả ---
-                if field.get("minLength") is not None:
-                    target = field["minLength"]
-                    if len(str_val) > target:
-                        # Cắt chuỗi để bằng đúng độ dài tối thiểu (Min Length)
-                        neighbors.append(str_val[:target])
-                    else:
-                        # Đệm thêm ký tự để đạt độ dài tối thiểu (Min Length)
-                        neighbors.append(str_val.ljust(target, "A"))
-                if field.get("maxLength") is not None:
-                    target = field["maxLength"]
-                    if len(str_val) < target:
-                        # Đệm thêm ký tự để đạt đúng độ dài tối đa (Max Length)
-                        neighbors.append(str_val.ljust(target, "A"))
-                    # Đệm thêm ký tự vượt quá độ dài tối đa 1 đơn vị để tạo ca kiểm thử vi phạm biên trên (Max Length + 1)
-                    neighbors.append(str_val.ljust(target + 1, "X"))
+                    if len(str_val) > 2:
+                        neighbors.append(str_val[:1])
 
             # --- 2. Đánh giá các lân cận (có lọc Tabu) ---
             best_neighbor = None
@@ -285,10 +347,20 @@ def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
             # [START: SIMULATED_ANNEALING_ACCEPTANCE]
             # --- 3. Chấp nhận bước đi (SA hoặc Leo dốc đứng) ---
             if best_neighbor is not None:
+                # COVERAGE GAIN LOGIC
+                gain = 0
+                if global_coverage_set is not None:
+                    new_tags = set(analyze_coverage(candidate_testcase, schema))
+                    # Gain is the number of tags in new_tags that are NOT in global_coverage_set
+                    new_unique_tags = new_tags - global_coverage_set
+                    gain = len(new_unique_tags)
+                
                 delta = best_neighbor_fitness - current_fitness
-
-                accept_move = False
-                if delta > 0:
+                
+                # Acceptance Criteria:
+                # 1. Gain > 0 (Tìm được rule mới hoàn toàn cho toàn bộ Suite) -> Chấp nhận tuyệt đối
+                # 2. Hoặc Fitness tăng (Fallback)
+                if gain > 0 or delta > 0:
                     # Cải thiện: luôn chấp nhận
                     accept_move = True
                 elif temperature > 0.001:

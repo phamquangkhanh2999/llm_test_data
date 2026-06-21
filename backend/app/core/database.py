@@ -7,8 +7,10 @@ from dotenv import load_dotenv
 # Bước 1: Nạp các biến môi trường từ tệp tin .env cục bộ
 load_dotenv()
 
-# Bước 2: Lấy đường dẫn kết nối CSDL, mặc định là SQLite lưu dưới dạng tệp tin "testforge.db" trong thư mục hiện tại
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./testforge.db")
+# Bước 2: Đảm bảo DB luôn được lưu trong thư mục 'backend' thay vì thư mục hiện hành khi gọi uvicorn từ ngoài vào
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+db_path = os.path.join(BASE_DIR, "testforge.db")
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{db_path}")
 
 # Bước 3: Khởi tạo Engine SQLAlchemy. 
 # Tham số "connect_args={'check_same_thread': False}" là bắt buộc đối với SQLite 

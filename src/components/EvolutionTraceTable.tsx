@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GitMerge, Activity, CheckCircle, ArrowRight, Minus, Sparkles } from 'lucide-react';
+import { GitMerge, Activity, ArrowRight, Sparkles } from 'lucide-react';
 import type { ComparisonRecord } from './HillClimbingComparison';
 
 interface EvolutionTraceProps {
