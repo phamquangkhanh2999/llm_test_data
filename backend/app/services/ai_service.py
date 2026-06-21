@@ -9,7 +9,7 @@ from ..validators.rule_validator import validate_rules
 from ..validators.schema_validator import validate_schema
 from ..validators.seed_validator import validate_seeds
 from .llm_client import call_llm_json
-from ..engines.fitness_engine import calculate_dataset_fitness
+from ..engines.fitness_engine import calculate_dataset_fitness, audit_dataset
 from .prompts import get_evaluate_test_quality_prompt, get_evaluate_optimized_prompt, get_parse_spec_combined_prompt
 from ..algorithms.optimizer_engine import is_valid_iso_date, random_valid_date
 
@@ -942,10 +942,16 @@ def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, r
     
     # Deterministic Engine Calculation
     deterministic_metrics = calculate_dataset_fitness(seeds, extracted_rules, extracted_constraints)
-    
+    # Số liệu thống kê xác định (đếm, tcId trùng, schema, biên) — nguồn sự thật cho LLM, tránh bịa số.
+    dataset_audit = audit_dataset(seeds, fields)
+    deterministic_metrics["dataset_audit"] = dataset_audit
+
     system_instructions, user_prompt_text = get_evaluate_test_quality_prompt(fields, seeds, test_method, raw_text, deterministic_metrics)
     try:
         res, engine_name, model_name = call_llm_json(system_instructions, user_prompt_text, api_key_override, llm_provider)
+        # Ghi đè số liệu đếm được bằng giá trị xác định để báo cáo luôn khớp dữ liệu thật.
+        if isinstance(res, dict):
+            res["dataset_stats"] = dataset_audit
         log_ai_call(db, "/api/evaluate-seeds", engine_name, model_name, "Prompt", json.dumps(res, ensure_ascii=False), "SUCCESS")
         return res
     except Exception as e:

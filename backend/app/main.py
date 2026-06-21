@@ -106,6 +106,8 @@ class EvaluateRequest(BaseModel):
     seeds: List[Dict[str, Any]]
     test_method: str
     raw_text: str
+    extracted_rules: Optional[List[Dict[str, Any]]] = None
+    extracted_constraints: Optional[List[Dict[str, Any]]] = None
     api_key_override: Optional[str] = None
     llm_provider: Optional[str] = "gemini"
 
@@ -307,8 +309,8 @@ def api_evaluate_seeds(req: EvaluateRequest, db: Session = Depends(get_db)):
             raw_text=req.raw_text,
             api_key_override=req.api_key_override,
             db=db,
-            extracted_rules=[],
-            extracted_constraints=[],
+            extracted_rules=req.extracted_rules or [],
+            extracted_constraints=req.extracted_constraints or [],
             llm_provider=req.llm_provider
         )
         return {"success": True, "data": evaluation}

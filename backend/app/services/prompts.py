@@ -137,9 +137,13 @@ def get_evaluate_test_quality_prompt(fields: list, seeds: list, test_method: str
         f"Fields Schema:\n{json.dumps(fields, ensure_ascii=False)}\n\n"
         f"Testing Method:\n{test_method}\n\n"
         f"Deterministic Metrics from Engine:\n{json.dumps(deterministic_metrics, ensure_ascii=False)}\n\n"
+        f"Dataset Audit (SỐ LIỆU XÁC ĐỊNH TỪ ENGINE - NGUỒN SỰ THẬT DUY NHẤT VỀ CON SỐ):\n{json.dumps(deterministic_metrics.get('dataset_audit', {}), ensure_ascii=False)}\n\n"
         f"Dataset to Evaluate:\n{json.dumps(seeds, ensure_ascii=False)}\n\n"
-        
+
         "# HARD RULES\n"
+        "0. TUYỆT ĐỐI KHÔNG tự đếm hay tự bịa bất kỳ con số nào (tổng số case, số case theo method/loại, số tcId trùng, độ dài ký tự, tỷ lệ %). MỌI con số phải lấy NGUYÊN VĂN từ 'Dataset Audit'. Nếu Audit báo total=10 thì PHẢI nói 10, cấm nói 53. Nếu Audit không có một con số nào đó thì KHÔNG được nêu con số đó.\n"
+        "0b. Nhận xét về tcId trùng chỉ được nêu nếu 'duplicate_tcids' trong Audit không rỗng. Nhận xét về schema sai (field ngoài 'values', cấu trúc không nhất quán) chỉ được nêu nếu 'schema.structure_inconsistent'=true hoặc 'schema.unexpected_fields' không rỗng. Nhận xét thiếu giá trị biên chỉ được nêu dựa trên 'boundary_coverage': nếu một trường có 'has_at_maxLength'=false thì kết luận 'thiếu case ở cận tối đa của trường đó', nếu 'has_above_maxLength'=false thì 'thiếu case vượt cận tối đa', tương tự cho min. Không suy diễn biên ngoài dữ liệu boundary_coverage.\n"
+        "0c. Chỉ nhận xét về các trường có thật trong 'expected_fields' của Audit. Nếu dữ liệu là chức năng đăng nhập (chỉ có email, mật khẩu) thì CẤM bịa các trường như name, phone, address, confirm_password.\n"
         "1. Nhận định phải dựa trên số liệu thực tế từ công cụ tính toán trong Metrics, không được tự ý phóng đại hoặc suy đoán sai lệch. Không dùng các ví dụ mặc định nằm ngoài danh sách các trường đầu vào.\n"
         "2. Đề xuất các ca kiểm thử thiếu ('missing_cases') phải cụ thể theo trường dữ liệu và ràng buộc bị thiếu có trong schema đầu vào (ví dụ: 'Thiếu kiểm thử giá trị biên max của trường <tên_trường_thực_tế>').\n"
         "3. Toàn bộ nhận xét, điểm mạnh, điểm yếu và các ca kiểm thử còn thiếu phải viết bằng tiếng Việt.\n"
@@ -169,8 +173,9 @@ def get_evaluate_test_quality_prompt(fields: list, seeds: list, test_method: str
     )
     user_prompt = (
         f"Metrics: {json.dumps(deterministic_metrics)}\n"
+        f"Dataset Audit (dùng đúng các con số này, cấm bịa): {json.dumps(deterministic_metrics.get('dataset_audit', {}), ensure_ascii=False)}\n"
         f"Dataset: {json.dumps(seeds, ensure_ascii=False)}\n"
-        "Hãy thực hiện đánh giá chất lượng bộ dữ liệu kiểm thử."
+        "Hãy thực hiện đánh giá chất lượng bộ dữ liệu kiểm thử. Mọi con số phải khớp Dataset Audit."
     )
     return system_instruction, user_prompt
 
