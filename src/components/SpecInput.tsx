@@ -11,8 +11,9 @@ import {
   Sparkles,
   Trash2,
   Zap,
+  XCircle,
 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { generateRandomValue, GeneticEngine } from '../algorithms/genetic';
 import type { FieldConstraint } from '../algorithms/presets';
 import { PRESETS } from '../algorithms/presets';
@@ -65,6 +66,8 @@ export const SpecInput: React.FC = () => {
     llmProvider,
     setCoverageSummary,
   } = useAppStore();
+
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const hasApiKey = apiKey.trim().length > 10;
 
@@ -155,18 +158,10 @@ const isInvalid = idx % 9 === 0;
     }
   }, [initialSeeds, parsedSchema]);
 
-  // --- CẢI TIẾN DRAG-AND-DROP & HIGHLIGHTING ---
+  // --- CẢI TIẾN DRAG-AND-DROP ---
   const [isDragging, setIsDragging] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const highlightRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
-
-  const handleScroll = () => {
-    if (textareaRef.current && highlightRef.current) {
-      highlightRef.current.scrollTop = textareaRef.current.scrollTop;
-      highlightRef.current.scrollLeft = textareaRef.current.scrollLeft;
-    }
-  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -239,85 +234,7 @@ const isInvalid = idx % 9 === 0;
     });
   };
 
-  const getHighlightedText = (text: string) => {
-    if (!text)
-      return (
-        <span style={{ color: 'var(--text-muted)', opacity: 0.6 }}>
-          Nhập mô tả nghiệp vụ cho dữ liệu cần sinh tại đây... (Hoặc kéo thả file .txt, .docx vào
-          đây)
-        </span>
-      );
 
-    let escapedText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-    const tokens: { id: string; replacement: string }[] = [];
-    let tokenCounter = 0;
-
-    const keywords = {
-      types: [
-        /email/gi,
-        /phone/gi,
-        /card/gi,
-        /number/gi,
-        /username/gi,
-        /mật khẩu/gi,
-        /password/gi,
-        /tuổi/gi,
-        /số điện thoại/gi,
-        /số thẻ/gi,
-      ],
-      boundaries: [
-        /tối thiểu/gi,
-        /tối đa/gi,
-        /min/gi,
-        /max/gi,
-        /độ dài/gi,
-        /minLength/gi,
-        /maxLength/gi,
-        /minValue/gi,
-        /maxValue/gi,
-        /regex/gi,
-        /allowedValues/gi,
-        /giới hạn/gi,
-        /khoảng/gi,
-        /chữ số/gi,
-        /ký tự/gi,
-        /bắt buộc/gi,
-        /required/gi,
-        /không được trống/gi,
-      ],
-    };
-
-    const replaceWithToken = (regex: RegExp, className: string) => {
-      escapedText = escapedText.replace(regex, (match) => {
-        const id = `___TOKEN_${tokenCounter++}___`;
-        const color =
-          className === 'highlight-type'
-            ? 'var(--color-teal)'
-            : 'var(--color-violet)';
-        const styleString = `color: ${color}; font-weight: bold; text-shadow: 0 0 3px ${color}50;`;
-        tokens.push({
-          id,
-          replacement: `<span style="${styleString}">${match}</span>`,
-        });
-        return id;
-      });
-    };
-
-    keywords.boundaries.forEach((regex) => replaceWithToken(regex, 'highlight-boundary'));
-    keywords.types.forEach((regex) => replaceWithToken(regex, 'highlight-type'));
-
-    let finalHtml = escapedText;
-    tokens.forEach((token) => {
-      finalHtml = finalHtml.replaceAll(token.id, token.replacement);
-    });
-
-    if (finalHtml.endsWith('\n')) {
-      finalHtml += ' ';
-    }
-
-    return <div dangerouslySetInnerHTML={{ __html: finalHtml }} />;
-  };
 
   const downloadHistoryJson = (item: any) => {
     const dataStr =
@@ -333,6 +250,7 @@ const isInvalid = idx % 9 === 0;
   // --- CẤU HÌNH PHƯƠNG PHÁP KIỂM THỬ KHỞI TẠO (F0 SEEDS) ---
   // Chọn các thuật toán sinh dữ liệu ban đầu (Hỗ trợ chọn nhiều phương pháp đồng thời)
   const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
+  const currentJobIdRef = useRef<string | null>(null);
 
   const toggleMethod = (method: 'random' | 'bva' | 'ep' | 'decision') => {
     setSelectedMethods((prev) => {
@@ -352,57 +270,62 @@ const isInvalid = idx % 9 === 0;
       return;
     }
     setIsRegenerating(true);
+    abortControllerRef.current = new AbortController();
     try {
-      const results = [];
-      for (const method of selectedMethods) {
-        const response = await fetch(`${config.API_BASE_URL}/api/generate-seeds`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fields: parsedSchema,
-            business_rules: businessRules,
-            constraints: [], // Constraints not available in this context without reanalyzing, or maybe pass from state if available
-            test_method: method,
-            boundary_count: boundaryCount,
-            partition_count: partitionCount,
-            api_key_override: apiKey ? apiKey.trim() : null,
-            raw_text: rawText,
-            llm_provider: llmProvider,
-          }),
-        });
+      // Make a single API call with all selected methods
+      const jobId = crypto.randomUUID();
+      currentJobIdRef.current = jobId;
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(
-            errorData.detail || `Không thể sinh hạt giống bằng phương pháp ${method}`,
-          );
-        }
+      const response = await fetch(`${config.API_BASE_URL}/api/generate-seeds`, {
+        method: 'POST',
+        signal: abortControllerRef.current.signal,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fields: parsedSchema,
+          business_rules: businessRules,
+          constraints: [],
+          test_methods: selectedMethods,
+          boundary_count: boundaryCount,
+          partition_count: partitionCount,
+          api_key_override: apiKey ? apiKey.trim() : null,
+          raw_text: rawText,
+          llm_provider: llmProvider,
+          job_id: jobId
+        }),
+      });
 
-        const data = await response.json();
-        results.push({
-          method,
-          population: data.initialPopulation || [],
-          isMock: data.is_mock || false,
-        });
-
-        // Nghỉ ngắn 250ms giữa các lần gọi nếu chọn nhiều phương pháp
-        if (selectedMethods.length > 1) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.detail || `Không thể sinh hạt giống. Vui lòng thử lại.`,
+        );
       }
 
-      // Cập nhật store methodSeeds cho từng phương pháp
+      const data = await response.json();
+      const returnedSeeds = data.initialPopulation || [];
+      const isMock = data.is_mock || false;
+
+      // Cập nhật store methodSeeds cho từng phương pháp bằng cách chia đều kết quả
       const newMethodSeeds: Record<string, any[]> = {
         random: [],
         bva: [],
         ep: [],
         decision: [],
       };
-      results.forEach((r) => {
-        newMethodSeeds[r.method] = r.population;
+      
+      // Phân phối luân phiên các hạt giống vào các danh mục đã chọn
+      returnedSeeds.forEach((seed: any, index: number) => {
+        const targetMethod = selectedMethods[index % selectedMethods.length];
+        // Đảm bảo gán nhãn method cho UI
+        if (!seed.method) {
+          seed.method = targetMethod === 'bva' ? 'BVA' : targetMethod === 'ep' ? 'EP' : targetMethod === 'decision' ? 'Bảng quyết định' : 'Ngẫu nhiên';
+        }
+        newMethodSeeds[targetMethod].push(seed);
       });
+      
+      const results = [{ population: returnedSeeds, isMock }];
       setMethodSeeds(newMethodSeeds);
 
       const populations = results.map((r) => r.population);
@@ -426,8 +349,12 @@ const isInvalid = idx % 9 === 0;
       setInitialSeeds(combinedSeeds);
       // setCoverageSummary(calculateCoverageSummary(combinedSeeds, parsedSchema));
     } catch (e: any) {
-      console.error('Lỗi khi tái sinh F0:', e);
-      message.error(e.message || 'Lỗi khi tái sinh F0');
+      if (e.name === 'AbortError') {
+        message.info('Đã hủy quá trình sinh test cases F0.');
+      } else {
+        console.error('Lỗi sinh F0:', e);
+        message.error(e.message || 'Lỗi khi sinh hạt giống F0!');
+      }
     } finally {
       setIsRegenerating(false);
     }
@@ -437,8 +364,10 @@ const isInvalid = idx % 9 === 0;
     if (!rawText.trim()) return;
     setIsParsing(true);
     try {
+      abortControllerRef.current = new AbortController();
       const response = await fetch(`${config.API_BASE_URL}/api/specifications`, {
         method: 'POST',
+        signal: abortControllerRef.current.signal,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -479,8 +408,12 @@ const isInvalid = idx % 9 === 0;
       }
       setShowSchemaDetails(true); // Tự động mở Schema Visualizer
     } catch (e: any) {
-      console.error(e);
-      message.error(`Lỗi phân tích đặc tả: ${e.message}`);
+      if (e.name === 'AbortError') {
+        message.info('Đã hủy quá trình phân tích đặc tả.');
+      } else {
+        console.error(e);
+        message.error(`Lỗi phân tích đặc tả: ${e.message}`);
+      }
     } finally {
       setIsParsing(false);
     }
@@ -515,9 +448,15 @@ const isInvalid = idx % 9 === 0;
       const currentBusinessRules = useAppStore.getState().businessRules || [];
       const currentConstraints = useAppStore.getState().constraints || [];
 
-      for (const method of otherMethods) {
+      abortControllerRef.current = new AbortController();
+
+      if (otherMethods.length > 0) {
+        const jobId = crypto.randomUUID();
+        currentJobIdRef.current = jobId;
+
         const response = await fetch(`${config.API_BASE_URL}/api/generate-seeds`, {
           method: 'POST',
+          signal: abortControllerRef.current?.signal,
           headers: {
             'Content-Type': 'application/json',
           },
@@ -525,36 +464,44 @@ const isInvalid = idx % 9 === 0;
             fields: parsedSchema,
             business_rules: currentBusinessRules,
             constraints: currentConstraints,
-            test_method: method,
+            test_methods: otherMethods,
             boundary_count: boundaryCount,
             partition_count: partitionCount,
             api_key_override: apiKey ? apiKey.trim() : null,
             raw_text: rawText,
             llm_provider: llmProvider,
+            job_id: jobId
           }),
         });
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.detail || `Không thể sinh hạt giống bằng phương pháp ${method}`);
+          throw new Error(errorData.detail || `Không thể sinh hạt giống. Vui lòng thử lại.`);
         }
 
         const data = await response.json();
-        results.push({
-          method,
-          population: data.initialPopulation || [],
-          isMock: data.is_mock || false,
-        });
+        const returnedSeeds = data.initialPopulation || [];
+        const isMock = data.is_mock || false;
 
-        if (otherMethods.length > 1) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
-        }
+        // Phân phối kết quả
+        returnedSeeds.forEach((seed: any, index: number) => {
+          const targetMethod = otherMethods[index % otherMethods.length];
+          results.push({
+            method: targetMethod,
+            population: [seed], // We push individually or we can group them
+            isMock: isMock,
+          });
+        });
       }
 
       const isAnyMock = results.some((r) => r.isMock);
 
       const newMethodSeeds: Record<string, any[]> = { random: [], bva: [], ep: [], decision: [] };
-      results.forEach((r) => { newMethodSeeds[r.method] = r.population; });
+      results.forEach((r) => { 
+        if (r.population && r.population.length > 0) {
+           newMethodSeeds[r.method].push(...r.population);
+        }
+      });
       setMethodSeeds(newMethodSeeds);
 
       const seen = new Set<string>();
@@ -931,31 +878,13 @@ const isInvalid = idx % 9 === 0;
               position: 'relative', 
               width: '100%', 
               minHeight: '220px',
-              borderRadius: '16px',
-              background: 'var(--bg-card)',
-              border: isFocused ? '2px solid var(--color-teal)' : '1px solid var(--border-subtle)',
-              boxShadow: isFocused ? '0 8px 30px rgba(13, 148, 136, 0.15)' : '0 4px 15px rgba(0,0,0,0.03)',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              borderRadius: '12px',
               overflow: 'hidden'
             }}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
-            {/* Trang trí icon nền mờ để UI bớt nhàm chán */}
-            <BrainCircuit 
-              size={120} 
-              style={{ 
-                position: 'absolute', 
-                right: '-20px', 
-                bottom: '-20px', 
-                color: 'var(--color-teal)', 
-                opacity: 0.03, 
-                pointerEvents: 'none',
-                zIndex: 0
-              }} 
-            />
-
             {isDragging && (
               <div
                 style={{
@@ -964,7 +893,7 @@ const isInvalid = idx % 9 === 0;
                   zIndex: 10,
                   background: 'rgba(234, 251, 249, 0.95)',
                   border: '2px dashed var(--color-teal)',
-                  borderRadius: '16px',
+                  borderRadius: '12px',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
@@ -980,32 +909,6 @@ const isInvalid = idx % 9 === 0;
               </div>
             )}
 
-            <div
-              ref={highlightRef}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                padding: '20px',
-                margin: 0,
-                border: 'none',
-                fontFamily: 'inherit',
-                fontSize: '15px',
-                lineHeight: '1.7',
-                color: 'var(--text-secondary)',
-                backgroundColor: 'transparent',
-                whiteSpace: 'pre-wrap',
-                wordWrap: 'break-word',
-                overflow: 'hidden',
-                pointerEvents: 'none',
-                zIndex: 1,
-              }}
-            >
-              {getHighlightedText(rawText)}
-            </div>
-
             <textarea
               ref={textareaRef}
               value={rawText}
@@ -1018,26 +921,26 @@ const isInvalid = idx % 9 === 0;
               }}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
-              onScroll={handleScroll}
               style={{
                 width: '100%',
                 minHeight: '220px',
-                padding: '20px',
+                padding: '16px',
                 resize: 'vertical',
-                fontFamily: 'inherit',
+                fontFamily: 'var(--font-sans), system-ui, -apple-system, sans-serif',
                 fontSize: '15px',
-                lineHeight: '1.7',
-                background: 'transparent',
-                color: 'transparent',
-                caretColor: 'var(--text-primary)',
-                position: 'relative',
-                zIndex: 2,
+                lineHeight: '1.6',
+                background: '#ffffff',
+                color: 'var(--text-primary)',
+                border: isFocused ? '2px solid var(--color-teal)' : '1.5px solid var(--border-subtle)',
+                borderRadius: '12px',
+                boxShadow: isFocused ? '0 0 0 3px rgba(15, 118, 110, 0.15)' : 'none',
                 whiteSpace: 'pre-wrap',
                 wordWrap: 'break-word',
                 outline: 'none',
-                border: 'none'
+                transition: 'all 0.2s ease-in-out',
+                display: 'block'
               }}
-              placeholder=''
+              placeholder='Nhập mô tả nghiệp vụ cho dữ liệu cần sinh tại đây... (Hoặc kéo thả file .txt, .docx vào đây)'
             />
           </div>
 
@@ -1247,168 +1150,37 @@ const isInvalid = idx % 9 === 0;
                 ⚙️ Cấu hình phương pháp sinh F0 Seeds
               </span>
 
-              {/* Phương pháp check boxes */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '13px',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type='checkbox'
-                    checked={selectedMethods.includes('random')}
-                    onChange={() => toggleMethod('random')}
-                    style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
-                  />
-                  <span>Ngẫu Nhiên / Lai Ghép (Hybrid)</span>
-                </label>
-
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '13px',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type='checkbox'
-                    checked={selectedMethods.includes('bva')}
-                    onChange={() => toggleMethod('bva')}
-                    style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
-                  />
-                  <span>Phân Tích Biên (BVA)</span>
-                </label>
-
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '13px',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type='checkbox'
-                    checked={selectedMethods.includes('ep')}
-                    onChange={() => toggleMethod('ep')}
-                    style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
-                  />
-                  <span>Phân Vùng Tương Đương (EP)</span>
-                </label>
-
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '13px',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type='checkbox'
-                    checked={selectedMethods.includes('decision')}
-                    onChange={() => toggleMethod('decision')}
-                    style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)' }}
-                  />
-                  <span>Bảng Quyết Định (Decision)</span>
-                </label>
+              {/* Phương pháp check boxes - Trả lại 4 phương pháp */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+                {[
+                  { id: 'bva', name: 'Phân tích Giá trị biên (BVA)', desc: 'Sinh test case xoay quanh cận dưới, cận trên và giá trị vi phạm.' },
+                  { id: 'ep', name: 'Phân vùng Tương đương (EP)', desc: 'Sinh đại diện cho các tập giá trị hợp lệ và không hợp lệ.' },
+                  { id: 'random', name: 'Sinh dữ liệu Ngẫu nhiên (Random)', desc: 'Trộn lẫn ngẫu nhiên dữ liệu để kiểm tra tính Robustness.' }
+                ].map((method) => (
+                  <label key={method.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px', background: selectedMethods.includes(method.id) ? 'rgba(13, 148, 136, 0.04)' : 'transparent', borderRadius: '8px', border: `1px solid ${selectedMethods.includes(method.id) ? 'rgba(13, 148, 136, 0.3)' : 'var(--border-subtle)'}`, cursor: 'pointer', transition: 'all 0.2s ease' }}>
+                    <input
+                      type='checkbox'
+                      checked={selectedMethods.includes(method.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedMethods([...selectedMethods, method.id]);
+                        } else {
+                          setSelectedMethods(selectedMethods.filter(m => m !== method.id));
+                        }
+                      }}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--color-teal)', marginTop: '2px' }}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 'bold', color: selectedMethods.includes(method.id) ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                        {method.name}
+                      </span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        {method.desc}
+                      </span>
+                    </div>
+                  </label>
+                ))}
               </div>
-
-              {/* Cấu hình bổ sung cho BVA (nếu được chọn) */}
-              {selectedMethods.includes('bva') && (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px',
-                    padding: '8px 10px',
-                    background: 'rgba(13, 148, 136, 0.04)',
-                    borderLeft: '2px solid var(--color-teal)',
-                    borderRadius: '4px',
-                    marginTop: '4px',
-                  }}
-                >
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    Số điểm biên cần kiểm tra (BVA):
-                  </span>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    {[2, 3, 5].map((num) => (
-                      <button
-                        key={num}
-                        onClick={() => setBoundaryCount(num)}
-                        type='button'
-                        style={{
-                          flex: 1,
-                          padding: '5px 8px',
-                          fontSize: '12px',
-                          background: boundaryCount === num ? 'var(--color-teal)' : '#FFFFFF',
-                          color: boundaryCount === num ? '#fff' : 'var(--text-primary)',
-                          border:
-                            boundaryCount === num
-                              ? '1px solid var(--color-teal)'
-                              : '1px solid var(--border-subtle)',
-                          borderRadius: '6px',
-                          fontWeight: 'bold',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s',
-                        }}
-                      >
-                        {num} biên
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Cấu hình bổ sung cho EP (nếu được chọn) */}
-              {selectedMethods.includes('ep') && (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px',
-                    padding: '8px 10px',
-                    background: 'rgba(59, 130, 246, 0.04)',
-                    borderLeft: '2px solid #3b82f6',
-                    borderRadius: '4px',
-                    marginTop: '4px',
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      fontSize: '12px',
-                      color: 'var(--text-secondary)',
-                    }}
-                  >
-                    <span>Số phân vùng tương đương:</span>
-                    <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>
-                      {partitionCount} phân vùng
-                    </span>
-                  </div>
-                  <input
-                    type='range'
-                    min='2'
-                    max='6'
-                    value={partitionCount}
-                    onChange={(e) => setPartitionCount(Number(e.target.value))}
-                    style={{ width: '100%', accentColor: '#3b82f6', cursor: 'pointer' }}
-                  />
-                </div>
-              )}
             </div>
           )}
 
@@ -1794,79 +1566,12 @@ const isInvalid = idx % 9 === 0;
         </div>
         )}
 
-        {/* HIỂN THỊ LUẬT KINH DOANH DƯỚI CÙNG LÀM FULL WIDTH */}
-        {showSchemaDetails && businessRules && businessRules.length > 0 && (
-          <div className='glass-card flex flex-col gap-sm' style={{ marginTop: '20px', borderTop: '3px solid var(--color-teal)', gridColumn: '1 / -1' }}>
-            <div className='flex align-center gap-sm'>
-              <CheckCircle size={24} style={{ color: 'var(--color-teal)' }} />
-              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: 'var(--text-primary)' }}>LUẬT KINH DOANH (BUSINESS RULES)</h2>
-            </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px' }}>
-              Các quy tắc ràng buộc logic được AI bóc tách từ yêu cầu nghiệp vụ.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
-              {businessRules.map((br: any, idx: number) => (
-                <div key={idx} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.02)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <strong style={{ color: 'var(--color-violet)', fontSize: '13px' }}>{br.field || br.rule_id}</strong>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                      <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '4px', background: 'rgba(249, 115, 22, 0.1)', color: 'var(--color-orange)', fontWeight: 'bold', textAlign: 'right' }}>
-                        {String(br.rule_operator).toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>
-                    {String(br.rule_value)}
-                  </div>
-                  {br.source_text && (
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic', borderLeft: '2px solid var(--color-teal)', paddingLeft: '8px', background: 'rgba(13,148,136,0.03)', padding: '6px 8px', borderRadius: '0 4px 4px 0', marginTop: '4px' }}>
-                      "{br.source_text}"
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
+        {/* LUẬT KINH DOANH đã được ẩn đi vì nội dung đã được nhúng trong SchemaVisualizer */}
         {/* 3. PHẦN DƯỚI: HIỂN THỊ DỮ LIỆU HẠT GIỐNG F0 (PREVIEW INITIAL SEEDS) */}
         {(isParsing || (initialSeeds && initialSeeds.length > 0)) && (
           <div
             style={{ gridColumn: showSchemaDetails ? 'span 2' : 'span 1', marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}
           >
-            {/* Bảng giải thích chiến lược kiểm thử */}
-            {/* <div style={{
-              background: 'var(--brand-50)',
-              padding: '16px',
-              borderRadius: '8px',
-              border: '1px solid rgba(255, 255, 255, 0.05)',
-              marginBottom: '10px'
-            }}>
-              <h3 style={{ fontSize: '14px', color: 'var(--color-teal)', margin: '0 0 12px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Sparkles size={16} />
-                GIẢI THÍCH CHIẾN LƯỢC KIỂM THỬ VÙNG BIÊN (BVA/EP) &amp; PHƯƠNG PHÁP SINH
-              </h3>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-                <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                  <p style={{ margin: '0 0 8px 0' }}>
-                    🎲 <b>Ngẫu nhiên / Lai Ghép (Hybrid):</b> Sinh dữ liệu thông thường kết hợp một số payloads lỗi và tấn công bảo mật để kiểm thử các lỗ hổng hệ thống.
-                  </p>
-                  <p style={{ margin: 0 }}>
-                    📏 <b>Phân tích biên (BVA):</b> Sinh các giá trị tập trung sát ranh giới rủi ro cao (Min, Max, Min-1, Max+1...) vì đây là nơi lập trình viên dễ làm sai nhất.
-                  </p>
-                </div>
-                <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                  <p style={{ margin: '0 0 8px 0' }}>
-                    📊 <b>Phân vùng tương đương (EP):</b> Chia miền giá trị thành các khoảng tương đương và lấy mẫu đại diện để tối ưu số ca test mà vẫn đảm bảo độ phủ.
-                  </p>
-                  <p style={{ margin: 0 }}>
-                    📋 <b>Bảng quyết định (Logic Table):</b> Kết hợp logic các điều kiện nghiệp vụ nhằm tìm ra lỗ hổng trong cấu trúc điều kiện rẽ nhánh (IF/ELSE logic).
-                  </p>
-                </div>
-              </div>
-            </div> */}
-
             {isParsing || isRegenerating ? (
               <div
                 style={{
@@ -1944,6 +1649,40 @@ const isInvalid = idx % 9 === 0;
                     }}
                   />
                 </div>
+
+                <button
+                  onClick={() => {
+                    if (abortControllerRef.current) {
+                      abortControllerRef.current.abort();
+                    }
+                    if (currentJobIdRef.current) {
+                      fetch(`${config.API_BASE_URL}/api/cancel-job`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ job_id: currentJobIdRef.current })
+                      }).catch(console.error);
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    borderRadius: '8px',
+                    color: 'var(--color-red)',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    marginTop: '20px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)')}
+                  onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)')}
+                >
+                  <XCircle size={18} />
+                  Hủy Quá Trình
+                </button>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
@@ -2857,8 +2596,8 @@ const isInvalid = idx % 9 === 0;
                   lineHeight: 1.6,
                 }}
               >
-                Hệ thống đang sinh lại tập hợp các ca kiểm thử mầm dựa trên các phương pháp thiết kế
-                đã chọn ({selectedMethods.join(', ')}).
+                Hệ thống đang sinh lại tập hợp các ca kiểm thử mầm dựa trên phương pháp thiết kế
+                đã chọn (AI Generator).
               </p>
             </div>
           </div>

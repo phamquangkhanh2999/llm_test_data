@@ -1,14 +1,12 @@
 // @ts-nocheck
-import React, { useState } from 'react';
-import { Activity, Target, Zap } from 'lucide-react';
-import type { Chromosome } from '../algorithms/genetic';
-import { GeneticEngine } from '../algorithms/genetic';
-import { runHillClimbing } from '../algorithms/hillClimbing';
+import { Activity, Target, Zap, XCircle } from 'lucide-react';
+import React, { useState, useRef } from 'react';
 import { config } from '../config';
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
+import type { OptimizationSnapshot } from '../types/testcase';
+import { LoadingSpinner } from './LoadingSpinner';
 import { OptimizationResultTables } from './OptimizationResultTables';
-import type { OptimizationSnapshot, TestCase, CoverageBreakdown } from '../types/testcase';
 
 export const OptimizationDashboard: React.FC = () => {
   const {
@@ -19,11 +17,16 @@ export const OptimizationDashboard: React.FC = () => {
     setSpecificationId,
     historyRuns,
     optimizedDataset,
-    setOptimizedDataset
+    setOptimizedDataset,
+    llmProvider,
+    apiKey
   } = useAppStore();
 
   const [isRunning, setIsRunning] = useState(false);
-  const [hasCompleted, setHasCompleted] = useState(false);
+  const hasCompleted = !!(optimizedDataset && (optimizedDataset as any).finalResult && (optimizedDataset as any).finalResult.length > 0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const currentJobIdRef = useRef<string | null>(null);
 
   // Chạy tối ưu hóa tuyến tính bằng API
   const startOptimization = async () => {
@@ -33,22 +36,31 @@ export const OptimizationDashboard: React.FC = () => {
     }
 
     setIsRunning(true);
-    toast.info('Đang tối ưu dữ liệu trên máy chủ...');
+    // toast.info('Đang tối ưu dữ liệu trên máy chủ...');
 
     try {
+      abortControllerRef.current = new AbortController();
+      const jobId = crypto.randomUUID();
+      currentJobIdRef.current = jobId;
+
       const response = await fetch(`${config.API_BASE_URL}/api/optimize`, {
         method: 'POST',
+        signal: abortControllerRef.current.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           specification_id: activeSpecId || 'local',
           algorithm: 'ga_hc',
           initial_seeds: initialSeeds,
-          schema_rules: schema
+          schema_rules: schema,
+          llm_provider: llmProvider,
+          api_key_override: apiKey ? apiKey.trim() : null,
+          job_id: jobId
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Lỗi khi gọi API Optimize');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Lỗi khi gọi API Optimize');
       }
 
       const snapshot: OptimizationSnapshot = await response.json();
@@ -59,18 +71,21 @@ export const OptimizationDashboard: React.FC = () => {
       }
 
       toast.success('Tối ưu hóa hoàn tất!');
-      setHasCompleted(true);
-    } catch (err) {
-      console.error(err);
-      toast.error('Lỗi trong quá trình tối ưu hóa.');
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        toast.info('Đã hủy quá trình tối ưu hóa.');
+      } else {
+        console.error(err);
+        toast.error(err.message || 'Lỗi trong quá trình tối ưu hóa.');
+      }
     } finally {
       setIsRunning(false);
     }
   };
 
   return (
-    <div>
-      {!isRunning && !hasCompleted && (
+    <div style={{ position: 'relative' }}>
+      {!hasCompleted && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-card)', padding: '16px 20px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
             <div>
@@ -175,15 +190,116 @@ export const OptimizationDashboard: React.FC = () => {
         </div>
       )}
 
-      {isRunning && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', alignItems: 'center', marginTop: '100px' }}>
-          <div className="status-dot-pulse" style={{ width: '40px', height: '40px', background: 'var(--color-violet)', borderRadius: '50%' }}></div>
-          <h3 style={{ color: 'var(--color-violet)' }}>Đang Tối Ưu Hóa (Optimizing Data)...</h3>
+      {hasCompleted && optimizedDataset && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-card)', padding: '16px 20px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+            <div>
+              <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Zap className="text-violet" size={18} />
+                Kết Quả Tối Ưu Hóa
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0 }}>
+                Bạn có thể xem lại kết quả tối ưu hoặc chạy lại quá trình tối ưu nếu cần thiết.
+              </p>
+            </div>
+            
+            <button 
+              className="btn btn-primary"
+              onClick={startOptimization}
+              disabled={isRunning}
+              style={{ padding: '8px 16px', fontSize: '14px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}
+            >
+              <Activity size={16} />
+              Tối Ưu Lại
+            </button>
+          </div>
+          <OptimizationResultTables snapshot={optimizedDataset} schema={schema} />
         </div>
       )}
 
-      {hasCompleted && optimizedDataset && (
-        <OptimizationResultTables snapshot={optimizedDataset} schema={schema} />
+      {/* Loading Overlay phủ toàn bộ màn hình chặn click khi đang tối ưu */}
+      {isRunning && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.7)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          gap: '24px',
+        }}>
+          <div style={{
+            background: 'var(--bg-card)',
+            padding: '40px 50px',
+            borderRadius: '16px',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '20px',
+            border: '1px solid var(--border-subtle)',
+            maxWidth: '90%',
+            textAlign: 'center'
+          }}>
+            <LoadingSpinner size={90} outerColor="var(--color-violet)" innerColor="var(--color-teal)" icon="sparkles" iconSize={36} />
+            <h3 style={{
+              margin: 0,
+              fontSize: '18px',
+              fontWeight: 'bold',
+              background: 'linear-gradient(135deg, var(--color-violet) 0%, var(--color-teal) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}>
+              ĐANG TỐI ƯU HÓA DỮ LIỆU...
+            </h3>
+            <p style={{
+              margin: 0,
+              fontSize: '13px',
+              color: 'var(--text-secondary)',
+              maxWidth: '320px',
+              lineHeight: 1.5
+            }}>
+              Hệ thống đang gọi AI và các thuật toán nội bộ để tìm điểm yếu, tạo đột biến và đánh giá chấm điểm lặp lại nhiều lần. Quá trình này có thể mất một vài phút.
+            </p>
+            <button
+              onClick={() => {
+                if (abortControllerRef.current) {
+                  abortControllerRef.current.abort();
+                }
+                if (currentJobIdRef.current) {
+                  fetch(`${config.API_BASE_URL}/api/cancel-job`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job_id: currentJobIdRef.current })
+                  }).catch(console.error);
+                }
+                setIsRunning(false);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 20px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                borderRadius: '8px',
+                color: 'var(--color-red)',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                marginTop: '10px',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)')}
+              onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)')}
+            >
+              <XCircle size={18} />
+              Hủy Tối Ưu
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -83,6 +83,9 @@ class OptimizeRequest(BaseModel):
     schema_rules: Optional[List[Dict[str, Any]]] = None # Đẩy trực tiếp schema từ UI lên
     algorithm: Optional[str] = "hybrid" #traditional, ga, hc, hybrid
     traditional_method: Optional[str] = "bva" #random, bva
+    llm_provider: Optional[str] = "gemini"
+    api_key_override: Optional[str] = None
+    job_id: Optional[str] = None
 
 class SeedGenerationRequest(BaseModel):
     """
@@ -91,12 +94,20 @@ class SeedGenerationRequest(BaseModel):
     fields: List[Dict[str, Any]]
     business_rules: Optional[List[Dict[str, Any]]] = None
     constraints: Optional[List[Dict[str, Any]]] = None
-    test_method: str
+    test_methods: Optional[List[str]] = ["bva"]  # Sử dụng danh sách các phương pháp
+    test_method: Optional[str] = None # Giữ lại để tương thích ngược nếu cần
     boundary_count: int = 4
     partition_count: int = 3
     api_key_override: Optional[str] = None
     raw_text: Optional[str] = ""
     llm_provider: Optional[str] = "gemini"
+    job_id: Optional[str] = None
+
+class CancelJobRequest(BaseModel):
+    job_id: str
+
+# Global dictionary for cancellation state
+ACTIVE_JOBS = {}
 
 class EvaluateRequest(BaseModel):
     """
@@ -123,6 +134,17 @@ class EvaluateOptimizedRequest(BaseModel):
     llm_provider: Optional[str] = "gemini"
 
 # --- ĐỊNH NGHĨA CÁC ROUTER ENDPOINTS ---
+
+@app.post("/api/cancel-job")
+def api_cancel_job(req: CancelJobRequest):
+    """
+    ENDPOINT: Hủy một tiến trình (job) đang chạy ở backend (Sinh hạt giống hoặc Optimize).
+    """
+    job_id = req.job_id
+    if job_id in ACTIVE_JOBS:
+        ACTIVE_JOBS[job_id] = "cancelled"
+        return {"status": "success", "message": f"Job {job_id} cancellation requested"}
+    return {"status": "not_found", "message": f"Job {job_id} not found or not active"}
 
 @app.post("/api/specifications")
 def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
@@ -269,11 +291,14 @@ def api_generate_seeds(req: SeedGenerationRequest, db: Session = Depends(get_db)
                 except (ValueError, TypeError):
                     pass
 
-        seeds, coverage_summary = generate_seeds_with_ai(
+        # Fallback to test_method if test_methods is not provided (backward compatibility)
+        effective_methods = req.test_methods if req.test_methods else ([req.test_method] if req.test_method else ["bva"])
+
+        seeds, coverage_summary, stats = generate_seeds_with_ai(
             fields=fields,
             business_rules=req.business_rules,
             constraints=req.constraints,
-            test_method=req.test_method,
+            test_methods=effective_methods,
             boundary_count=req.boundary_count,
             partition_count=req.partition_count,
             api_key=active_key,
@@ -284,7 +309,8 @@ def api_generate_seeds(req: SeedGenerationRequest, db: Session = Depends(get_db)
         return {
             "initialPopulation": seeds,
             "coverageSummary": coverage_summary,
-            "is_mock": is_mock
+            "is_mock": is_mock,
+            "generation_report": stats
         }
     except ValueError as ve:
         if str(ve).startswith("API_KEY_ERROR"):
@@ -428,607 +454,597 @@ def api_delete_specification(specification_id: str, db: Session = Depends(get_db
 
 @app.post("/api/optimize")
 def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(get_db)):
-    """
-    ENDPOINT 2: Thực thi tiến hóa và tinh chỉnh biên tối ưu hóa bộ Test Cases.
-    """
-    # 1. Truy vấn JSON Schema quy tắc trường từ cơ sở dữ liệu
-    db_spec = db.query(models.Specification).filter(models.Specification.id == req.specification_id).first()
+    try:
+        # 1. Truy vấn JSON Schema quy tắc trường từ cơ sở dữ liệu
+        db_spec = db.query(models.Specification).filter(models.Specification.id == req.specification_id).first()
 
-    if req.schema_rules and len(req.schema_rules) > 0:
-        schema_rules = req.schema_rules
-    elif db_spec and db_spec.parsed_schema:
-        schema_rules = json.loads(db_spec.parsed_schema)
-    else:
-        raise HTTPException(status_code=404, detail="Không tìm thấy đặc tả nghiệp vụ và không có schema_rules truyền lên!")
-        
-    # Ép kiểu các tham số giới hạn số và chuỗi về int để tránh lỗi float khi xử lý
-    for field in schema_rules:
-        if "minLength" in field and field["minLength"] is not None:
-            field["minLength"] = int(field["minLength"])
-        if "maxLength" in field and field["maxLength"] is not None:
-            field["maxLength"] = int(field["maxLength"])
-        if "minValue" in field and field["minValue"] is not None:
-            try:
-                val = float(field["minValue"])
-                field["minValue"] = int(val) if val.is_integer() else val
-            except (ValueError, TypeError):
-                pass
-        if "maxValue" in field and field["maxValue"] is not None:
-            try:
-                val = float(field["maxValue"])
-                field["maxValue"] = int(val) if val.is_integer() else val
-            except (ValueError, TypeError):
-                pass
-
-    # 2. Khởi tạo bộ tối ưu hóa TestSuiteOptimizer chạy bằng Python trên Server
-    config_dict = {
-        "generations": req.generations or 30,
-        "popSize": req.popSize or 50,
-        "crossoverRate": req.crossoverRate or 0.8,
-        "mutationRate": req.mutationRate or 0.15,
-        "weights": {
-            "validation": 0.4,
-            "boundary": 0.3,
-            "security": 0.0,
-            "diversity": 0.2
-        }
-    }
-
-    optimizer = TestSuiteOptimizer(schema_rules, config_dict)
-    
-    algo = req.algorithm or "ga_hc"
-    
-    import datetime
-    import hashlib
-    run_id = f"RUN-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}-{req.specification_id[:4]}"
-    created_at = datetime.datetime.now().isoformat()
-    spec_hash = hashlib.sha256(db_spec.raw_text.encode('utf-8')).hexdigest() if db_spec else "local_hash"
-    
-    def extract_values(seed):
-        if "values" in seed:
-            return seed["values"]
-        if "data" in seed:
-            return seed["data"]
-        field_names = {f["name"] for f in schema_rules}
-        return {k: v for k, v in seed.items() if k in field_names}
-
-    def calculate_v2_scores(values, categories):
-        """
-        Tính fitness score thực sự cho một test case theo công thức đã được chuẩn hóa.
-        Sử dụng trực tiếp coverage_analyzer + Oracle — không dùng static_cache.
-
-        Công thức:
-          coverage_fitness = (#tags + novelty_estimate) / max_possible  [0,1]
-          boundary_fitness = boundary_bonus / max_possible               [0,1]
-          raw_fitness = 0.55 * coverage_fitness + 0.45 * boundary_fitness [0,1]
-          display_fitness = raw_fitness * 100  (hiển thị trên UI)
-        """
-        from .algorithms.coverage_analyzer import analyze_coverage
-        from .services.ai_service import derive_expected_result
-
-        # 1. Coverage tags
-        tags = analyze_coverage(values, schema_rules)
-        num_tags = max(1, len(tags))
-
-        # 2. Coverage component (base + novelty estimate)
-        base_coverage = float(len(tags))
-        novelty_estimate = len(tags) * 0.3   # conservative estimate khi không có global pool
-        coverage_raw = base_coverage + novelty_estimate
-        max_coverage = num_tags * 3.0
-        norm_coverage = min(coverage_raw / max_coverage, 1.0)
-
-        # 3. Boundary component
-        boundary_raw = 0.0
-        for tag in tags:
-            tag_upper = tag.upper()
-            if "NEAR_BOUNDARY" in tag_upper:
-                boundary_raw += 1.5
-            elif "BOUNDARY" in tag_upper:
-                boundary_raw += 3.0
-            elif "INVALID" in tag_upper:
-                boundary_raw += 0.5
-        max_boundary = num_tags * 3.0
-        norm_boundary = min(boundary_raw / max_boundary, 1.0)
-
-        # 4. Raw fitness [0,1] → display [0,100]
-        raw_fitness = 0.55 * norm_coverage + 0.45 * norm_boundary
-
-        # 5. Penalty cho duplicate (chỉ penalize nếu hoàn toàn tróng lặp với chính nó)
-        #    Không áp dụng ở đây vì không có population context.
-
-        fitness_val = round(raw_fitness * 100, 2)
-
-        # 6. validationScore riêng: check Oracle
-        oracle = derive_expected_result(values, schema_rules)
-        validation_score = 100 if oracle["http_status"] == 200 else (50 if oracle["http_status"] == 422 else 0)
-
-        # 7. boundaryScore riêng
-        boundary_score = round(norm_boundary * 100)
-
-        # 8. negativeScore
-        is_negative = "negative" in [c.lower() for c in categories]
-        if is_negative:
-            negative_score = 100 if oracle["http_status"] != 200 else 20
+        if req.schema_rules and len(req.schema_rules) > 0:
+            schema_rules = req.schema_rules
+        elif db_spec and db_spec.parsed_schema:
+            schema_rules = json.loads(db_spec.parsed_schema)
         else:
-            negative_score = 100 if oracle["http_status"] == 200 else 30
+            raise HTTPException(status_code=404, detail="Không tìm thấy đặc tả nghiệp vụ và không có schema_rules truyền lên!")
+            
+        # Ép kiểu các tham số giới hạn số và chuỗi về int để tránh lỗi float khi xử lý
+        for field in schema_rules:
+            if "minLength" in field and field["minLength"] is not None:
+                field["minLength"] = int(field["minLength"])
+            if "maxLength" in field and field["maxLength"] is not None:
+                field["maxLength"] = int(field["maxLength"])
+            if "minValue" in field and field["minValue"] is not None:
+                try:
+                    val = float(field["minValue"])
+                    field["minValue"] = int(val) if val.is_integer() else val
+                except (ValueError, TypeError):
+                    pass
+            if "maxValue" in field and field["maxValue"] is not None:
+                try:
+                    val = float(field["maxValue"])
+                    field["maxValue"] = int(val) if val.is_integer() else val
+                except (ValueError, TypeError):
+                    pass
 
-        return {
-            "validationScore": validation_score,
-            "boundaryScore": boundary_score,
-            "negativeScore": negative_score,
-            "fitness": fitness_val
+        # 2. Khởi tạo bộ tối ưu hóa TestSuiteOptimizer chạy bằng Python trên Server
+        config_dict = {
+            "generations": req.generations or 30,
+            "popSize": req.popSize or 50,
+            "crossoverRate": req.crossoverRate or 0.8,
+            "mutationRate": req.mutationRate or 0.15,
+            "weights": {
+                "validation": 0.4,
+                "boundary": 0.3,
+                "security": 0.0,
+                "diversity": 0.2
+            },
+            "llm_provider": req.llm_provider,
+            "api_key_override": req.api_key_override
         }
 
-
-    from .services.ai_service import validate_and_fix_seeds, check_record_expected_result
-    from .algorithms.coverage_analyzer import analyze_coverage
-
-    cleaned_initial_seeds = validate_and_fix_seeds(req.initial_seeds, schema_rules)
-    llm_seeds_mapped = []
-    for i, seed in enumerate(cleaned_initial_seeds):
-        tc_id = seed.get("tcId") or f"TC-{str(i+1).zfill(4)}"
-        scenario = seed.get("scenario") or f"Kịch bản hạt giống {i+1}"
-        categories = seed.get("categories") or (seed.get("category") and [seed.get("category")]) or ["positive"]
-        if isinstance(categories, str):
-            categories = [categories]
-        values = extract_values(seed)
-        expected = seed.get("expectedResult") or "Hiển thị thông báo xử lý"
-        err_desc = seed.get("errorDescription") or "Không có"
-        rationale = seed.get("rationale") or "Sinh hạt giống F0 ngẫu nhiên"
+        optimizer = TestSuiteOptimizer(schema_rules, config_dict)
         
-        scores = calculate_v2_scores(values, categories)
+        algo = req.algorithm or "ga_hc"
         
-        llm_seeds_mapped.append({
-            "tcId": tc_id,
-            "scenario": scenario,
-            "categories": categories,
-            "values": values,
-            "expectedResult": expected,
-            "errorDescription": err_desc,
-            "rationale": rationale,
-            "validationScore": scores["validationScore"],
-            "boundaryScore": scores["boundaryScore"],
-            "negativeScore": scores["negativeScore"],
-            "llmFitness": scores["fitness"]
-        })
+        import datetime
+        import hashlib
+        run_id = f"RUN-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}-{req.specification_id[:4]}"
+        created_at = datetime.datetime.now().isoformat()
+        spec_hash = hashlib.sha256(db_spec.raw_text.encode('utf-8')).hexdigest() if db_spec else "local_hash"
+        
+        def extract_values(seed):
+            if "values" in seed:
+                return seed["values"]
+            if "data" in seed:
+                return seed["data"]
+            field_names = {f["name"] for f in schema_rules}
+            return {k: v for k, v in seed.items() if k in field_names}
 
-    summary = {
-        "total": len(llm_seeds_mapped),
-        "changed": 0,
-        "unchanged": 0,
-        "improved": 0,
-        "fallback": 0,
-        "gaSelected": 0,
-        "hcSelected": 0
-    }
-    
-    comparison_data = []
-    fitness_report = []      # Fitness Evolution Report: track LLM→GA→HC per TC
-    ga_result_mapped = []
-    hc_result_mapped = []
-    final_result_mapped = []
-    export_data = None
-
-    if algo == "ga_hc":
-        optimizer.initialize_suite([s["values"] for s in llm_seeds_mapped])
-        for _ in range(config_dict["generations"]):
-            optimizer.evolve_one_generation()
+        def calculate_v2_scores(values, categories):
+            from .services.ai_service import derive_expected_result
+            from .algorithms.fitness_engine.aggregator import FitnessEngine
             
-        ga_population = sorted(optimizer.test_suite, key=lambda x: x["fitness"], reverse=True)
-        raw_suite_values = [p["values"] for p in ga_population]
-        
-        global_coverage_set = set()
-        
-        for i, llm_tc in enumerate(llm_seeds_mapped):
-            tc_id = llm_tc["tcId"]
+            # Evaluate with the new FitnessEngine pipeline
+            engine_result = FitnessEngine.evaluate(values, schema_rules, categories)
             
-            # Lấy GA candidate tương ứng (giả lập Lineage 1-1 bằng rank)
-            ga_candidate = ga_population[i] if i < len(ga_population) else ga_population[-1]
-            ga_values = ga_candidate["values"]
-            scores_ga = calculate_v2_scores(ga_values, llm_tc["categories"])
+            # Keep Oracle validation for validationScore and negativeScore
+            oracle = derive_expected_result(values, schema_rules)
+            validation_score = 100 if oracle["http_status"] == 200 else (50 if oracle["http_status"] == 422 else 0)
             
-            # Chạy HC trên GA candidate
-            fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
-            hc_values, hc_stats = optimize_testcase_boundaries(ga_values, schema_rules, fitness_evaluator, max_iterations=10, global_coverage_set=global_coverage_set)
-            scores_hc = calculate_v2_scores(hc_values, llm_tc["categories"])
-            
-            # Fallback logic
-            if scores_hc["fitness"] >= scores_ga["fitness"]:
-                final_values = hc_values
-                final_fit = scores_hc["fitness"]
-                final_val_score = scores_hc["validationScore"]
-                final_bound_score = scores_hc["boundaryScore"]
-                final_neg_score = scores_hc["negativeScore"]
-                origin = "HC"
-                reason = "Thuật toán leo đồi HC tối ưu tốt hơn GA"
-                summary["hcSelected"] += 1
+            is_negative = "negative" in [c.lower() for c in categories]
+            if is_negative:
+                negative_score = 100 if oracle["http_status"] != 200 else 20
             else:
-                final_values = ga_values
-                final_fit = scores_ga["fitness"]
-                final_val_score = scores_ga["validationScore"]
-                final_bound_score = scores_ga["boundaryScore"]
-                final_neg_score = scores_ga["negativeScore"]
-                origin = "GA"
-                reason = "Thuật toán leo đồi HC không tối ưu hơn GA (Sử dụng kết quả GA)"
-                summary["gaSelected"] += 1
-                summary["fallback"] += 1
+                negative_score = 100 if oracle["http_status"] == 200 else 30
+
+            return {
+                "validationScore": validation_score,
+                "boundaryScore": engine_result.breakdown.boundary,
+                "negativeScore": negative_score,
+                "fitness": engine_result.fitness,
+                "breakdown": engine_result.breakdown.dict(),
+                "weak_points": engine_result.weak_points,
+                "missing_rules": engine_result.missing_rules,
+                "field_analysis": [fa.dict() for fa in engine_result.field_analysis],
+                "improvements": engine_result.improvements
+            }
+
+
+        from .services.ai_service import validate_and_fix_seeds, check_record_expected_result
+        from .algorithms.coverage_analyzer import analyze_coverage
+
+        cleaned_initial_seeds = validate_and_fix_seeds(req.initial_seeds, schema_rules)
+        llm_seeds_mapped = []
+        for i, seed in enumerate(cleaned_initial_seeds):
+            tc_id = seed.get("tcId") or f"TC-{str(i+1).zfill(4)}"
+            scenario = seed.get("scenario") or f"Kịch bản hạt giống {i+1}"
+            categories = seed.get("categories") or (seed.get("category") and [seed.get("category")]) or ["positive"]
+            if isinstance(categories, str):
+                categories = [categories]
+            values = extract_values(seed)
+            expected = seed.get("expectedResult") or "Hiển thị thông báo xử lý"
+            err_desc = seed.get("errorDescription") or "Không có"
+            rationale = seed.get("rationale") or "Sinh hạt giống F0 ngẫu nhiên"
+            
+            scores = calculate_v2_scores(values, categories)
+            
+            llm_seeds_mapped.append({
+                "tcId": tc_id,
+                "scenario": scenario,
+                "categories": categories,
+                "values": values,
+                "expectedResult": expected,
+                "errorDescription": err_desc,
+                "rationale": rationale,
+                "validationScore": scores["validationScore"],
+                "boundaryScore": scores["boundaryScore"],
+                "negativeScore": scores["negativeScore"],
+                "llmFitness": scores["fitness"]
+            })
+
+        summary = {
+            "total": len(llm_seeds_mapped),
+            "changed": 0,
+            "unchanged": 0,
+            "improved": 0,
+            "fallback": 0,
+            "gaSelected": 0,
+            "hcSelected": 0
+        }
+        
+        comparison_data = []
+        fitness_report = []      # Fitness Evolution Report: track LLM→GA→HC per TC
+        ga_result_mapped = []
+        hc_result_mapped = []
+        final_result_mapped = []
+        export_data = None
+
+        if algo == "ga_hc":
+            optimizer.initialize_suite(llm_seeds_mapped)
+            for _ in range(config_dict["generations"]):
+                if req.job_id and ACTIVE_JOBS.get(req.job_id) == "cancelled":
+                    raise HTTPException(status_code=499, detail="Job cancelled by user")
+                optimizer.evolve_one_generation()
                 
-            # [TÍCH HỢP] SPRINT 1: P2 Semantic-Preserving Merge & Provenance
-            from .algorithms.policy_registry import resolve_policy
-            merged_final_values = {**final_values}
-            provenance = {}
-            for field in schema_rules:
-                fname = field["name"]
-                policy = resolve_policy(field)
-                if policy == "freeze":
-                    merged_final_values[fname] = llm_tc["values"].get(fname)
-                    provenance[fname] = "LLM"
-                elif policy in ["format_preserving", "constraint_preserving"]:
-                    merged_final_values[fname] = llm_tc["values"].get(fname)
-                    provenance[fname] = "LLM/Refined"
+            ga_population = sorted(optimizer.test_suite, key=lambda x: x["fitness"], reverse=True)
+            raw_suite_values = [p["values"] for p in ga_population]
+            
+            global_coverage_set = set()
+            
+            for i, llm_tc in enumerate(llm_seeds_mapped):
+                if req.job_id and ACTIVE_JOBS.get(req.job_id) == "cancelled":
+                    raise HTTPException(status_code=499, detail="Job cancelled by user")
+                    
+                tc_id = llm_tc["tcId"]
+                
+                # Tìm GA candidate có điểm số cao nhất đối với llm_tc["categories"]
+                best_ga_candidate = ga_population[0] if ga_population else {"values": llm_tc["values"]}
+                best_ga_score = -1
+                for ga_c in ga_population:
+                    score = calculate_v2_scores(ga_c["values"], llm_tc["categories"])["fitness"]
+                    if score > best_ga_score:
+                        best_ga_score = score
+                        best_ga_candidate = ga_c
+                        
+                ga_values = best_ga_candidate["values"]
+                scores_ga = calculate_v2_scores(ga_values, llm_tc["categories"])
+                
+                # Chạy HC trên GA candidate
+                fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)[0]
+                hc_values, hc_stats = optimize_testcase_boundaries(ga_values, schema_rules, fitness_evaluator, max_iterations=10, global_coverage_set=global_coverage_set, llm_provider=req.llm_provider, api_key_override=req.api_key_override, categories=llm_tc["categories"])
+                scores_hc = calculate_v2_scores(hc_values, llm_tc["categories"])
+                
+                # Fallback logic & merge & polish
+                if scores_hc["fitness"] >= scores_ga["fitness"]:
+                    candidate_values = hc_values
+                    candidate_origin = "HC"
+                    candidate_reason = "Thuật toán leo đồi HC tối ưu tốt hơn GA"
                 else:
-                    provenance[fname] = "GA/HC"
-            merged_final_values["_provenance"] = provenance
-            final_values = merged_final_values
+                    candidate_values = ga_values
+                    candidate_origin = "GA"
+                    candidate_reason = "Thuật toán leo đồi HC không tối ưu hơn GA (Sử dụng kết quả GA)"
 
-            # ── LLM Semantic Polish: làm đẹp dữ liệu sau GA/HC ─────────────────────
-            # Chỉ polish nếu dữ liệu trông robot (pattern lặp, aaaa@bbb.com, v.v.)
+                # Ghi nhận Provenance mà không ghi đè dữ liệu của thuật toán
+                provenance = {}
+                for field in schema_rules:
+                    fname = field["name"]
+                    if candidate_values.get(fname) == llm_tc["values"].get(fname):
+                        provenance[fname] = "LLM"
+                    else:
+                        provenance[fname] = "GA/HC"
+                        
+                final_values = {**candidate_values}
+                final_values["_provenance"] = provenance
+                was_polished = False
+                polish_notes = {}
+
+                # Tính điểm thực tế sau gộp và polish
+                _clean_for_score = {k: v for k, v in final_values.items() if not k.startswith("_")}
+                scores_final = calculate_v2_scores(_clean_for_score, llm_tc["categories"])
+
+                # So sánh điểm thực tế cuối cùng với điểm hạt giống LLM
+                if scores_final["fitness"] >= llm_tc["llmFitness"]:
+                    final_fit = scores_final["fitness"]
+                    final_val_score = scores_final["validationScore"]
+                    final_bound_score = scores_final["boundaryScore"]
+                    final_neg_score = scores_final["negativeScore"]
+                    origin = f"{candidate_origin}+Polished" if was_polished else candidate_origin
+                    reason = f"{candidate_reason} (Đã áp dụng tinh chỉnh/làm đẹp)"
+                    if candidate_origin == "HC":
+                        summary["hcSelected"] += 1
+                    else:
+                        summary["gaSelected"] += 1
+                else:
+                    # Nếu điểm cuối cùng kém hơn LLM gốc, lùi về LLM gốc hoàn toàn
+                    final_values = {**llm_tc["values"], "_provenance": {f["name"]: "LLM" for f in schema_rules}}
+                    final_fit = llm_tc["llmFitness"]
+                    final_val_score = llm_tc["validationScore"]
+                    final_bound_score = llm_tc["boundaryScore"]
+                    final_neg_score = llm_tc["negativeScore"]
+                    origin = "LLM"
+                    reason = "Tinh chỉnh không đạt fitness tốt hơn hạt giống LLM (Lùi về LLM gốc)"
+                    summary["fallback"] += 1
+
+                # Cập nhật Global Coverage Set
+                final_tags = analyze_coverage(final_values, schema_rules)
+                global_coverage_set.update(final_tags)
+
+                
+                # Đếm thay đổi dữ liệu
+                is_changed = False
+                changes = []
+                for field in schema_rules:
+                    fname = field["name"]
+                    old_v = llm_tc["values"].get(fname)
+                    new_v = final_values.get(fname)
+                    if str(old_v) != str(new_v):
+                        is_changed = True
+                        changes.append({
+                            "field": fname,
+                            "oldValue": old_v,
+                            "newValue": new_v,
+                            "changedBy": origin,
+                            "reason": f"Tinh chỉnh giá trị biên/phân vùng để tối ưu hóa fitness cho trường '{fname}'"
+                        })
+                        
+                if is_changed:
+                    summary["changed"] += 1
+                    
+                    # Programmatic Explanation Template
+                    explanations = []
+                    for c in changes:
+                        c["reason"] = f"Điều chỉnh {c['field']} từ {c['oldValue']} sang {c['newValue']} để tối ưu biên/ràng buộc."
+                        explanations.append(c["reason"])
+                    final_rationale = " | ".join(explanations)
+                else:
+                    summary["unchanged"] += 1
+                    final_rationale = llm_tc["rationale"]
+                    
+                if final_fit > llm_tc["llmFitness"]:
+                    summary["improved"] += 1
+
+                # ── Expected Result Oracle: suy diễn HTTP status tự động từ schema ──────
+                from .services.ai_service import derive_expected_result
+
+                oracle_ga = derive_expected_result(ga_values, schema_rules)
+                ga_expected = oracle_ga["message"]
+                ga_err_desc = ("; ".join(oracle_ga["violated_fields_desc"])) if oracle_ga["violated_fields_desc"] else "Không có"
+
+                oracle_hc = derive_expected_result(hc_values, schema_rules)
+                hc_expected = oracle_hc["message"]
+                hc_err_desc = ("; ".join(oracle_hc["violated_fields_desc"])) if oracle_hc["violated_fields_desc"] else "Không có"
+
+                oracle_final = derive_expected_result(final_values, schema_rules)
+                final_expected = oracle_final["message"]
+                final_err_desc = ("; ".join(oracle_final["violated_fields_desc"])) if oracle_final["violated_fields_desc"] else "Không có"
+
+
+
+                # Lưu các records
+                ga_tc = {
+                    "tcId": tc_id,
+                    "scenario": llm_tc["scenario"],
+                    "categories": llm_tc["categories"],
+                    "values": ga_values,
+                    "expectedResult": ga_expected,
+                    "errorDescription": ga_err_desc,
+                    "rationale": llm_tc["rationale"],
+                    "validationScore": scores_ga["validationScore"],
+                    "boundaryScore": scores_ga["boundaryScore"],
+                    "negativeScore": scores_ga["negativeScore"],
+                    "llmFitness": llm_tc["llmFitness"],
+                    "gaFitness": scores_ga["fitness"]
+                }
+                hc_tc = {
+                    "tcId": tc_id,
+                    "scenario": llm_tc["scenario"],
+                    "categories": llm_tc["categories"],
+                    "values": hc_values,
+                    "expectedResult": hc_expected,
+                    "errorDescription": hc_err_desc,
+                    "rationale": llm_tc["rationale"],
+                    "validationScore": scores_hc["validationScore"],
+                    "boundaryScore": scores_hc["boundaryScore"],
+                    "negativeScore": scores_hc["negativeScore"],
+                    "llmFitness": llm_tc["llmFitness"],
+                    "gaFitness": scores_ga["fitness"],
+                    "hcFitness": scores_hc["fitness"]
+                }
+                final_tc = {
+                    "tcId": tc_id, 
+                    "scenario": llm_tc["scenario"], 
+                    "categories": llm_tc["categories"], 
+                    "values": final_values, 
+                    "expectedResult": final_expected, 
+                    "errorDescription": final_err_desc, 
+                    "rationale": final_rationale, 
+                    "validationScore": final_val_score,
+                    "boundaryScore": final_bound_score,
+                    "negativeScore": final_neg_score,
+                    "llmFitness": llm_tc["llmFitness"],
+                    "gaFitness": scores_ga["fitness"],
+                    "hcFitness": scores_hc["fitness"],
+                    "finalFitness": final_fit,
+                    "origin": origin,
+                    "changes": changes,
+                    "covers": final_tags,
+                    "llm_values": llm_tc["values"]
+                }
+                
+                ga_result_mapped.append(ga_tc)
+                hc_result_mapped.append(hc_tc)
+                final_result_mapped.append(final_tc)
+                
+                trace = [
+                    {"stage": "LLM", "fitness": llm_tc["llmFitness"]},
+                    {"stage": "GA", "fitness": scores_ga["fitness"]},
+                    {"stage": "HC", "fitness": scores_hc["fitness"]}
+                ]
+                
+                comparison_data.append({
+                    "tcId": tc_id,
+                    "llm": llm_tc,
+                    "ga": ga_tc,
+                    "hc": hc_tc,
+                    "final": final_tc,
+                    "changes": changes,
+                    "trace": trace
+                })
+
+                # ── Fitness Evolution Report entry ────────────────────────────────────────
+                llm_fit_val = round(llm_tc["llmFitness"] / 100.0, 4)  # normalize to [0,1]
+                ga_fit_val  = round(scores_ga["fitness"] / 100.0, 4)
+                hc_fit_val  = round(scores_hc["fitness"] / 100.0, 4)
+
+                if llm_fit_val == ga_fit_val == hc_fit_val:
+                    evo_status = "STAGNANT"
+                elif hc_fit_val > ga_fit_val and ga_fit_val > llm_fit_val:
+                    evo_status = "IMPROVED"
+                elif hc_fit_val == ga_fit_val and ga_fit_val >= llm_fit_val:
+                    evo_status = "CONVERGED"
+                elif hc_fit_val < ga_fit_val:
+                    evo_status = "REGRESSED"  # fallback to GA đã xử lý phía trên
+                else:
+                    evo_status = "IMPROVED"
+
+                boundary_hits = [
+                    tag for tag in final_tc.get("covers", [])
+                    if "BOUNDARY" in tag.upper()
+                ]
+
+                fitness_report.append({
+                    "tc_id": tc_id,
+                    "fitness_evolution": {
+                        "llm": llm_fit_val,
+                        "ga":  ga_fit_val,
+                        "hc":  hc_fit_val
+                    },
+                    "status": evo_status,
+                    "optimization_gap": round(abs(hc_fit_val - ga_fit_val), 4),
+                    "boundary_hits": boundary_hits,
+                    "http_status": {
+                        "llm": 200 if llm_tc.get("validationScore", 0) == 100 else 400,
+                        "ga": oracle_ga["http_status"],
+                        "hc": oracle_hc["http_status"],
+                        "final": oracle_final["http_status"]
+                    }
+                })
+
+
+            # GREEDY SET COVER TO MINIMIZE TEST SUITE
+            minimal_suite = []
+            uncovered_tags = set(global_coverage_set)
+            
+            # Sắp xếp final_result_mapped theo độ dài covers giảm dần (để ưu tiên tc cover nhiều rule)
+            candidates = list(final_result_mapped)
+            while uncovered_tags and candidates:
+                # Chọn candidate cover được nhiều tag chưa cover nhất
+                best_tc = None
+                best_cover_count = -1
+                best_idx = -1
+                
+                for idx, tc in enumerate(candidates):
+                    covers = set(tc.get("covers", []))
+                    cover_count = len(covers & uncovered_tags)
+                    if cover_count > best_cover_count:
+                        best_cover_count = cover_count
+                        best_tc = tc
+                        best_idx = idx
+                
+                if best_cover_count > 0:
+                    minimal_suite.append(best_tc)
+                    uncovered_tags -= set(best_tc.get("covers", []))
+                    candidates.pop(best_idx)
+                else:
+                    break
+                    
+            # Bù thêm tc cho đủ target nếu cần (ở đây cứ xuất minimal_suite + một số tc top fitness)
+            # Tạm thời thay thế final_result_mapped bằng minimal_suite
+            
+            # --- BATCH SEMANTIC POLISH (Post-Processing) ---
+            from .services.ai_service import batch_semantic_polish
             try:
-                from .services.ai_service import semantic_polish_with_llm
-                from .algorithms.enum_constraint_validator import validate_and_repair_enum_fields
-
-                _categories = llm_tc.get("categories", ["positive"])
-                _cat_str = _categories[0] if _categories else "positive"
-
-                _clean_final = {k: v for k, v in final_values.items() if not k.startswith("_")}
-                _llm_original = {k: v for k, v in llm_tc["values"].items() if not k.startswith("_")}
-
-                polish_result = semantic_polish_with_llm(
+                polished_suite = batch_semantic_polish(
                     schema=schema_rules,
-                    optimized_values=_clean_final,
-                    original_values=_llm_original,
-                    test_category=_cat_str,
+                    tc_list=minimal_suite,
                     api_key_override=req.api_key_override,
                     llm_provider=req.llm_provider,
-                    db=db
+                    db=db,
+                    max_polish=50,
+                    cancel_check=lambda: req.job_id and ACTIVE_JOBS.get(req.job_id) == "cancelled"
                 )
-
-                if polish_result["was_polished"]:
-                    # Áp dụng polished values, giữ lại provenance metadata
-                    polished_clean, _ = validate_and_repair_enum_fields(
-                        polish_result["polished_values"], schema_rules
-                    )
-                    final_values = {**polished_clean, "_provenance": provenance, "_polish_notes": polish_result["polish_notes"]}
-                    print(f">>> [POLISH] TC {tc_id} đã được làm đẹp ngữ nghĩa")
-            except Exception as _pe:
-                print(f">>> [POLISH] Skip TC {tc_id}: {_pe}")
-
-            # Cập nhật Global Coverage Set
-            final_tags = analyze_coverage(final_values, schema_rules)
-            global_coverage_set.update(final_tags)
-
+                
+                # Cập nhật lại vào minimal_suite có kèm Fitness Lock
+                for idx, ptc in enumerate(polished_suite):
+                    if ptc.get("was_polished"):
+                        polished_values = ptc.get("polished_values", minimal_suite[idx]["values"])
+                        _clean_polished = {k: v for k, v in polished_values.items() if not k.startswith("_")}
+                        polished_scores = calculate_v2_scores(_clean_polished, minimal_suite[idx]["categories"])
+                        
+                        # Fitness Regression Check (Phanh an toàn)
+                        # Đảm bảo operator sau (Polish) không làm giảm các objective mà thuật toán (GA/HC) đã tối ưu
+                        if (polished_scores["fitness"] >= minimal_suite[idx]["finalFitness"] and
+                            polished_scores["boundaryScore"] >= minimal_suite[idx]["boundaryScore"] and
+                            polished_scores["validationScore"] >= minimal_suite[idx]["validationScore"] and
+                            polished_scores["negativeScore"] >= minimal_suite[idx]["negativeScore"]):
+                            minimal_suite[idx]["values"] = polished_values
+                            minimal_suite[idx]["finalFitness"] = polished_scores["fitness"]
+                            minimal_suite[idx]["validationScore"] = polished_scores["validationScore"]
+                            minimal_suite[idx]["boundaryScore"] = polished_scores["boundaryScore"]
+                            minimal_suite[idx]["negativeScore"] = polished_scores["negativeScore"]
+                            minimal_suite[idx]["rationale"] += " (Đã được làm đẹp ngữ nghĩa)"
+                            if "Polished" not in minimal_suite[idx]["origin"]:
+                                minimal_suite[idx]["origin"] += "+Polished"
+                        else:
+                            print(f">>> [POLISH REJECTED] TC {minimal_suite[idx]['tcId']} giảm fitness ({polished_scores['fitness']} < {minimal_suite[idx]['finalFitness']}). Hủy kết quả AI.")
+            except Exception as e:
+                print(f">>> [BATCH POLISH ERROR] {e}")
             
-            # Đếm thay đổi dữ liệu
-            is_changed = False
-            changes = []
-            for field in schema_rules:
-                fname = field["name"]
-                old_v = llm_tc["values"].get(fname)
-                new_v = final_values.get(fname)
-                if str(old_v) != str(new_v):
-                    is_changed = True
-                    changes.append({
-                        "field": fname,
-                        "oldValue": old_v,
-                        "newValue": new_v,
-                        "changedBy": origin,
-                        "reason": f"Tinh chỉnh giá trị biên/phân vùng để tối ưu hóa fitness cho trường '{fname}'"
-                    })
+            final_result_mapped = minimal_suite
+
+            # Chuẩn bị Export Package để UI không cần map lại
+            export_json = final_result_mapped
+            
+            # Chuẩn bị mảng headers cho CSV/Excel (gộp meta fields và data fields)
+            if final_result_mapped and len(final_result_mapped) > 0:
+                data_fields = list(final_result_mapped[0]["values"].keys())
+            else:
+                data_fields = [f["name"] for f in schema_rules]
+                
+            meta_fields = ["tcId", "scenario", "origin", "finalFitness", "categories", "expectedResult", "errorDescription"]
+            headers = meta_fields + data_fields
+            
+            # CSV
+            csv_rows = [",".join(headers)]
+            excel_rows = []
+            
+            for tc in final_result_mapped:
+                # csv row
+                csv_row_vals = []
+                excel_row_dict = {}
+                for h in headers:
+                    if h in meta_fields:
+                        val = tc.get(h, "")
+                        if h == "categories":
+                            val = "|".join(val)
+                    else:
+                        val = tc["values"].get(h, "")
+                        
+                    excel_row_dict[h] = val
+                    escaped_val = str(val).replace('"', '""')
+                    csv_row_vals.append(f'"{escaped_val}"')
                     
-            if is_changed:
-                summary["changed"] += 1
-                from .services.ai_service import explain_optimization_with_ai
-                try:
-                    explanation = explain_optimization_with_ai(
-                        before_values=llm_tc["values"],
-                        after_values=final_values,
-                        algorithm=origin,
-                        api_key_override=req.api_key_override,
-                        llm_provider=req.llm_provider,
-                        db=db
-                    )
-                    for c in changes:
-                        c["reason"] = explanation.get("improvementReason", c["reason"])
-                    final_rationale = explanation.get("improvementReason", llm_tc["rationale"])
-                except Exception as e:
-                    final_rationale = llm_tc["rationale"]
-                    print(f"Error calling LLM for explanation: {e}")
-            else:
-                summary["unchanged"] += 1
-                final_rationale = llm_tc["rationale"]
-                
-            if final_fit > llm_tc["llmFitness"]:
-                summary["improved"] += 1
+                csv_rows.append(",".join(csv_row_vals))
+                excel_rows.append(excel_row_dict)
 
-            # ── Expected Result Oracle: suy diễn HTTP status tự động từ schema ──────
-            from .services.ai_service import derive_expected_result
-
-            oracle_ga = derive_expected_result(ga_values, schema_rules)
-            ga_expected = oracle_ga["message"]
-            ga_err_desc = ("; ".join(oracle_ga["violated_fields_desc"])) if oracle_ga["violated_fields_desc"] else "Không có"
-
-            oracle_hc = derive_expected_result(hc_values, schema_rules)
-            hc_expected = oracle_hc["message"]
-            hc_err_desc = ("; ".join(oracle_hc["violated_fields_desc"])) if oracle_hc["violated_fields_desc"] else "Không có"
-
-            oracle_final = derive_expected_result(final_values, schema_rules)
-            final_expected = oracle_final["message"]
-            final_err_desc = ("; ".join(oracle_final["violated_fields_desc"])) if oracle_final["violated_fields_desc"] else "Không có"
-
-
-
-            # Lưu các records
-            ga_tc = {
-                "tcId": tc_id,
-                "scenario": llm_tc["scenario"],
-                "categories": llm_tc["categories"],
-                "values": ga_values,
-                "expectedResult": ga_expected,
-                "errorDescription": ga_err_desc,
-                "rationale": llm_tc["rationale"],
-                "validationScore": scores_ga["validationScore"],
-                "boundaryScore": scores_ga["boundaryScore"],
-                "negativeScore": scores_ga["negativeScore"],
-                "llmFitness": llm_tc["llmFitness"],
-                "gaFitness": scores_ga["fitness"]
+            export_data = {
+                "json": export_json,
+                "csvRows": csv_rows,
+                "excelRows": excel_rows
             }
-            hc_tc = {
-                "tcId": tc_id,
-                "scenario": llm_tc["scenario"],
-                "categories": llm_tc["categories"],
-                "values": hc_values,
-                "expectedResult": hc_expected,
-                "errorDescription": hc_err_desc,
-                "rationale": llm_tc["rationale"],
-                "validationScore": scores_hc["validationScore"],
-                "boundaryScore": scores_hc["boundaryScore"],
-                "negativeScore": scores_hc["negativeScore"],
-                "llmFitness": llm_tc["llmFitness"],
-                "gaFitness": scores_ga["fitness"],
-                "hcFitness": scores_hc["fitness"]
-            }
-            final_tc = {
-                "tcId": tc_id, 
-                "scenario": llm_tc["scenario"], 
-                "categories": llm_tc["categories"], 
-                "values": final_values, 
-                "expectedResult": final_expected, 
-                "errorDescription": final_err_desc, 
-                "rationale": final_rationale, 
-                "validationScore": final_val_score,
-                "boundaryScore": final_bound_score,
-                "negativeScore": final_neg_score,
-                "llmFitness": llm_tc["llmFitness"],
-                "gaFitness": scores_ga["fitness"],
-                "hcFitness": scores_hc["fitness"],
-                "finalFitness": final_fit,
-                "finalFitness": final_fit,
-                "origin": origin,
-                "changes": changes,
-                "covers": final_tags
-            }
-            
-            ga_result_mapped.append(ga_tc)
-            hc_result_mapped.append(hc_tc)
-            final_result_mapped.append(final_tc)
-            
-            trace = [
-                {"stage": "LLM", "fitness": llm_tc["llmFitness"]},
-                {"stage": "GA", "fitness": scores_ga["fitness"]},
-                {"stage": "HC", "fitness": scores_hc["fitness"]}
-            ]
-            
-            comparison_data.append({
-                "tcId": tc_id,
-                "llm": llm_tc,
-                "ga": ga_tc,
-                "hc": hc_tc,
-                "final": final_tc,
-                "changes": changes,
-                "trace": trace
-            })
 
-            # ── Fitness Evolution Report entry ────────────────────────────────────────
-            llm_fit_val = round(llm_tc["llmFitness"] / 100.0, 4)  # normalize to [0,1]
-            ga_fit_val  = round(scores_ga["fitness"] / 100.0, 4)
-            hc_fit_val  = round(scores_hc["fitness"] / 100.0, 4)
+            # Lưu Job vào SQLite DB
+            db_job = models.Job(
+                specification_id=req.specification_id,
+                status="COMPLETE",
+                algorithm_config=json.dumps(config_dict),
+                final_coverage=float(summary["improved"]) / max(1, summary["total"]) * 100,
+                final_duplicate_rate=0.0
+            )
+            db.add(db_job)
+            db.commit()
+            db.refresh(db_job)
 
-            if llm_fit_val == ga_fit_val == hc_fit_val:
-                evo_status = "STAGNANT"
-            elif hc_fit_val > ga_fit_val and ga_fit_val > llm_fit_val:
-                evo_status = "IMPROVED"
-            elif hc_fit_val == ga_fit_val and ga_fit_val >= llm_fit_val:
-                evo_status = "CONVERGED"
-            elif hc_fit_val < ga_fit_val:
-                evo_status = "REGRESSED"  # fallback to GA đã xử lý phía trên
-            else:
-                evo_status = "IMPROVED"
-
-            boundary_hits = [
-                tag for tag in final_tc.get("covers", [])
-                if "BOUNDARY" in tag.upper()
-            ]
-
-            fitness_report.append({
-                "tc_id": tc_id,
-                "fitness_evolution": {
-                    "llm": llm_fit_val,
-                    "ga":  ga_fit_val,
-                    "hc":  hc_fit_val
-                },
-                "status": evo_status,
-                "optimization_gap": round(abs(hc_fit_val - ga_fit_val), 4),
-                "boundary_hits": boundary_hits,
-                "http_status": {
-                    "llm": 200 if llm_tc.get("validationScore", 0) == 100 else 400,
-                    "ga": oracle_ga["http_status"],
-                    "hc": oracle_hc["http_status"],
-                    "final": oracle_final["http_status"]
-                }
-            })
-
-
-        # GREEDY SET COVER TO MINIMIZE TEST SUITE
-        minimal_suite = []
-        uncovered_tags = set(global_coverage_set)
-        
-        # Sắp xếp final_result_mapped theo độ dài covers giảm dần (để ưu tiên tc cover nhiều rule)
-        candidates = list(final_result_mapped)
-        while uncovered_tags and candidates:
-            # Chọn candidate cover được nhiều tag chưa cover nhất
-            best_tc = None
-            best_cover_count = -1
-            best_idx = -1
-            
-            for idx, tc in enumerate(candidates):
-                covers = set(tc.get("covers", []))
-                cover_count = len(covers & uncovered_tags)
-                if cover_count > best_cover_count:
-                    best_cover_count = cover_count
-                    best_tc = tc
-                    best_idx = idx
-            
-            if best_cover_count > 0:
-                minimal_suite.append(best_tc)
-                uncovered_tags -= set(best_tc.get("covers", []))
-                candidates.pop(best_idx)
-            else:
-                break
+            # Lưu các TestCase và Version lịch sử vào database
+            for tc in final_result_mapped:
+                tc_db_id = f"TC-OPT-{tc['tcId']}-{db_job.id[:8]}"
                 
-        # Bù thêm tc cho đủ target nếu cần (ở đây cứ xuất minimal_suite + một số tc top fitness)
-        # Tạm thời thay thế final_result_mapped bằng minimal_suite
-        final_result_mapped = minimal_suite
-
-        # Chuẩn bị Export Package để UI không cần map lại
-        export_json = final_result_mapped
-        
-        # Chuẩn bị mảng headers cho CSV/Excel (gộp meta fields và data fields)
-        if final_result_mapped and len(final_result_mapped) > 0:
-            data_fields = list(final_result_mapped[0]["values"].keys())
-        else:
-            data_fields = [f["name"] for f in schema_rules]
-            
-        meta_fields = ["tcId", "scenario", "origin", "finalFitness", "categories", "expectedResult", "errorDescription"]
-        headers = meta_fields + data_fields
-        
-        # CSV
-        csv_rows = [",".join(headers)]
-        excel_rows = []
-        
-        for tc in final_result_mapped:
-            # csv row
-            csv_row_vals = []
-            excel_row_dict = {}
-            for h in headers:
-                if h in meta_fields:
-                    val = tc.get(h, "")
-                    if h == "categories":
-                        val = "|".join(val)
-                else:
-                    val = tc["values"].get(h, "")
-                    
-                excel_row_dict[h] = val
-                escaped_val = str(val).replace('"', '""')
-                csv_row_vals.append(f'"{escaped_val}"')
+                db_tc = models.TestCase(
+                    id=tc_db_id,
+                    requirement_id=req.specification_id,
+                    scenario=tc["scenario"],
+                    strategy=algo.capitalize(),
+                    fitness_before=tc["llmFitness"],
+                    fitness_after=tc["finalFitness"],
+                    status="Optimized" if tc["finalFitness"] > tc["llmFitness"] else "No Change"
+                )
+                db.add(db_tc)
                 
-            csv_rows.append(",".join(csv_row_vals))
-            excel_rows.append(excel_row_dict)
+                db_fs = models.FitnessScore(
+                    test_case_id=tc_db_id,
+                    happy_path=tc["validationScore"] * 0.4,
+                    boundary=tc["boundaryScore"] * 0.3,
+                    validation=tc["validationScore"] * 0.2,
+                    security=tc["negativeScore"] * 0.1,
+                    diversity=20.0, # default diversity mock
+                    total_score=tc["finalFitness"]
+                )
+                db.add(db_fs)
+                
+                v_f0 = models.TestCaseVersion(
+                    test_case_id=tc_db_id, stage="F0", input_json=json.dumps(tc["values"]), fitness_score=tc["llmFitness"], generation=0
+                )
+                db.add(v_f0)
+                
+                v_ga = models.TestCaseVersion(
+                    test_case_id=tc_db_id, stage="GA", input_json=json.dumps(tc["values"]), fitness_score=tc["gaFitness"], generation=30
+                )
+                db.add(v_ga)
+                
+                db.flush()
+                db.add(models.Lineage(child_id=v_ga.id, parent_id=v_f0.id, operation="GA Evolution", mutation_detail="Genetic algorithm applied"))
+                
+                v_hc = models.TestCaseVersion(
+                    test_case_id=tc_db_id, stage="HC", input_json=json.dumps(tc["values"]), fitness_score=tc["finalFitness"], generation=31
+                )
+                db.add(v_hc)
+                db.flush()
+                db.add(models.Lineage(child_id=v_hc.id, parent_id=v_ga.id, operation="HC Adjustment", mutation_detail="Hill climbing boundary tweaks"))
 
-        export_data = {
-            "json": export_json,
-            "csvRows": csv_rows,
-            "excelRows": excel_rows
+            db.commit()
+
+        # Giữ các thuật toán cũ bằng cách pass (để đơn giản trong code, QA sẽ tự xem qua DB)
+        elif algo in ["traditional", "ga", "hc", "hybrid"]:
+            pass # Not returning the detailed format for old endpoints for now
+
+        return {
+            "runId": run_id,
+            "createdAt": created_at,
+            "specificationId": req.specification_id,
+            "specificationName": db_spec.project.name if db_spec and db_spec.project else "Không tên",
+            "specHash": spec_hash,
+            "summary": summary,
+            "llmSeeds": llm_seeds_mapped,
+            "gaResult": ga_result_mapped,
+            "hcResult": hc_result_mapped,
+            "finalResult": final_result_mapped,
+            "comparisonData": comparison_data,
+            "fitnessReport": fitness_report,
+            "exportData": export_data
         }
-
-        # Lưu Job vào SQLite DB
-        db_job = models.Job(
-            specification_id=req.specification_id,
-            status="COMPLETE",
-            algorithm_config=json.dumps(config_dict),
-            final_coverage=float(summary["improved"]) / max(1, summary["total"]) * 100,
-            final_duplicate_rate=0.0
-        )
-        db.add(db_job)
-        db.commit()
-        db.refresh(db_job)
-
-        # Lưu các TestCase và Version lịch sử vào database
-        for tc in final_result_mapped:
-            tc_db_id = f"TC-OPT-{tc['tcId']}-{db_job.id[:8]}"
-            
-            db_tc = models.TestCase(
-                id=tc_db_id,
-                requirement_id=req.specification_id,
-                scenario=tc["scenario"],
-                strategy=algo.capitalize(),
-                fitness_before=tc["llmFitness"],
-                fitness_after=tc["finalFitness"],
-                status="Optimized" if tc["finalFitness"] > tc["llmFitness"] else "No Change"
-            )
-            db.add(db_tc)
-            
-            db_fs = models.FitnessScore(
-                test_case_id=tc_db_id,
-                happy_path=tc["validationScore"] * 0.4,
-                boundary=tc["boundaryScore"] * 0.3,
-                validation=tc["validationScore"] * 0.2,
-                security=tc["negativeScore"] * 0.1,
-                diversity=20.0, # default diversity mock
-                total_score=tc["finalFitness"]
-            )
-            db.add(db_fs)
-            
-            v_f0 = models.TestCaseVersion(
-                test_case_id=tc_db_id, stage="F0", input_json=json.dumps(tc["values"]), fitness_score=tc["llmFitness"], generation=0
-            )
-            db.add(v_f0)
-            
-            v_ga = models.TestCaseVersion(
-                test_case_id=tc_db_id, stage="GA", input_json=json.dumps(tc["values"]), fitness_score=tc["gaFitness"], generation=30
-            )
-            db.add(v_ga)
-            
-            db.flush()
-            db.add(models.Lineage(child_id=v_ga.id, parent_id=v_f0.id, operation="GA Evolution", mutation_detail="Genetic algorithm applied"))
-            
-            v_hc = models.TestCaseVersion(
-                test_case_id=tc_db_id, stage="HC", input_json=json.dumps(tc["values"]), fitness_score=tc["finalFitness"], generation=31
-            )
-            db.add(v_hc)
-            db.flush()
-            db.add(models.Lineage(child_id=v_hc.id, parent_id=v_ga.id, operation="HC Adjustment", mutation_detail="Hill climbing boundary tweaks"))
-
-        db.commit()
-
-    # Giữ các thuật toán cũ bằng cách pass (để đơn giản trong code, QA sẽ tự xem qua DB)
-    elif algo in ["traditional", "ga", "hc", "hybrid"]:
-        pass # Not returning the detailed format for old endpoints for now
-
-    return {
-        "runId": run_id,
-        "createdAt": created_at,
-        "specificationId": req.specification_id,
-        "specificationName": db_spec.project.name if db_spec and db_spec.project else "Không tên",
-        "specHash": spec_hash,
-        "summary": summary,
-        "llmSeeds": llm_seeds_mapped,
-        "gaResult": ga_result_mapped,
-        "hcResult": hc_result_mapped,
-        "finalResult": final_result_mapped,
-        "comparisonData": comparison_data,
-        "fitnessReport": fitness_report,
-        "exportData": export_data
-    }
+    except Exception as e:
+        import traceback
+        trace = traceback.format_exc()
+        print("API Optimize Error:\n", trace)
+        raise HTTPException(status_code=500, detail=str(e) + "\n" + trace)
 
 
 
@@ -1315,8 +1331,8 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
             for idx, ind in enumerate(optimizer.test_suite):
                 best_candidate = ind["values"]
                 raw_suite_values = [p["values"] for p in optimizer.test_suite]
-                fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
-                hc_optimized, stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator, max_iterations=10)
+                fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)[0]
+                hc_optimized, stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator, max_iterations=10, llm_provider=req.llm_provider, api_key_override=req.api_key_override)
                 ind["values"] = hc_optimized
                 ind["fitness"] = stats.optimized_fitness
                 ind["origin"] = "HC_ONLY"
@@ -1382,8 +1398,8 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
             
             best_candidate = optimizer.test_suite[0]["values"]
             raw_suite_values = [p["values"] for p in optimizer.test_suite]
-            fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)
-            hc_optimized, hc_tweak_stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator)
+            fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)[0]
+            hc_optimized, hc_tweak_stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator, llm_provider=req.llm_provider, api_key_override=req.api_key_override)
             
             for detail in hc_tweak_stats.details:
                 await websocket.send_json({

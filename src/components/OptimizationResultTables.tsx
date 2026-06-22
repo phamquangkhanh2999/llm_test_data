@@ -1,8 +1,8 @@
+import { Activity, Download, FileDiff, Search, X } from 'lucide-react';
 import React, { useState } from 'react';
-import { Search, FileDiff, X, Download, CheckCircle, MinusCircle, Activity } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import * as XLSX from 'xlsx';
-import type { OptimizationSnapshot, ComparisonData } from '../types/testcase';
+import type { ComparisonData, OptimizationSnapshot } from '../types/testcase';
 
 interface Props {
   snapshot?: OptimizationSnapshot;
@@ -276,17 +276,17 @@ export const OptimizationResultTables: React.FC<Props> = ({ snapshot, schema }) 
                                 <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '12px' }}>
                                   <thead>
                                     <tr style={{ background: 'rgba(0,0,0,0.02)' }}>
-                                      <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)' }}>Trường (Field)</th>
-                                      <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)' }}>F0</th>
-                                      <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)' }}>GA</th>
+                                      <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', width: '25%' }}>Trường (Field)</th>
+                                      <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', width: '37.5%' }}>F0</th>
+                                      <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', width: '37.5%' }}>GA</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {fieldDiffs.map(diff => (
                                       <tr key={diff.field}>
-                                        <td style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-subtle)', color: 'var(--color-teal)' }}>{diff.field}</td>
-                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>{diff.f0}</td>
-                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', color: '#3b82f6', fontWeight: 'bold' }}>{diff.ga}</td>
+                                        <td style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-subtle)', color: 'var(--color-teal)', wordBreak: 'break-all' }}>{diff.field}</td>
+                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{diff.f0}</td>
+                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', color: '#3b82f6', fontWeight: 'bold', wordBreak: 'break-all' }}>{diff.ga}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -464,26 +464,26 @@ export const OptimizationResultTables: React.FC<Props> = ({ snapshot, schema }) 
                                     <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '12px' }}>
                                       <thead>
                                         <tr style={{ background: 'rgba(0,0,0,0.02)' }}>
-                                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)' }}>Trường (Field)</th>
-                                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)' }}>F0</th>
-                                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)' }}>GA</th>
-                                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)' }}>HC</th>
+                                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', width: '22%' }}>Trường (Field)</th>
+                                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', width: '26%' }}>F0</th>
+                                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', width: '26%' }}>GA</th>
+                                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', width: '26%' }}>HC (Kết quả cuối)</th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {schema.map(f => {
                                           const f0Val = String(data.llm?.values?.[f.name] ?? '-');
                                           const gaVal = String(data.ga?.values?.[f.name] ?? '-');
-                                          const hcVal = String(data.hc?.values?.[f.name] ?? '-');
+                                          const finalVal = String(data.final?.values?.[f.name] ?? '-');
                                           const gaDiff = f0Val !== gaVal;
-                                          const hcDiff = gaVal !== hcVal;
+                                          const finalDiff = gaVal !== finalVal;
 
                                           return (
                                             <tr key={f.name}>
-                                              <td style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-subtle)', color: 'var(--color-teal)' }}>{f.name}</td>
+                                              <td style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-subtle)', color: 'var(--color-teal)', wordBreak: 'break-all' }}>{f.name}</td>
                                               <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{f0Val}</td>
                                               <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', color: gaDiff ? '#3b82f6' : 'var(--text-primary)', fontWeight: gaDiff ? 'bold' : 'normal', background: gaDiff ? 'rgba(59,130,246,0.05)' : 'transparent', wordBreak: 'break-all' }}>{gaVal}</td>
-                                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', color: hcDiff ? '#8b5cf6' : 'var(--text-primary)', fontWeight: hcDiff ? 'bold' : 'normal', background: hcDiff ? 'rgba(139,92,246,0.05)' : 'transparent', wordBreak: 'break-all' }}>{hcVal}</td>
+                                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', borderBottom: '1px solid var(--border-subtle)', borderLeft: '1px solid var(--border-subtle)', color: finalDiff ? '#8b5cf6' : 'var(--text-primary)', fontWeight: finalDiff ? 'bold' : 'normal', background: finalDiff ? 'rgba(139,92,246,0.05)' : 'transparent', wordBreak: 'break-all' }}>{finalVal}</td>
                                             </tr>
                                           );
                                         })}

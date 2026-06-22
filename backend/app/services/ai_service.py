@@ -815,7 +815,7 @@ def parse_spec_with_ai(raw_text: str, api_key_override: str = None, llm_provider
         rules_data = {
             "rules": combined_result.get("rules", []),
             "constraints": combined_result.get("constraints", []),
-            "ambiguities": combined_result.get("ambiguities", [])
+            "ambiguities": []
         }
         validate_rules(rules_data)
         
@@ -840,7 +840,7 @@ def parse_spec_with_ai(raw_text: str, api_key_override: str = None, llm_provider
         final_result = {
             "business_rules": rules_data.get("rules", []),
             "constraints": rules_data.get("constraints", []),
-            "ambiguities": rules_data.get("ambiguities", []),
+            "ambiguities": [],
             "fields": schema_fields,
             "initialPopulation": [],
             "is_mock": False,
@@ -871,7 +871,7 @@ def generate_seeds_with_ai(
     fields: list,
     business_rules: list = None,
     constraints: list = None,
-    test_method: str = "bva",
+    test_methods: list = None,
     boundary_count: int = 4,
     partition_count: int = 3,
     api_key: str = None,
@@ -881,60 +881,119 @@ def generate_seeds_with_ai(
 ) -> tuple:
     import time as _time
     import json
+    import hashlib
     from .prompts import get_seed_generation_instructions
+    from ..algorithms.seed_planner import create_seed_plan
     
     t_start = _time.time()
-    print(f"\n>>> [SEEDS V5] Start LLM-First | fields={len(fields)} | method={test_method} | provider={llm_provider}", flush=True)
+    plan = create_seed_plan(test_methods, fields)
+    total_requested = plan.total
+    print(f"\n>>> [SEEDS V6] Start Batch LLM Generation | plan={plan.to_dict()}", flush=True)
 
-    sys_prompt, usr_prompt = get_seed_generation_instructions(test_method, boundary_count, partition_count)
-    usr_prompt_full = f"{usr_prompt}\n\nFields Schema:\n{json.dumps(fields, ensure_ascii=False)}"
+    all_seeds = []
+    seen_hashes = set()
+    MAX_RETRY = 5
     
-    if business_rules:
-        usr_prompt_full += f"\n\nBusiness Rules:\n{json.dumps(business_rules, ensure_ascii=False)}"
-    if constraints:
-        usr_prompt_full += f"\n\nConstraints:\n{json.dumps(constraints, ensure_ascii=False)}"
+    # Track generation statistics
+    stats = {
+        "requested": total_requested,
+        "generated": 0,
+        "accepted": 0,
+        "rejected": 0,
+        "distribution": {"valid": 0, "boundary": 0, "invalid": 0},
+        "rejected_reason": []
+    }
     
-    try:
-        print("\n================ DEBUG PROMPT ==================", flush=True)
-        print("FINAL_SYSTEM_PROMPT:", flush=True)
-        print(sys_prompt, flush=True)
-        print("\nFINAL_USER_PROMPT_FULL:", flush=True)
-        print(usr_prompt_full, flush=True)
-        print("================================================\n", flush=True)
+    def _add_reject(reason):
+        stats["rejected"] += 1
+        for r in stats["rejected_reason"]:
+            if r["type"] == reason:
+                r["count"] += 1
+                return
+        stats["rejected_reason"].append({"type": reason, "count": 1})
 
-        llm_result, engine_name, model_name = call_llm_json(sys_prompt, usr_prompt_full, api_key_override=api_key, llm_provider=llm_provider)
+    # Build distribution string
+    import json
+    distribution_str = json.dumps(plan.categories, ensure_ascii=False)
+    
+    retry_count = 0
+    while len(all_seeds) < total_requested and retry_count < MAX_RETRY:
+        needed = total_requested - len(all_seeds)
+        # BATCH_SIZE limits logic: Try to get up to 30 in a single request as requested by the user
+        batch_size = min(needed, 30)
         
-        print("\n================ DEBUG LOGS ==================", flush=True)
-        print("STEP1 LLM RAW", flush=True)
-        print(json.dumps(llm_result, indent=2, ensure_ascii=False), flush=True)
+        # Context memory
+        context_str = ""
+        if len(all_seeds) > 0:
+            context_str = json.dumps([s["values"] for s in all_seeds[-5:]], ensure_ascii=False)
+            
+        sys_prompt, usr_prompt = get_seed_generation_instructions(batch_size, distribution_str, previous_context=context_str)
+        usr_prompt_full = f"{usr_prompt}\n\nFields Schema:\n{json.dumps(fields, ensure_ascii=False)}"
         
-        seeds = llm_result.get("initialPopulation", [])
-        
-        for i, s in enumerate(seeds):
-            s["tcId"] = f"TC-{str(i+1).zfill(4)}"
-            if "values" not in s:
-                val_keys = {f["name"] for f in fields}
-                s["values"] = {k: v for k, v in s.items() if k in val_keys}
+        if business_rules:
+            usr_prompt_full += f"\n\nBusiness Rules:\n{json.dumps(business_rules, ensure_ascii=False)}"
+        if constraints:
+            usr_prompt_full += f"\n\nConstraints:\n{json.dumps(constraints, ensure_ascii=False)}"
+            
+        try:
+            llm_result, engine_name, model_name = call_llm_json(sys_prompt, usr_prompt_full, api_key_override=api_key, llm_provider=llm_provider)
+            batch = llm_result.get("initialPopulation", [])
+            stats["generated"] += len(batch)
+            
+            for s in batch:
+                if "values" not in s:
+                    val_keys = {f["name"] for f in fields}
+                    s["values"] = {k: v for k, v in s.items() if k in val_keys}
+                    
+                # Oracle Classification (Phase 1C)
+                from ..algorithms.fitness_engine.quality_classifier import classify_quality, InvalidType
+                is_rejected = False
+                for f in fields:
+                    val_str = str(s["values"].get(f["name"])) if s["values"].get(f["name"]) is not None else ""
+                    status_res = classify_quality(val_str, f)
+                    status = status_res.status
+                    if status == InvalidType.INVALID_TYPE:
+                        _add_reject("INVALID_TYPE")
+                        is_rejected = True
+                        break
+                if is_rejected: continue
                 
-        print("\nSTEP2 AFTER PARSE", flush=True)
-        print(json.dumps(seeds, indent=2, ensure_ascii=False), flush=True)
+                # Deduplication (Phase 1D) - Exact hash 
+                val_hash = hashlib.sha256(json.dumps(s["values"], sort_keys=True, ensure_ascii=False).encode('utf-8')).hexdigest()
+                if val_hash in seen_hashes:
+                    _add_reject("SIMILARITY_DUPLICATE")
+                    continue
+                    
+                seen_hashes.add(val_hash)
+                s["tcId"] = f"TC-{len(all_seeds)+1:04d}"
+                all_seeds.append(s)
+                
+                # Guess distribution based on valid/boundary/invalid since we requested it combined
+                cats = s.get("categories", ["positive"])
+                if "negative" in cats:
+                    stats["distribution"]["invalid"] += 1
+                elif "boundary" in cats:
+                    stats["distribution"]["boundary"] += 1
+                else:
+                    stats["distribution"]["valid"] += 1
+                stats["accepted"] += 1
+                
+        except Exception as e:
+            print(f">>> [SEEDS V6] Generate Batch Error: {e}")
+            _time.sleep(1.0)
+            
+        retry_count += 1
 
-        summary = generate_coverage_summary(seeds, fields)
+    summary = generate_coverage_summary(all_seeds, fields)
+    
+    # Quality Gate (Phase 1E)
+    if stats["accepted"] < total_requested * 0.9:
+        print(f"Warning: Quality Gate failed. Only generated {stats['accepted']}/{total_requested}")
         
-        log_ai_call(db, f"/api/generate-seeds?method={test_method}", engine_name, model_name, "V5 LLM-First Seed Generation", json.dumps(seeds[:3], ensure_ascii=False), "SUCCESS")
+    elapsed = _time.time() - t_start
+    print(f">>> [SEEDS V6] Done | {len(all_seeds)} seeds | {elapsed:.1f}s", flush=True)
         
-        elapsed = _time.time() - t_start
-        print(f">>> [SEEDS V5] Done | {len(seeds)} seeds | {elapsed:.1f}s", flush=True)
-        
-        print("\nSTEP3 FINAL RESPONSE", flush=True)
-        print(json.dumps(seeds, indent=2, ensure_ascii=False), flush=True)
-        print("==============================================\n", flush=True)
-        
-        return seeds, summary
-        
-    except Exception as e:
-        print(f">>> [SEEDS V5] Error: {e}", flush=True)
-        raise ValueError(f"Failed to generate seeds: {str(e)}")
+    return all_seeds, summary, stats
 
 def evaluate_test_quality_with_ai(fields: list, seeds: list, test_method: str, raw_text: str, api_key_override: str = None, db: Session = None, extracted_rules: list = None, extracted_constraints: list = None, llm_provider: str = "gemini") -> dict:
     if extracted_rules is None: extracted_rules = []
@@ -1078,7 +1137,8 @@ def batch_semantic_polish(
     api_key_override: str = None,
     llm_provider: str = "gemini",
     db: Session = None,
-    max_polish: int = 20
+    max_polish: int = 20,
+    cancel_check = None
 ) -> list:
     """
     Áp dụng semantic_polish_with_llm cho batch TC.
@@ -1113,44 +1173,190 @@ def batch_semantic_polish(
                     return True
         return False
 
-    results = []
-    polish_count = 0
-
-    for tc in tc_list:
+    import json
+    import os
+    
+    # 1. Thu thập các TC cần polish
+    tc_batch = []
+    tc_map = {} # map tcId -> tc original data
+    
+    for idx, tc in enumerate(tc_list):
         hc_values = tc.get("hc_values", tc.get("values", {}))
         llm_values = tc.get("llm_values", hc_values)
         categories = tc.get("categories", ["positive"])
-        category_str = categories[0] if categories else "positive"
-
-        should_polish = (
-            polish_count < max_polish
-            and looks_robot(hc_values, schema)
-        )
-
+        tc_id = tc.get("tcId", f"TC-{idx}")
+        tc["_internal_id"] = tc_id
+        
+        should_polish = looks_robot(hc_values, schema)
+        
+        tc_map[tc_id] = tc
+        
         if should_polish:
-            polish_count += 1
-            polish_result = semantic_polish_with_llm(
-                schema=schema,
-                optimized_values=hc_values,
-                original_values=llm_values,
-                test_category=category_str,
-                api_key_override=api_key_override,
-                llm_provider=llm_provider,
-                db=db
-            )
-            # Rate limit protection
-            if polish_count % 5 == 0:
-                _time.sleep(1.0)
+            tc_batch.append({
+                "tcId": tc_id,
+                "original": llm_values,
+                "optimized": hc_values,
+                "category": categories[0] if categories else "positive"
+            })
+
+    # 2. Nếu không có gì cần polish, trả về luôn
+    if not tc_batch:
+        return [
+            {**tc, "polished_values": tc.get("hc_values", tc.get("values", {})), "polish_notes": {}, "was_polished": False}
+            for tc in tc_list
+        ]
+        
+    # 3. Gọi LLM theo từng chunk (batching)
+    active_key = api_key_override or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    from .prompts import get_batch_semantic_polish_prompt
+    from .llm_client import call_llm_json
+    
+    polished_results_map = {}
+    
+    chunks = []
+    if active_key:
+        # Chia nhỏ tc_batch thành các chunk kích thước max_polish
+        chunks = [tc_batch[i:i + max_polish] for i in range(0, len(tc_batch), max_polish)]
+        for chunk in chunks:
+            if cancel_check and cancel_check():
+                print(">>> [POLISH] Job cancelled by user")
+                break
+            try:
+                sys_prompt, usr_prompt = get_batch_semantic_polish_prompt(schema, chunk)
+                result, engine, model = call_llm_json(sys_prompt, usr_prompt, api_key_override, llm_provider)
+                
+                # Kết quả là { "results": [ { "tcId": ..., "polished_values": ..., "polish_notes": ... } ] }
+                results_array = result.get("results", [])
+                for r in results_array:
+                    tc_id = r.get("tcId")
+                    if tc_id:
+                        # Validate: kiểm tra enum không bị phá vỡ
+                        polished = r.get("polished_values", {})
+                        notes = r.get("polish_notes", {})
+                        original_optimized = tc_map[tc_id].get("hc_values", tc_map[tc_id].get("values", {}))
+                        
+                        enum_safe_polished = {**original_optimized}
+                        for f in schema:
+                            name = f.get("name")
+                            if name not in polished: continue
+                            new_val = polished[name]
+                            allowed = f.get("allowedValues")
+                            if allowed and str(new_val) not in [str(v) for v in allowed]:
+                                print(f">>> [POLISH] Enum violation cho '{name}': LLM sinh '{new_val}' không trong {allowed}. Giữ nguyên.")
+                                enum_safe_polished[name] = original_optimized.get(name, new_val)
+                            else:
+                                enum_safe_polished[name] = new_val
+                                
+                        polished_results_map[tc_id] = {
+                            "polished_values": enum_safe_polished,
+                            "polish_notes": notes,
+                            "was_polished": True
+                        }
+                        
+                log_ai_call(db, "/semantic-polish-batch", engine, model, f"Batch polish: {len(chunk)} TCs", json.dumps(result, ensure_ascii=False), "SUCCESS")
+            except Exception as e:
+                print(f">>> [POLISH BATCH] LLM failed for chunk: {e}")
+
+    # 4. Gộp kết quả
+    results = []
+    for tc in tc_list:
+        tc_id = tc.get("_internal_id")
+        hc_values = tc.get("hc_values", tc.get("values", {}))
+        
+        if tc_id in polished_results_map:
+            results.append({**tc, **polished_results_map[tc_id]})
+            print(f">>> [POLISH] TC {tc_id} đã được làm đẹp ngữ nghĩa (Batched)")
         else:
-            polish_result = {"polished_values": hc_values, "polish_notes": {}, "was_polished": False}
+            results.append({
+                **tc,
+                "polished_values": hc_values,
+                "polish_notes": {},
+                "was_polished": False
+            })
 
-        results.append({
-            **tc,
-            "polished_values": polish_result["polished_values"],
-            "polish_notes": polish_result["polish_notes"],
-            "was_polished": polish_result["was_polished"]
-        })
-
-    print(f">>> [POLISH] Đã polish {polish_count}/{len(tc_list)} TC")
+    print(f">>> [POLISH] Đã batch polish {len(tc_batch)}/{len(tc_list)} TC (Sử dụng {len(chunks)} chunks)")
     return results
 
+
+def execute_semantic_mutation_plan(current_val: str, field_schema: dict, plan: dict, api_key_override: str = None, llm_provider: str = "gemini") -> str:
+    """
+    Sử dụng LLM làm Semantic Mutation Provider.
+    Nhận Mutation Contract (Kế hoạch) từ GA/HC Planner và sinh ra dữ liệu phù hợp.
+    """
+    system_prompt = (
+        "You are a semantic test data mutation engine.\n"
+        "Rules:\n"
+        "- Never break schema.\n"
+        "- Preserve meaning.\n"
+        "- Move toward requested boundary.\n"
+        "- Return ONLY JSON.\n"
+    )
+    
+    user_prompt = f"""
+INPUT:
+
+field:
+{plan.get('field')}
+
+current:
+{current_val}
+
+goal:
+{plan.get('action', 'explore')} {plan.get('target', 'unknown')}
+
+constraint:
+{json.dumps(plan.get('constraints', []), ensure_ascii=False)}
+{json.dumps(field_schema, ensure_ascii=False)}
+
+OUTPUT FORMAT:
+{{
+ "value": "<mutated_value>",
+ "reasoning": "<brief explanation>",
+ "preserved_rules": ["<rule1>", "<rule2>"]
+}}
+
+CRITICAL: Return ONLY valid JSON, without Markdown blocks.
+"""
+
+    try:
+        response, _, _ = call_llm_json(system_prompt, user_prompt, api_key_override, llm_provider)
+        if isinstance(response, dict) and "value" in response:
+            return str(response["value"])
+        return current_val
+    except Exception as e:
+        print(f"[Mutation Planner] LLM Error: {e}")
+        return None
+
+def execute_batch_semantic_mutation(batch_requests: list, api_key_override: str = None, llm_provider: str = "gemini") -> dict:
+    """
+    Sử dụng LLM để xử lý một BATCH các đột biến cùng lúc.
+    Trả về dictionary map: mutation_id -> mutated_value
+    """
+    if not batch_requests:
+        return {}
+        
+    from .prompts import get_batch_semantic_mutation_prompt
+    import os
+    
+    active_key = api_key_override or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not active_key:
+        return {}
+
+    try:
+        sys_prompt, usr_prompt = get_batch_semantic_mutation_prompt(batch_requests)
+        result, engine, model = call_llm_json(sys_prompt, usr_prompt, api_key_override, llm_provider)
+        
+        mutated_map = {}
+        results_array = result.get("results", [])
+        for r in results_array:
+            mid = r.get("mutation_id")
+            val = r.get("value")
+            if mid and val is not None:
+                mutated_map[mid] = str(val)
+                
+        # TODO: log_ai_call here if we pass db? 
+        # Skipping db log here because we don't pass db to mutation executor
+        return mutated_map
+    except Exception as e:
+        print(f"[Mutation Batch Planner] LLM Error: {e}")
+        return {}

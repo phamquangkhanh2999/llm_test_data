@@ -12,12 +12,10 @@ def get_parse_spec_combined_prompt(raw_text: str) -> tuple[str, str]:
         
         "# MISSION\n"
         "Nhiệm vụ chính:\n"
-        "Phân tích đặc tả yêu cầu nghiệp vụ để trích xuất danh sách các Trường dữ liệu (Fields Schema), Quy tắc nghiệp vụ (Business Rules), Ràng buộc (Constraints) và các Điểm mơ hồ (Ambiguities).\n"
+        "Phân tích đặc tả yêu cầu nghiệp vụ để trích xuất danh sách các Trường dữ liệu (Fields Schema), Quy tắc nghiệp vụ (Business Rules), và Ràng buộc (Constraints).\n"
         "Mục tiêu:\n"
-        "- Trích xuất chính xác 100% các trường dữ liệu và ràng buộc kiểu dữ liệu đầu vào\n"
-        "- Xác định đầy đủ các giá trị biên (min, max, length) phục vụ kiểm thử Boundary Value Analysis (BVA)\n"
-        "- Xác định đầy đủ các lớp tương đương phục vụ kiểm thử Equivalence Partitioning (EP)\n"
-        "- Phát hiện toàn bộ các điểm mơ hồ chưa rõ ràng trong tài liệu đặc tả\n"
+        "- Trích xuất chính xác 100% các trường dữ liệu và ràng buộc kiểu dữ liệu đầu vào.\n"
+        "- BẮT BUỘC xác định đầy đủ các giới hạn và miền giá trị (minLength, maxLength, minValue, maxValue) cho từng trường.\n"
         "Không tối ưu số lượng. Chỉ tối ưu chất lượng.\n\n"
         
         "# CONTEXT\n"
@@ -29,17 +27,15 @@ def get_parse_spec_combined_prompt(raw_text: str) -> tuple[str, str]:
         "3. Mỗi quy tắc nghiệp vụ phải có thông báo lỗi tương ứng bằng tiếng Việt ('errorMessage').\n"
         "4. Bắt buộc điền đúng loại dữ liệu 'type' của trường từ danh sách: ['string', 'number', 'email', 'card', 'phone', 'date', 'boolean']. Không dùng các loại khác.\n"
         "5. Xác định đúng kiểu nhập liệu 'inputType' của trường (ví dụ: 'textbox', 'dropdown', 'datepicker', 'checkbox').\n"
-        "6. Với các trường có giới hạn độ dài chuỗi hoặc khoảng giá trị số, bắt buộc điền chi tiết đối tượng 'bva_boundary' chứa các điểm biên kiểm thử.\n"
-        "7. Định dạng đầu ra phải là chuỗi JSON thuần khiết, không có thẻ markdown wrapped (ví dụ: không có ```json).\n\n"
+        "6. Định dạng đầu ra phải là chuỗi JSON thuần khiết, không có thẻ markdown wrapped (ví dụ: không có ```json).\n\n"
         
         "# EXECUTION PROCESS\n"
         "Thực hiện theo đúng thứ tự sau:\n"
         "Bước 1: Đọc và phân tích kỹ tài liệu đặc tả nghiệp vụ.\n"
         "Bước 2: Liệt kê tất cả các trường dữ liệu đầu vào, xác định kiểu dữ liệu, kiểu nhập liệu và các ràng buộc độ dài/giá trị.\n"
-        "Bước 3: Trích xuất các quy tắc xác thực (Business Rules) riêng lẻ cho từng trường. Tạo các điểm biên BVA tương ứng.\n"
+        "Bước 3: Trích xuất các quy tắc xác thực (Business Rules) riêng lẻ cho từng trường.\n"
         "Bước 4: Trích xuất các ràng buộc logic chéo giữa các trường (Constraints).\n"
-        "Bước 5: Phát hiện các thuật từ mơ hồ, thiếu rõ ràng trong tài liệu đặc tả (Ambiguities).\n"
-        "Bước 6: Tự kiểm tra định dạng dữ liệu đầu ra và cấu trúc JSON.\n\n"
+        "Bước 5: Tự kiểm tra định dạng dữ liệu đầu ra và cấu trúc JSON.\n\n"
         
         "# OUTPUT CONTRACT\n"
         "{\n"
@@ -50,15 +46,7 @@ def get_parse_spec_combined_prompt(raw_text: str) -> tuple[str, str]:
         "      \"rule_category\": \"<presence|length|value|format|domain|security>\",\n"
         "      \"rule_operator\": \"<required|length_min|length_max|value_min|value_max|format|allowed_values|no_injection>\",\n"
         "      \"rule_value\": \"<threshold_value_or_allowed_values_array_or_regex>\",\n"
-        "      \"bva_boundary\": {\n"
-        "        \"min\": 3,\n"
-        "        \"bva_invalid_below\": 2,\n"
-        "        \"bva_valid_at\": 3,\n"
-        "        \"bva_valid_above\": 4\n"
-        "      },\n"
-        "      \"source_text\": \"<exact sentence from spec mapping to this constraint>\",\n"
         "      \"priority\": \"<high|medium|low>\",\n"
-        "      \"test_strategies\": [\"bva\", \"ep\", \"decision\"],\n"
         "      \"description\": \"<Clear description of this specific rule in Vietnamese>\",\n"
         "      \"errorMessage\": \"<Validation error message displayed to user in Vietnamese>\"\n"
         "    }\n"
@@ -68,16 +56,8 @@ def get_parse_spec_combined_prompt(raw_text: str) -> tuple[str, str]:
         "      \"constraint_id\": \"C_<CONSTRAINT_NAME>\",\n"
         "      \"when\": {\"field\": \"<source_field_name>\", \"operator\": \"<equal|not_equal|greater_than|less_than|in>\", \"value\": \"<condition_value>\"},\n"
         "      \"then\": {\"field\": \"<target_field_name>\", \"operator\": \"<required|equal|greater_than|less_than>\", \"value\": \"<target_value>\"},\n"
-        "      \"source_text\": \"<exact conditional sentence from spec>\",\n"
         "      \"confidence\": 1.0,\n"
         "      \"description\": \"<Clear description of relation in Vietnamese>\"\n"
-        "    }\n"
-        "  ],\n"
-        "  \"ambiguities\": [\n"
-        "    {\n"
-        "      \"text\": \"<vague phrase from spec>\",\n"
-        "      \"reason\": \"<why it is unclear for automation in Vietnamese>\",\n"
-        "      \"candidate_values\": [\"<value_option_1>\", \"<value_option_2>\"]\n"
         "    }\n"
         "  ],\n"
         "  \"fields\": [\n"
@@ -258,37 +238,25 @@ def get_benchmark_analysis_prompt(results: dict) -> tuple[str, str]:
     user_prompt = f"Phân tích dữ liệu benchmark sau và trả về đánh giá JSON:\n{json.dumps(results, ensure_ascii=False)}"
     return system_instruction, user_prompt
 
-def get_seed_generation_instructions(test_method: str, boundary_count: int=4, partition_count: int=3) -> tuple[str, str]:
+def get_seed_generation_instructions(target_count: int, distribution_str: str, previous_context: str = "") -> tuple[str, str]:
     """
-    Hàm sinh prompt cho LLM để sinh toàn bộ dữ liệu F0 (bao gồm cả values) theo kiến trúc V5.
+    Hàm sinh prompt cho LLM để sinh toàn bộ dữ liệu F0 theo phân phối (distribution) yêu cầu trong 1 lần gọi.
     """
     system_instruction = (
         "**VAI TRÒ (ROLE):**\nBạn là Test Data Engineer xuất sắc với chuyên môn sâu về Kỹ thuật thiết kế Testcase.\n\n"
-        f"**NHIỆM VỤ (TASK):**\nSinh bộ dữ liệu kiểm thử F0 (Test Seeds) bằng phương pháp {test_method} dựa trên Fields Schema được cung cấp.\n\n"
-        "**YÊU CẦU CỤ THỂ (REQUIREMENTS):**\n"
-    )
-    
-    if test_method == 'bva':
-        system_instruction += f"- Áp dụng Phân tích Giá trị biên (BVA) tập trung vào {boundary_count} giá trị xung quanh giới hạn của số/chuỗi.\n- Tạo testcase vét cạn TOÀN BỘ các giá trị sát biên (min-1, min, min+1...). Dữ liệu các trường còn lại phải hợp lệ.\n"
-    elif test_method == 'ep':
-        system_instruction += f"- Áp dụng Phân vùng Tương đương (EP) chia miền thành các khoảng (partition_count={partition_count}).\n- Tạo testcase bao phủ TẤT CẢ các phân vùng (valid và invalid). Không sinh các case giống hệt nhau.\n"
-    elif test_method == 'decision':
-        system_instruction += "- Áp dụng Bảng Quyết định (Decision Table). Test các tổ hợp: all valid, exactly one invalid, multiple invalid.\n- Tạo testcase bao phủ các tổ hợp logic có thể xảy ra.\n"
-    else:
-        system_instruction += "- Tạo bộ dữ liệu hạt giống TOÀN DIỆN VÀ NHIỀU NHẤT CÓ THỂ, bao phủ: happy path, boundary, negative. Mỗi testcase là một trường hợp khác biệt.\n"
-        
-    system_instruction += (
-        "\n**RÀNG BUỘC (CONSTRAINTS):**\n"
-        "- Sinh dữ liệu kiểm thử THỰC TẾ và có NGỮ CẢNH NGHIỆP VỤ rõ ràng.\n"
-        "- KHÔNG sử dụng các giá trị giả lập rác như: aaa, test, value1, sample, placeholder.\n"
-        "- Ưu tiên dữ liệu giống hệ thống thật (Ví dụ: tên sản phẩm là 'Apple iPhone 15 Pro', mã sản phẩm là 'IPH15P'). Dù test biên ngắn (VD 2 ký tự) thì cũng phải mang ý nghĩa thực tế như 'TV', 'PC'.\n"
-        "- Boundary vẫn phải giữ chính xác theo Schema.\n"
-        "- PHẢI bao gồm đủ các loại: positive, boundary, negative.\n"
-        "- **BẮT BUỘC:** Sinh số lượng testcase CÀNG NHIỀU CÀNG TỐT (Ít nhất 15-25 testcases). Tuyệt đối không được sinh lèo tèo 3-5 cases.\n"
+        "**NHIỆM VỤ (TASK):**\nSinh bộ dữ liệu kiểm thử F0 (Test Seeds) toàn diện dựa trên Fields Schema được cung cấp.\n\n"
+        "**YÊU CẦU PHÂN PHỐI DỮ LIỆU (DISTRIBUTION REQUIREMENTS):**\n"
+        f"Bạn PHẢI sinh ĐÚNG tổng cộng {target_count} test cases, với phân phối chính xác như sau:\n{distribution_str}\n\n"
+        "- 'valid': Các kịch bản HỢP LỆ (Happy Path, normal cases).\n"
+        "- 'boundary': Các kịch bản KIỂM THỬ BIÊN (Boundary Value Analysis).\n"
+        "- 'invalid': Các kịch bản LỖI (Negative cases) - cố tình vi phạm định dạng, khoảng giá trị.\n\n"
+        "**RÀNG BUỘC (CONSTRAINTS) QUAN TRỌNG:**\n"
+        f"- **MANDATORY OUTPUT CONSTRAINT:** You MUST return EXACTLY {target_count} test cases. Never return fewer than requested.\n"
+        "- **KHÔNG BỎ TRỐNG CÁC TRƯỜNG:** Với mỗi test case, đối tượng `values` PHẢI chứa đầy đủ tất cả các trường dữ liệu được định nghĩa trong schema (trừ khi cố tình test trường hợp thiếu dữ liệu).\n"
+        "- **ĐA DẠNG & KHÔNG TRÙNG LẶP:** Dữ liệu của các test case không được trùng lặp. Các giá trị trong `values` phải được biến đổi đa dạng.\n"
+        "- **DỮ LIỆU THỰC TẾ:** Sinh dữ liệu kiểm thử THỰC TẾ và có NGỮ CẢNH NGHIỆP VỤ rõ ràng.\n"
         "- 'scenario' phải mô tả chi tiết kịch bản bằng Tiếng Việt.\n"
-        "- 'rationale' giải thích lý do vì sao thiết kế test case này bằng Tiếng Việt.\n"
-        "- 'expectedResult' PHẢI nhất quán với scenario (VD: 'Thành công' hoặc 'Thất bại: lý do').\n"
-        "- Ước lượng các điểm số fitness (validation, boundary, diversity, negative) và seedQualityScore một cách tương đối.\n\n"
+        "- 'expectedResult' PHẢI nhất quán với scenario (VD: 'Thành công' hoặc 'Thất bại: lý do').\n\n"
         "**ĐỊNH DẠNG ĐẦU RA (OUTPUT FORMAT):**\n"
         "Trả về ĐÚNG cấu trúc JSON sau, không bọc bằng markdown (không có ```json):\n"
         "{\n"
@@ -296,24 +264,21 @@ def get_seed_generation_instructions(test_method: str, boundary_count: int=4, pa
         "    {\n"
         "      \"scenario\": \"Mô tả kịch bản\",\n"
         "      \"rationale\": \"Lý do test case\",\n"
-        "      \"categories\": [\"positive\", \"boundary\"],\n"
+        "      \"categories\": [\"positive\"],\n"
         "      \"expectedResult\": \"Kết quả mong đợi\",\n"
         "      \"errorDescription\": \"Mô tả lỗi (nếu có)\",\n"
-        "      \"coverageTags\": [\"R_PRODUCT_NAME_LENGTH\", \"...\"],\n"
-        "      \"fitnessBreakdown\": {\n"
-        "          \"validation\": 95,\n"
-        "          \"boundary\": 80,\n"
-        "          \"diversity\": 70,\n"
-        "          \"negative\": 90\n"
-        "      },\n"
-        "      \"seedQualityScore\": 84,\n"
         "      \"values\": { \"<field_name>\": \"<generated_value>\" }\n"
         "    }\n"
         "  ]\n"
         "}\n"
-        "Lưu ý: values phải dùng chính xác key là name của field trong schema."
     )
-    return system_instruction, "Sinh TỐI ĐA số lượng dữ liệu kiểm thử F0 (càng nhiều càng tốt, ít nhất 15-20 testcases) đảm bảo vét cạn các kịch bản theo schema được cung cấp."
+    
+    context_str = ""
+    if previous_context:
+        context_str = f"**PREVIOUSLY GENERATED CASES (DO NOT DUPLICATE THESE):**\n{previous_context}\n\n"
+        
+    user_prompt = f"{context_str}Hãy sinh chính xác {target_count} test cases theo đúng phân phối (distribution) đã chỉ định."
+    return system_instruction, user_prompt
 
 def get_optimization_explanation_prompt() -> tuple[str, str]:
     """
@@ -412,5 +377,96 @@ def get_semantic_polish_prompt(schema: list, optimized_values: dict, original_va
         "Hãy viết lại optimized_values để trông realistic và có ý nghĩa nghiệp vụ, "
         "đồng thời giữ nguyên tất cả constraint (type, length, range, enum)."
     )
+    return system_instruction, user_prompt
+
+
+def get_batch_semantic_polish_prompt(schema: list, tc_batch: list) -> tuple:
+    """
+    tc_batch is a list of dicts: {"tcId": "...", "original": {...}, "optimized": {...}, "category": "..."}
+    """
+    import json
+    
+    field_constraints = []
+    for f in schema:
+        field_constraints.append({
+            "name": f.get("name"),
+            "type": f.get("type"),
+            "semantic": f.get("semantic_type"),
+            "maxLength": f.get("maxLength"),
+            "minLength": f.get("minLength"),
+            "allowedValues": f.get("allowedValues"),
+        })
+
+    system_instruction = (
+        "You are a test data semantic polisher processing a BATCH of test cases.\n"
+        "Your task is to rewrite 'optimized' values to look realistic like 'original' values, "
+        "WHILE STRICTLY KEEPING ALL OPTIMIZED CONSTRAINTS (length, characters, boundary, enum).\n\n"
+        
+        "# RULES\n"
+        "1. Strings: If optimized length is 191, the polished string MUST also be exactly 191 chars.\n"
+        "2. Enum: MUST strictly use allowedValues.\n"
+        "3. Keep boundary numbers exactly the same.\n\n"
+        
+        f"# SCHEMA CONSTRAINTS\n{json.dumps(field_constraints, ensure_ascii=False, indent=2)}\n\n"
+        
+        "# OUTPUT FORMAT\n"
+        "Return a JSON object containing an array 'results' matching the input tcId:\n"
+        "{\n"
+        "  \"results\": [\n"
+        "    {\n"
+        "      \"tcId\": \"<tcId>\",\n"
+        "      \"polished_values\": { \"<field>\": \"<val>\" },\n"
+        "      \"polish_notes\": { \"<field>\": \"<reason>\" }\n"
+        "    }\n"
+        "  ]\n"
+        "}"
+    )
+
+    user_prompt = (
+        f"Batch to process:\n{json.dumps(tc_batch, ensure_ascii=False, indent=2)}\n\n"
+        "Process each test case and return the 'results' array."
+    )
+    return system_instruction, user_prompt
+
+def get_batch_semantic_mutation_prompt(batch_requests: list) -> tuple:
+    """
+    batch_requests: [
+        {
+            "mutation_id": "m1",
+            "field": "email",
+            "current": "abc@gmail.com",
+            "goal": "increase_length",
+            "schema": {...}
+        },
+        ...
+    ]
+    """
+    import json
+    
+    system_instruction = (
+        "You are a semantic test data mutation engine. You are processing a BATCH of mutations.\n"
+        "Your goal is to apply mutations based on the 'goal' while PRESERVING semantics and schema.\n\n"
+        
+        "# RULES\n"
+        "- Never break the schema type or semantic meaning.\n"
+        "- If 'goal' is 'increase_length', output a longer string while keeping the pattern.\n"
+        "- Return ONLY valid JSON containing a 'results' array matching the input 'mutation_id'.\n\n"
+        
+        "# OUTPUT FORMAT\n"
+        "{\n"
+        "  \"results\": [\n"
+        "    {\n"
+        "      \"mutation_id\": \"<id>\",\n"
+        "      \"value\": \"<mutated_value>\"\n"
+        "    }\n"
+        "  ]\n"
+        "}"
+    )
+
+    user_prompt = (
+        f"Batch to mutate:\n{json.dumps(batch_requests, ensure_ascii=False, indent=2)}\n\n"
+        "Return the 'results' array in JSON format."
+    )
+    
     return system_instruction, user_prompt
 

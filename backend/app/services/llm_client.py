@@ -60,7 +60,7 @@ def call_llm_json(
 
     if is_openai:
         engine_name = "openai"
-        model_name  = "gpt-4o-2024-08-06"
+        model_name  = "gpt-4o-mini"
         print(f"\n>>> [LLM] Gọi OpenAI API ({model_name}) | Prompt: {prompt_chars} chars", flush=True)
         t0 = time.time()
         result = _call_openai_sdk(active_key, model_name, system_prompt, user_prompt)

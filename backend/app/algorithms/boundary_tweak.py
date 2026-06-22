@@ -1,14 +1,9 @@
 import random
-import math
-from .coverage_analyzer import analyze_coverage
-
+import time
+from .mutation_planner import MutationPlanner, MutationExecutor
+from .fitness_engine import FitnessEngine
 
 class BoundaryTweakStats:
-    """
-    DTO đại diện cho thống kê kết quả chạy dò tìm giá trị biên cục bộ (Hill Climbing Stats).
-
-    NÂNG CẤP: Hỗ trợ khởi động lại ngẫu nhiên (random restarts), mô phỏng luyện kim (simulated annealing), và tìm kiếm cấm (tabu search).
-    """
     def __init__(self, original_fitness, optimized_fitness, tweaks_count,
                  edge_cases_discovered, details, restarts_count=0):
         self.original_fitness = original_fitness
@@ -28,404 +23,116 @@ class BoundaryTweakStats:
             "restartsCount": self.restarts_count
         }
 
-
-# =========================================================================
-# [BƯỚC 2: PHÂN TÍCH THUẬT TOÁN - THUẬT TOÁN LEO ĐỒI (HILL CLIMBING - HC)]
-# Luồng 3 (HC) và pha 2 của Luồng 4 (Hybrid) trong giao diện Dashboard Bước 2.
-# HC thực hiện tìm kiếm cục bộ (local search) để tinh chỉnh các giá trị biên:
-#   1. Phát sinh tập lân cận (Neighborhood) bằng cách cộng/trừ sai số nhỏ, lớn, Gauss, 
-#      và ép đúng về các biên (BVA) như minValue, maxValue, minLength, maxLength.
-#   2. Tìm kiếm cấm (Tabu Search) thông qua danh sách tabu_list để tránh quay lại các giá trị cũ.
-#   3. Mô phỏng luyện kim (Simulated Annealing - SA) chấp nhận các bước đi xấu hơn với xác suất giảm dần 
-#      để thoát khỏi các cực trị cục bộ.
-#   4. Khởi động lại ngẫu nhiên (Random Restarts) từ nhiều điểm xuất phát khác nhau để tìm biên tốt nhất.
-# =========================================================================
-def optimize_testcase_boundaries(test_case, schema, fitness_evaluator, max_iterations=15, global_coverage_set=None):
+def optimize_testcase_boundaries(test_case: dict, schema: list, fitness_evaluator=None, max_iterations: int = 15, global_coverage_set=None, llm_provider="gemini", api_key_override=None, categories=None) -> tuple:
     """
-    BỘ TINH CHỈNH BIÊN CỤC BỘ NÂNG CẤP (Hill Climbing local search).
-
-    NÂNG CẤP TẦNG 1:
-    - Khởi động lại ngẫu nhiên: Chạy HC từ N điểm xuất phát khác nhau, giữ kết quả tốt nhất
-    - Mô phỏng luyện kim: Chấp nhận bước đi xấu hơn với xác suất exp(-delta/T) để thoát cực trị cục bộ
-    - Tìm kiếm cấm Tabu: Bộ nhớ ngắn hạn ngăn quay lại các trạng thái đã khám phá gần đây
-    - Kích thước bước thích nghi cho các trường số
+    HC Semantic Navigator: 
+    Dò biên tuần tự theo các bước nhảy có định hướng (Sử dụng Mutation Planner).
     """
-    import time
     random.seed(int(time.time() * 1000) % (2**32))
+    
+    if categories is None:
+        categories = ["positive"]
 
-    best_overall_optimized = None
-    best_overall_stats = None
-    best_overall_fitness = float('-inf')
-
-    # --- KHỞI ĐỘNG LẠI NGẪU NHIÊN: Chạy HC từ nhiều điểm xuất phát khác nhau ---
-    num_restarts = 8
-    for restart_idx in range(num_restarts):
-        # Tạo điểm xuất phát đa dạng cho mỗi lần khởi động lại
-        if restart_idx == 0:
-            starting_point = {**test_case}
+    optimized = dict(test_case)
+    try:
+        if fitness_evaluator:
+            current_fitness = fitness_evaluator(optimized)
         else:
-            starting_point = _generate_restart_point(test_case, schema, restart_idx)
-
-        # Chạy HC được tăng cường bằng SA từ điểm xuất phát này
-        optimized, stats = _simulated_annealing_hc(
-            starting_point, schema, fitness_evaluator,
-            max_iterations=max_iterations,
-            restart_idx=restart_idx,
-            global_coverage_set=global_coverage_set
-        )
-
-        if stats.optimized_fitness > best_overall_fitness:
-            best_overall_fitness = stats.optimized_fitness
-            best_overall_optimized = optimized
-            best_overall_stats = stats
-
-    # Ghi lại tổng số lần khởi động lại
-    best_overall_stats.restarts_count = num_restarts
-
-    # Thêm dòng tóm tắt kết quả
-    best_overall_stats.details.insert(0,
-        f"=== HC Multi-Restart: {num_restarts} lần chạy, giữ kết quả tốt nhất ==="
-    )
-
-    return best_overall_optimized, best_overall_stats
-
-
-def _generate_restart_point(original, schema, restart_idx):
-    """
-    Sinh điểm xuất phát đa dạng cho mỗi lần khởi động lại bằng cách áp dụng
-    các chiến lược nhiễu loạn khác nhau dựa trên chỉ số lần khởi động.
-    """
-    import random as _random
-    point = {**original}
-
-    from .policy_registry import resolve_policy
-    for field in schema:
-        name = field["name"]
-        val = point.get(name)
-        val_str = str(val)
+            current_fitness_res = FitnessEngine.evaluate(optimized, schema, categories)
+            current_fitness = current_fitness_res.fitness
+    except:
+        return optimized, BoundaryTweakStats(0, 0, 0, 0, ["Error evaluating fitness"])
         
-        policy = resolve_policy(field)
-        if policy == "freeze":
-            continue
-
-        if field["type"] == "number":
-            try:
-                num = float(val)
-                # Áp dụng nhiễu loạn khác nhau cho mỗi lần khởi động
-                if restart_idx % 3 == 0:
-                    # Đẩy về giá trị biên dưới
-                    if field.get("minValue") is not None:
-                        point[name] = field["minValue"]
-                elif restart_idx % 3 == 1:
-                    # Đẩy về giá trị biên trên đối diện
-                    if field.get("maxValue") is not None:
-                        point[name] = field["maxValue"]
-                else:
-                    # Nhiễu loạn ngẫu nhiên
-                    sigma = (restart_idx + 1) * 2
-                    point[name] = num + _random.gauss(0, sigma)
-            except (ValueError, TypeError):
-                pass
-        else:
-            # Trường chuỗi: thay đổi độ dài hoặc nhúng mẫu ký tự đặc biệt
-            if restart_idx % 4 == 0 and field.get("minLength") is not None:
-                point[name] = 'A' * field["minLength"]
-            elif restart_idx % 4 == 1 and field.get("maxLength") is not None:
-                point[name] = 'X' * field["maxLength"]
-            elif restart_idx % 4 == 2:
-                point[name] = ''
-            # else: giữ nguyên giá trị ban đầu
-
-    return point
-
-
-def _simulated_annealing_hc(test_case, schema, fitness_evaluator,
-                             max_iterations=15, restart_idx=0, global_coverage_set=None):
-    """
-    Leo đồi (Hill Climbing) được tăng cường bằng Mô phỏng luyện kim (Simulated Annealing) và Tìm kiếm cấm (Tabu Search).
-
-    SA: P(chấp_nhận_xấu) = exp(-delta / nhiệt_độ)
-    Nhiệt độ giảm dần theo hàm mũ: T_k = T_0 * alpha^k
-
-    Tabu: Các cặp (tên_trường, giá_trị) đã khám phá gần đây bị cấm trong tabu_tenure vòng lặp.
-    """
-    optimized = {**test_case}
-    current_fitness = fitness_evaluator(optimized)
     original_fitness = current_fitness
-
     tweaks_count = 0
     edge_cases_discovered = 0
-    details = []
-
-    # Tham số SA (Mô phỏng luyện kim)
-    initial_temperature = 0.15
-    alpha = 0.85  # tốc độ làm nguội
-    temperature = initial_temperature
-
-    # Tìm kiếm cấm Tabu
-    tabu_list = []  # danh sách các cặp (tên_trường, giá_trị_hash)
-    tabu_tenure = 5  # số vòng lặp mà một trạng thái bị cấm
-
-    # Định nghĩa lân cận (Neighborhood)
-    special_chars = ["!", "@", "#", "$", "%", "^", "&", "*", "'", '"', "<", ">", "/", "\\", ";", "-", " "]
-
-    if restart_idx == 0:
-        details.append(f"Khởi động tối ưu hóa biên SA+Tabu (điểm gốc): {original_fitness:.4f}")
-    else:
-        details.append(f"Restart #{restart_idx}: bắt đầu với fitness={original_fitness:.4f}, T={temperature:.4f}")
+    details = [f"Khởi động HC Semantic Navigation: {original_fitness:.4f}"]
 
     iteration = 0
-    improved_global = True
-
-    while iteration < max_iterations and (improved_global or temperature > 0.001):
-        improved_global = False
+    
+    while iteration < max_iterations:
         iteration += 1
-
-        # Giảm dần nhiệt độ (cooling)
-        temperature = initial_temperature * (alpha ** iteration)
-
-        from .policy_registry import resolve_policy
-        # --- Thử tinh chỉnh từng trường dữ liệu ---
-        for field in schema:
-            field_name = field["name"]
-            field_type = field["type"]
-            current_val = optimized[field_name]
-            neighbors = []
+        
+        try:
+            # Luôn cần phân tích weak_points từ FitnessEngine
+            fitness_res = FitnessEngine.evaluate(optimized, schema, categories)
+            weak_points = fitness_res.weak_points
+        except:
+            break
             
-            policy = resolve_policy(field)
-            if policy == "freeze":
-                continue
+        if not weak_points:
+            details.append(f"Không còn weak points. Dừng HC.")
+            break
+            
+        # Chọn 1 weak point để HC nhắm tới
+        target_wp = random.choice(weak_points)
+        field_name = target_wp.get("field")
+        if not field_name:
+            continue
+            
+        field_schema = next((f for f in schema if f["name"] == field_name), None)
+        if not field_schema:
+            continue
+            
+        # HC tự sinh các step size nhỏ để thăm dò
+        ftype = field_schema.get("type", "string")
+        if ftype == "number":
+            steps = ["+1", "-1", "+5", "-5", "+10%"]
+        else:
+            steps = ["+2 chars", "+5 chars", "+10 chars", "-2 chars", "approach_boundary"]
+            
+        best_neighbor = None
+        best_neighbor_fitness = current_fitness
+        best_step = None
+        
+        # Tạo 3 bản thể (batch 3)
+        offspring_to_mutate = []
+        for step in random.sample(steps, min(3, len(steps))):
+            offspring_to_mutate.append({
+                "index": len(offspring_to_mutate),
+                "values": optimized,
+                "fitness_res": fitness_res,
+                "hc_step": step
+            })
+            
+        mutated_results = MutationExecutor.batch_execute(
+            offspring_to_mutate, 
+            schema, 
+            llm_provider=llm_provider, 
+            api_key_override=api_key_override,
+            batch_size=5
+        )
 
-            # =========================================================================
-            # [BVA] SINH TẬP CÁC PHƯƠNG ÁN LÂN CẬN (NEIGHBORHOOD GENERATION FOR LOCAL SEARCH)
-            # Nhằm dò tìm các điểm biên cục bộ xung quanh giải pháp hiện tại.
-            # Tận dụng các phép biến đổi giá trị số học và độ dài chuỗi để tiệm cận các biên.
-            # =========================================================================
-            if field_type == "number":
-                try:
-                    num = float(current_val)
-                    # Kích thước bước thích nghi dựa trên phạm vi trường
-                    min_v = field.get("minValue", 0)
-                    max_v = field.get("maxValue", 1000)
-                    field_range = max(abs(max_v - min_v), 1)
-
-                    # --- Lân cận bước nhỏ (chênh lệch ±1 đơn vị) ---
-                    neighbors.extend([num + 1, num - 1])
-                    # --- Lân cận bước trung bình (10% phạm vi miền giá trị) ---
-                    medium_step = max(1, int(field_range * 0.1))
-                    neighbors.extend([num + medium_step, num - medium_step])
-                    # --- Lân cận bước lớn (50% phạm vi miền giá trị) ---
-                    large_step = max(1, int(field_range * 0.5))
-                    neighbors.extend([num + large_step, num - large_step])
-                    # --- Nhiễu loạn ngẫu nhiên phân phối Gauss ---
-                    sigma = field_range * 0.05
-                    neighbors.append(num + random.gauss(0, sigma))
-                    
-                    # --- [BVA] Ép giá trị về các điểm biên đặc tả ---
-                    neighbors.extend([0])
-                    if field.get("minValue") is not None:
-                        # Điểm biên dưới (Min) và điểm vi phạm dưới biên (Min - 1)
-                        neighbors.extend([field["minValue"], field["minValue"] - 1])
-                    if field.get("maxValue") is not None:
-                        # Điểm biên trên (Max) và điểm vi phạm trên biên (Max + 1)
-                        neighbors.extend([field["maxValue"], field["maxValue"] + 1])
-                except (ValueError, TypeError):
-                    pass
-            elif field_type == "date":
-                from .optimizer_engine import generate_random_field_value
-                for _ in range(3):
-                    neighbors.append(generate_random_field_value(field, "valid"))
-                for _ in range(2):
-                    neighbors.append(generate_random_field_value(field, "boundary"))
-                    neighbors.append(generate_random_field_value(field, "invalid"))
-                neighbors.append("")
-            elif field_type in ["email", "phone", "card"] or field.get("semantic_type") in ["email", "phone", "card"]:
-                ftype = field_type if field_type in ["email", "phone", "card"] else field.get("semantic_type")
-                str_val = str(current_val)
-                if ftype == "email":
-                    parts = str_val.split("@")
-                    if len(parts) == 2:
-                        neighbors.extend([
-                            parts[0] + "1@" + parts[1],
-                            parts[0] + "@test.com",
-                            parts[0][:50].ljust(50, 'a') + "@" + parts[1],
-                            str_val.replace("@", ""),
-                            str_val + "@@",
-                            ""
-                        ])
-                    else:
-                        neighbors.extend([str_val + "@gmail.com", str_val + "1", str_val + "@@", ""])
-                elif ftype == "phone":
-                    neighbors.extend([
-                        str_val[:-1] + "1" if len(str_val) > 0 else "0987654321",
-                        str_val.ljust(10, '0'),
-                        str_val.ljust(11, '0'),
-                        str_val + "a",
-                        ""
-                    ])
-                elif ftype == "card":
-                    neighbors.extend([
-                        str_val[:-1] + "1" if len(str_val) > 0 else "1234567890123456",
-                        str_val.ljust(16, '0'),
-                        str_val + "X",
-                        ""
-                    ])
-            else:
-                str_val = str(current_val)
-                
-                # NÂNG CẤP: DYNAMIC CONSTRAINT-AWARE MUTATION
-                
-                # 1. Enum-based Mutation (allowedValues)
-                # ENUM-SAFE: chỉ thêm các giá trị hợp lệ — KHÔNG bao giờ sinh INVALID_ENUM_VALUE
-                if field.get("allowedValues"):
-                    current_vals = [str(v) for v in field["allowedValues"]]
-                    # Thêm tất cả giá trị hợp lệ khác làm lân cận (để HC luân chuyển trong enum)
-                    neighbors.extend([v for v in current_vals if v != str_val])
-                    
-                # 2. Regex-based Mutation
-                elif field.get("regex"):
-                    # SAFE: Đảo hoa thường một số ký tự (vẫn có thể pass/fail tùy regex)
-                    neighbors.append(str_val.swapcase())
-                    # NEGATIVE: Chèn ký tự phá vỡ định dạng
-                    neighbors.append(str_val + "@@")
-                    neighbors.append("!" + str_val)
-                    if "@" in str_val:
-                        neighbors.append(str_val.replace("@", ""))
-
-                # 3. Generic String with Length Constraints
+        for i, neighbor in enumerate(mutated_results):
+            try:
+                if fitness_evaluator:
+                    n_fitness = fitness_evaluator(neighbor)
                 else:
-                    # SAFE: Thay đổi nhẹ ký tự
-                    if len(str_val) > 0:
-                        neighbors.append(str_val[:-1] + ("1" if str_val[-1].isalpha() else "a"))
-                        neighbors.append("A" + str_val[1:])
-                        
-                    # BOUNDARY: Tinh chỉnh độ dài chuỗi tiệm cận biên đặc tả
-                    if field.get("minLength") is not None:
-                        target = field["minLength"]
-                        if len(str_val) > target:
-                            # Cắt chuỗi để bằng đúng độ dài tối thiểu
-                            neighbors.append(str_val[:target])
-                    if field.get("maxLength") is not None:
-                        target = field["maxLength"]
-                        if len(str_val) < target:
-                            # Lặp lại chuỗi gốc để đạt độ dài tối đa (bảo toàn cấu trúc semantic nếu có)
-                            repeats = (target // max(1, len(str_val))) + 1
-                            padded = (str_val * repeats)[:target]
-                            neighbors.append(padded)
-                        # Đệm thêm ký tự vượt quá độ dài tối đa 1 đơn vị (NEGATIVE BOUNDARY)
-                        neighbors.append(str_val.ljust(target + 1, "X"))
-                        
-                    # NEGATIVE: Xóa chuỗi, hoặc rút cực ngắn
-                    neighbors.append("")
-                    if len(str_val) > 2:
-                        neighbors.append(str_val[:1])
-
-            # --- 2. Đánh giá các lân cận (có lọc Tabu) ---
-            best_neighbor = None
-            best_neighbor_fitness = float('-inf')
-            all_neighbor_results = []
-
-            for candidate_val in neighbors:
-                # Chuyển float->int nếu cần thiết
-                if isinstance(candidate_val, float) and candidate_val == int(candidate_val):
-                    candidate_val = int(candidate_val)
-
-                # Kiểm tra Tabu: bỏ qua các trạng thái đã khám phá gần đây
-                val_hash = str(candidate_val)[:50]  # hash rút gọn
-                tabu_key = (field_name, val_hash)
-                if tabu_key in tabu_list:
-                    continue
-
-                candidate_testcase = {**optimized, field_name: candidate_val}
-                score = fitness_evaluator(candidate_testcase)
-                all_neighbor_results.append((candidate_val, score))
-
-                if score > best_neighbor_fitness:
-                    best_neighbor = candidate_val
-                    best_neighbor_fitness = score
-
-            # [START: SIMULATED_ANNEALING_ACCEPTANCE]
-            # --- 3. Chấp nhận bước đi (SA hoặc Leo dốc đứng) ---
-            if best_neighbor is not None:
-                # COVERAGE GAIN LOGIC
-                gain = 0
-                if global_coverage_set is not None:
-                    new_tags = set(analyze_coverage(candidate_testcase, schema))
-                    # Gain is the number of tags in new_tags that are NOT in global_coverage_set
-                    new_unique_tags = new_tags - global_coverage_set
-                    gain = len(new_unique_tags)
+                    n_fitness = FitnessEngine.evaluate(neighbor, schema, categories).fitness
+            except:
+                n_fitness = -1
                 
-                delta = best_neighbor_fitness - current_fitness
+            if n_fitness > best_neighbor_fitness:
+                best_neighbor_fitness = n_fitness
+                best_neighbor = neighbor
+                best_step = offspring_to_mutate[i]["hc_step"]
                 
-                # Acceptance Criteria:
-                # 1. Gain > 0 (Tìm được rule mới hoàn toàn cho toàn bộ Suite) -> Chấp nhận tuyệt đối
-                # 2. Hoặc Fitness tăng (Fallback)
-                if gain > 0 or delta > 0:
-                    # Cải thiện: luôn chấp nhận
-                    accept_move = True
-                elif temperature > 0.001:
-                    # SA: chấp nhận bước xấu hơn với xác suất exp(-|delta|/T)
-                    sa_prob = math.exp(-abs(delta) / temperature)
-                    if random.random() < sa_prob:
-                        accept_move = True
-                        details.append(
-                            f"  [SA] Chấp nhận bước xấu (delta={delta:.4f}, T={temperature:.4f}, P={sa_prob:.3f})"
-                        )
-            # [END: SIMULATED_ANNEALING_ACCEPTANCE]
-
-                if accept_move:
-                    prev_val = optimized[field_name]
-                    if isinstance(prev_val, float) and prev_val == int(prev_val):
-                        prev_val = int(prev_val)
-                    optimized[field_name] = best_neighbor
-                    current_fitness = best_neighbor_fitness
-                    tweaks_count += 1
-                    improved_global = True
-
-                    # Thêm vào danh sách Tabu
-                    tabu_list.append((field_name, str(best_neighbor)[:50]))
-                    if len(tabu_list) > tabu_tenure * len(schema):
-                        tabu_list = tabu_list[-(tabu_tenure * len(schema)):]
-
-                    # Ghi log tinh chỉnh
-                    prev_str = str(prev_val)[:15] + ("..." if len(str(prev_val)) > 15 else "")
-                    new_str = str(best_neighbor)[:15] + ("..." if len(str(best_neighbor)) > 15 else "")
-                    direction = "↑" if delta > 0 else "↓"
-                    details.append(
-                        f"Tinh chỉnh [{field_name}] '{prev_str}' -> '{new_str}' {direction}{abs(delta):.4f} (T={temperature:.3f})"
-                    )
-
-                    # Theo dõi phát hiện các ca biên
-                    is_bound = False
-                    if field_type == "number":
-                        try:
-                            is_bound = float(best_neighbor) in [field.get("minValue"), field.get("maxValue")]
-                        except (ValueError, TypeError):
-                            pass
-                    else:
-                        is_bound = (
-                            (field.get("minLength") is not None and len(str(best_neighbor)) == field["minLength"]) or
-                            (field.get("maxLength") is not None and len(str(best_neighbor)) == field["maxLength"])
-                        )
-
-                    if is_bound or str(best_neighbor) == "":
-                        edge_cases_discovered += 1
-
-    # --- Kiểm tra trì trệ: nếu không cải thiện được, ghi chú vào log ---
-    if not improved_global:
-        details.append(f"HC dừng: không thể cải thiện thêm (T_final={temperature:.6f})")
-
-    details.append(
-        f"Kết thúc HC. Fitness: {original_fitness:.4f} → {current_fitness:.4f}. "
-        f"Tinh chỉnh: {tweaks_count}, Edge cases: {edge_cases_discovered}"
-    )
-
+        # Áp dụng nếu neighbor tốt hơn
+        if best_neighbor is not None and best_neighbor_fitness > current_fitness:
+            optimized = best_neighbor
+            current_fitness = best_neighbor_fitness
+            tweaks_count += 1
+            details.append(f"Vòng {iteration}: Tinh chỉnh '{field_name}' step='{best_step}' -> Fitness {current_fitness:.2f}")
+        else:
+            details.append(f"Vòng {iteration}: Không tìm thấy lân cận tốt hơn cho '{field_name}'.")
+            
     stats = BoundaryTweakStats(
         original_fitness=original_fitness,
         optimized_fitness=current_fitness,
         tweaks_count=tweaks_count,
         edge_cases_discovered=edge_cases_discovered,
-        details=details
+        details=details,
+        restarts_count=1
     )
-
+    
     return optimized, stats

@@ -3,7 +3,7 @@ from ..algorithms.optimizer_engine import TestSuiteOptimizer
 from ..algorithms.boundary_tweak import optimize_testcase_boundaries
 from ..engines.fitness_engine import evaluate_individual_fitness
 
-def _run_hc_on_dataset(dataset: list, schema: list, rules: list, constraints: list, max_iterations: int = 5) -> list:
+def _run_hc_on_dataset(dataset: list, schema: list, rules: list, constraints: list, max_iterations: int = 5, llm_provider="gemini", api_key_override=None) -> list:
     """
     Helper function to run Hill Climbing on an entire dataset.
     dataset elements are dictionaries with at least a 'data' key or plain dictionaries of test data.
@@ -24,13 +24,15 @@ def _run_hc_on_dataset(dataset: list, schema: list, rules: list, constraints: li
             test_case=test_data,
             schema=schema,
             fitness_evaluator=evaluator,
-            max_iterations=max_iterations
+            max_iterations=max_iterations,
+            llm_provider=llm_provider,
+            api_key_override=api_key_override
         )
         hc_results.append(optimized_tc)
         
     return hc_results
 
-def run_all_strategies(schema: list, rules: list, constraints: list, initial_seeds: list) -> Dict[str, list]:
+def run_all_strategies(schema: list, rules: list, constraints: list, initial_seeds: list, llm_provider="gemini", api_key_override=None) -> Dict[str, list]:
     """
     Executes all 6 strategies and returns a dictionary of datasets.
     """
@@ -45,7 +47,7 @@ def run_all_strategies(schema: list, rules: list, constraints: list, initial_see
     random_seeds = [{"data": tc.get("data", tc)} for tc in initial_seeds]
     
     # 2. Strategy: GA
-    ga_config = {"generations": 5, "popSize": 50}
+    ga_config = {"generations": 5, "popSize": 50, "llm_provider": llm_provider, "api_key_override": api_key_override}
     ga_engine = TestSuiteOptimizer(schema, ga_config)
     ga_engine.rules = rules
     ga_engine.constraints = constraints
@@ -58,16 +60,22 @@ def run_all_strategies(schema: list, rules: list, constraints: list, initial_see
     # 3. Strategy: HC (Hill Climbing on random seeds)
     results["HC"] = _run_hc_on_dataset(
         [tc.get("data", tc) for tc in random_seeds],
-        schema, rules, constraints, max_iterations=5
+        schema,
+        rules,
+        constraints,
+        max_iterations=5,
+        llm_provider=llm_provider,
+        api_key_override=api_key_override
     )
     
     # 4. Strategy: LLM + GA
-    llm_ga_config = {"generations": 10, "popSize": 50}
-    llm_ga_engine = TestSuiteOptimizer(schema, llm_ga_config)
+    ga_llm_config = {"generations": 5, "popSize": 50, "llm_provider": llm_provider, "api_key_override": api_key_override}
+    ga_llm_engine = TestSuiteOptimizer(schema, ga_llm_config)
+    llm_ga_engine = ga_llm_engine
     llm_ga_engine.rules = rules
     llm_ga_engine.constraints = constraints
     llm_ga_engine.initialize_suite(initial_seeds)
-    for _ in range(llm_ga_config["generations"]):
+    for _ in range(ga_llm_config["generations"]):
         llm_ga_engine.evolve_one_generation()
     llm_ga_result = llm_ga_engine.assemble_optimized_dataset(original_seeds=initial_seeds, target_size=35, max_size=50)
     results["LLM_GA"] = [ind["values"] for ind in llm_ga_result]

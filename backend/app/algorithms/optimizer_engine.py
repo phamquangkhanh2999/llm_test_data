@@ -322,96 +322,33 @@ class TestSuiteOptimizer:
     # FITNESS FUNCTION (with near-boundary credit)
     # ═══════════════════════════════════════════════════════════
 
-    def evaluate_testcase_quality(self, test_case, current_suite_values, global_tag_counts=None):
-        """
-        Đánh giá chất lượng của một Test Case (Hàm Fitness) - PHIÊN BẢN NÂNG CẤP.
-
-        Kiến trúc 2 component tách biệt:
-          Component 1: coverage_fitness = coverage_base + novelty (đo độ bao phủ & đa dạng)
-          Component 2: boundary_fitness = trọng số BVA tăng cường (đo mức độ tập trung biên)
-
-        Công thức cuối: fitness = 0.55 * norm_coverage + 0.45 * norm_boundary
-        Normalize về [0, 1] để HC nhận biết được Δ rất nhỏ.
-
-        Boundary weights:
-          BOUNDARY (exact)   → +3.0  (tăng từ +1.0 — phần thưởng chính)
-          NEAR_BOUNDARY      → +1.5  (thêm mới — khuyến khích tiến gần biên)
-          INVALID (negative) → +0.5  (giữ nguyên — test case âm cũng có giá trị)
-        """
-        from .coverage_analyzer import analyze_coverage
-
-        # 1. Coverage Tags
-        tags = analyze_coverage(test_case, self.schema)
-
-        # ── Component 1: Coverage Fitness ──────────────────────────────────────
-        # 1a. Base coverage: mỗi tag = 1 điểm
-        base_coverage = float(len(tags))
-
-        # 1b. Novelty Score (tag hiếm gặp = điểm cao hơn)
-        novelty_score = 0.0
-        if global_tag_counts:
-            pop_size = max(1, len(current_suite_values))
-            for tag in tags:
-                count = global_tag_counts.get(tag, 1)
-                rarity = 1.0 - (count / pop_size)
-                novelty_score += max(0.0, rarity)
-        else:
-            novelty_score = len(tags) * 0.5  # fallback khi chưa có global_tag_counts
-
-        coverage_raw = base_coverage + (novelty_score * 2.0)
-
-        # ── Component 2: Boundary Fitness (tăng độ nhạy) ────────────────────────
-        boundary_raw = 0.0
-        for tag in tags:
-            outcome = tag.split(":")[-1] if ":" in tag else ""
-            tag_upper = tag.upper()
-            if "NEAR_BOUNDARY" in tag_upper:
-                boundary_raw += 1.5   # gần biên — thêm mới
-            elif "BOUNDARY" in tag_upper:
-                boundary_raw += 3.0   # đúng biên — tăng từ 1.0
-            elif "INVALID" in tag_upper:
-                boundary_raw += 0.5   # test case âm — giữ nguyên
-
-        # ── Normalize về [0, 1] ─────────────────────────────────────────────────
-        # max_possible_coverage = num_tags * (1 + 2.0) [base + max novelty]
-        # max_possible_boundary = num_tags * 3.0
-        num_tags = max(1, len(tags))
-        max_coverage = num_tags * 3.0
-        max_boundary = num_tags * 3.0
-
-        norm_coverage = min(coverage_raw / max_coverage, 1.0)
-        norm_boundary = min(boundary_raw / max_boundary, 1.0)
-
-        # ── Tổng hợp Fitness ────────────────────────────────────────────────────
-        fitness = 0.55 * norm_coverage + 0.45 * norm_boundary
-
-        # Duplicate Penalty (nhẹ hơn vì đã normalize)
+    def evaluate_testcase_quality(self, test_case, current_suite_values, global_tag_counts=None, categories=None):
+        from .fitness_engine.aggregator import FitnessEngine
+        if categories is None:
+            categories = ["positive"]
+        result = FitnessEngine.evaluate(test_case, self.schema, categories)
+        fitness = result.fitness / 100.0
+        
         dup_count = sum(
             1 for other in current_suite_values
             if all(str(test_case.get(k["name"])) == str(other.get(k["name"])) for k in self.schema)
         )
         if dup_count > 1:
-            fitness -= (dup_count - 1) * 0.05  # penalty nhỏ hơn sau normalize
+            fitness -= (dup_count - 1) * 0.05
 
-        return max(0.001, min(fitness, 1.0))
+        return max(0.001, min(fitness, 1.0)), result.weak_points
 
 
 
     def evaluate_suite(self):
-        from .coverage_analyzer import analyze_coverage
         raw_values = [ind["values"] for ind in self.test_suite]
-        
-        # Tính Global Tag Counts cho thế hệ hiện tại
-        global_tag_counts = {}
-        for ind in self.test_suite:
-            tags = analyze_coverage(ind["values"], self.schema)
-            ind["coverage_tags"] = tags
-            for tag in set(tags):
-                global_tag_counts[tag] = global_tag_counts.get(tag, 0) + 1
                 
-        # Đánh giá fitness với Novelty
         for ind in self.test_suite:
-            ind["fitness"] = self.evaluate_testcase_quality(ind["values"], raw_values, global_tag_counts)
+            categories = ind.get("categories", ["positive"])
+            fitness, weak_points = self.evaluate_testcase_quality(ind["values"], raw_values, categories=categories)
+            ind["fitness"] = fitness
+            ind["weak_points"] = weak_points
+            ind["coverage_tags"] = []
 
         self.test_suite.sort(key=lambda x: x["fitness"], reverse=True)
         self._update_hall_of_fame()
@@ -431,13 +368,14 @@ class TestSuiteOptimizer:
             cleaned_tc = {}
             for field in self.schema:
                 name = field["name"]
-                cleaned_tc[name] = s[name] if name in s else generate_random_field_value(field, "valid")
+                cleaned_tc[name] = s["values"][name] if name in s["values"] else generate_random_field_value(field, "valid")
             self.test_suite.append({
                 "id": str(uuid.uuid4()),
                 "parent_id": None,
                 "values": cleaned_tc,
                 "fitness": 0.0,
-                "origin": "Seed"
+                "origin": "Seed",
+                "categories": s.get("categories", ["positive"])
             })
 
         # 2. Nhân bản ngẫu nhiên thêm các bộ test biên/lỗi để lấp đầy kích thước (PopSize)
@@ -631,15 +569,7 @@ class TestSuiteOptimizer:
 
         return enriched
 
-    def evaluate_suite(self):
-        raw_values = [ind["values"] for ind in self.test_suite]
-        for ind in self.test_suite:
-            ind["fitness"] = self.evaluate_testcase_quality(ind["values"], raw_values)
 
-        self.test_suite.sort(key=lambda x: x["fitness"], reverse=True)
-
-        # Update Hall of Fame with unique best solutions
-        self._update_hall_of_fame()
 
     def _update_hall_of_fame(self):
         """Archive the best unique test cases found so far."""
@@ -666,13 +596,16 @@ class TestSuiteOptimizer:
 
     def select_parent(self):
         """
-        Tournament Selection với Niche Density Distance tiebreaker (thay thế Crowding Distance chuẩn).
-        Khi 2 cá thể có fitness gần bằng nhau, ưu tiên cá thể ở vùng mật độ thưa thớt hơn trong không gian biến.
+        Rank-based Selection V3.
+        Cá thể có rank càng cao (chỉ số thấp, vì đã sort descending) thì xác suất chọn càng lớn.
+        P(i) = (N - i + 1) / sum(1..N)
         """
-        tour_size = 3
-        candidates = random.sample(self.test_suite, tour_size)
-        candidates.sort(key=lambda x: (-x["fitness"], -self._niche_density_distance(x)))
-        return candidates[0]
+        pop_size = len(self.test_suite)
+        if pop_size == 0:
+            return None
+            
+        weights = [pop_size - i for i in range(pop_size)]
+        return random.choices(self.test_suite, weights=weights, k=1)[0]
 
     def _niche_density_distance(self, individual):
         """
@@ -715,7 +648,7 @@ class TestSuiteOptimizer:
 
     def mix_testcases(self, p1, p2):
         """
-        Uniform Crossover với adaptive crossover rate.
+        Uniform Crossover + Arithmetic Crossover (V3) cho các trường số.
         """
         child1 = {}
         child2 = {}
@@ -723,12 +656,36 @@ class TestSuiteOptimizer:
 
         for field in self.schema:
             name = field["name"]
-            if random.random() < rate:
-                child1[name] = p2[name]
-                child2[name] = p1[name]
+            ftype = field.get("type")
+            if ftype == "number" and random.random() < 0.5:
+                # Arithmetic Crossover
+                try:
+                    v1 = float(p1.get(name, 0))
+                    v2 = float(p2.get(name, 0))
+                    alpha = random.random()
+                    c1_val = v1 * alpha + v2 * (1 - alpha)
+                    c2_val = v1 * (1 - alpha) + v2 * alpha
+                    
+                    if field.get("minValue") is not None and field.get("maxValue") is not None and field["minValue"] == int(field["minValue"]):
+                        # Try to keep as int if min/max are ints
+                        c1_val = int(round(c1_val))
+                        c2_val = int(round(c2_val))
+                        
+                    child1[name] = c1_val
+                    child2[name] = c2_val
+                except:
+                    if random.random() < rate:
+                        child1[name] = p2.get(name)
+                        child2[name] = p1.get(name)
+                    else:
+                        child1[name] = p1.get(name)
+                        child2[name] = p2.get(name)
+            elif random.random() < rate:
+                child1[name] = p2.get(name)
+                child2[name] = p1.get(name)
             else:
-                child1[name] = p1[name]
-                child2[name] = p2[name]
+                child1[name] = p1.get(name)
+                child2[name] = p2.get(name)
         return child1, child2
 
     # ═══════════════════════════════════════════════════════════
@@ -737,153 +694,33 @@ class TestSuiteOptimizer:
 
     def tweak_values(self, test_case):
         """
-        Đột biến giá trị (Mutation) với adaptive rate.
-
-        UPGRADES:
-        - Adaptive mutation rate (decays over generations)
-        - Gaussian mutation for numeric fields
-        - Enum-aware mutation for allowedValues fields
+        Đột biến giá trị (Mutation V3) với GuidedMutator.
         """
-        mutated_tc = {**test_case}
         is_mutated = False
         rate = self.get_adaptive_mutation_rate()
         
-        from .policy_registry import resolve_policy
-
-        for field in self.schema:
-            name = field["name"]
-            policy = resolve_policy(field)
+        if random.random() > rate:
+            return {**test_case}, False
             
-            # FREEZE: Không bao giờ mutate
-            if policy == "freeze":
-                continue
-                
-            if random.random() < rate:
-                is_mutated = True
-                val_str = str(mutated_tc[name])
-                rand = random.random()
-
-                if field["type"] == "number":
-                    try:
-                        num = float(mutated_tc[name])
-                        if rand < 0.35:
-                            # Gaussian perturbation: N(0, sigma) with sigma decaying
-                            sigma = max(0.5, (self.max_generations - self.generation) / self.max_generations * 5)
-                            mutated_tc[name] = num + random.gauss(0, sigma)
-                            # Clamp to reasonable range
-                            if field.get("minValue") is not None:
-                                mutated_tc[name] = max(field["minValue"] - 2, mutated_tc[name])
-                            if field.get("maxValue") is not None:
-                                mutated_tc[name] = min(field["maxValue"] + 2, mutated_tc[name])
-                        elif rand < 0.70:
-                            mutated_tc[name] = generate_random_field_value(field, "boundary")
-                        else:
-                            mutated_tc[name] = generate_random_field_value(field, "invalid")
-                    except (ValueError, TypeError):
-                        mutated_tc[name] = generate_random_field_value(field, "valid")
-
-                elif field["type"] in ["email", "card", "phone"] or field.get("semantic_type") in ["email", "card", "phone"]:
-                    ftype = field["type"] if field["type"] in ["email", "card", "phone"] else field.get("semantic_type")
-                    if ftype == "email":
-                        if rand < 0.45:
-                            parts = val_str.split("@")
-                            if len(parts) == 2:
-                                mutated_tc[name] = parts[0] + str(random.randint(0,9)) + "@" + parts[1]
-                            else:
-                                mutated_tc[name] = val_str + str(random.randint(0,9))
-                        elif rand < 0.80:
-                            parts = val_str.split("@")
-                            if len(parts) == 2:
-                                target = field.get("maxLength")
-                                if not target:
-                                    target = 50
-                                mutated_tc[name] = parts[0][:target].ljust(target, 'a') + "@" + parts[1]
-                            else:
-                                mutated_tc[name] = val_str.ljust(50, 'a')
-                        else:
-                            mutated_tc[name] = val_str.replace("@", "") if "@" in val_str else val_str + "@"
-                    elif ftype == "phone":
-                        if rand < 0.45:
-                            mutated_tc[name] = val_str[:-1] + str(random.randint(0,9)) if len(val_str) > 0 else "0987654321"
-                        elif rand < 0.80:
-                            mutated_tc[name] = val_str.ljust(11, '0')
-                        else:
-                            mutated_tc[name] = val_str + "a"
-                    elif ftype == "card":
-                        if rand < 0.45:
-                            mutated_tc[name] = val_str[:-1] + str(random.randint(0,9)) if len(val_str) > 0 else "1234567890123456"
-                        elif rand < 0.80:
-                            mutated_tc[name] = val_str.ljust(16, '0')
-                        else:
-                            mutated_tc[name] = val_str + "X"
-
-                elif field.get("semantic_type") == "password" or field["type"] == "string":
-                    # NÂNG CẤP: DYNAMIC CONSTRAINT-AWARE MUTATION
-                    if field.get("allowedValues"):
-                        # ENUM-SAFE: luôn chọn giá trị hợp lệ trong allowedValues
-                        current_vals = [str(v) for v in field["allowedValues"]]
-                        others = [v for v in current_vals if v != val_str]
-                        mutated_tc[name] = random.choice(others) if others else val_str
-                    elif field.get("regex"):
-                        if rand < 0.5:
-                            mutated_tc[name] = val_str.swapcase()
-                        elif rand < 0.8:
-                            mutated_tc[name] = val_str + "@@"
-                        else:
-                            mutated_tc[name] = val_str.replace("@", "") if "@" in val_str else "!" + val_str
-                    else:
-                        if rand < 0.3:
-                            mutated_tc[name] = val_str[:-1] + ("1" if len(val_str) > 0 and val_str[-1].isalpha() else "a") if len(val_str) > 0 else "a"
-                        elif rand < 0.6:
-                            target = field.get("maxLength", 20)
-                            if len(val_str) < target:
-                                repeats = (target // max(1, len(val_str))) + 1
-                                mutated_tc[name] = (val_str * repeats)[:target]
-                            else:
-                                mutated_tc[name] = val_str
-                        elif rand < 0.8:
-                            target = field.get("maxLength", 20)
-                            mutated_tc[name] = val_str.ljust(target + 1, "X")
-                        else:
-                            mutated_tc[name] = ""
-                            
-                elif field["type"] == "date":
-                    # Đột biến ngày: sinh lại ngày hợp lệ / biên / sai định dạng
-                    if rand < 0.45:
-                        mutated_tc[name] = generate_random_field_value(field, "valid")
-                    elif rand < 0.80:
-                        mutated_tc[name] = generate_random_field_value(field, "boundary")
-                    else:
-                        mutated_tc[name] = generate_random_field_value(field, "invalid")
-
-                else: # string
-                    # ENUM-AWARE: nếu field có allowedValues, chỉ mutate trong danh sách
-                    if field.get("allowedValues") and field["allowedValues"]:
-                        current_vals = [str(v) for v in field["allowedValues"]]
-                        if val_str in current_vals and len(current_vals) > 1:
-                            others = [v for v in current_vals if v != val_str]
-                            mutated_tc[name] = random.choice(others)
-                        else:
-                            mutated_tc[name] = random.choice(current_vals)
-                    elif field.get("regex"):
-                        # Bảo vệ Regex: Không đột biến bằng ký tự ngẫu nhiên tránh vỡ format
-                        if rand < 0.2:
-                            mutated_tc[name] = generate_random_field_value(field, "boundary")
-                        else:
-                            is_mutated = False # Giữ nguyên gốc
-                    elif rand < 0.3:
-                        # chèn 1 ký tự đặc biệt biên
-                        char = random.choice("!@#$%'\"<>")
-                        idx = random.randint(0, len(val_str))
-                        mutated_tc[name] = val_str[:idx] + char + val_str[idx:]
-                    elif rand < 0.6:
-                        # đảo hoa thường
-                        mutated_tc[name] = val_str.upper() if random.random() > 0.5 else val_str.lower()
-                    elif rand < 0.85:
-                        mutated_tc[name] = generate_random_field_value(field, "boundary")
-                    else:
-                        mutated_tc[name] = generate_random_field_value(field, "invalid")
-
+        from .mutation_planner import MutationExecutor
+        from .fitness_engine import FitnessEngine
+        
+        # Đánh giá nhanh cá thể để lấy weak_points
+        raw_values = [ind["values"] for ind in self.test_suite]
+        fitness_res = None
+        try:
+            fitness_res = FitnessEngine.evaluate(test_case, self.schema)
+        except:
+            pass
+            
+        llm_provider = self.config.get("llm_provider", "gemini")
+        api_key_override = self.config.get("api_key_override", None)
+        mutated_tc = MutationExecutor.execute(test_case, self.schema, fitness_res, llm_provider=llm_provider, api_key_override=api_key_override)
+        
+        # Đảm bảo không return dict giống hệt memory
+        if mutated_tc != test_case:
+            is_mutated = True
+            
         return mutated_tc, is_mutated
 
     # ═══════════════════════════════════════════════════════════
@@ -896,7 +733,14 @@ class TestSuiteOptimizer:
             return False
 
         recent = self._best_fitness_history[-self._stagnation_threshold:]
-        # Check if no improvement in the last N generations
+        # V3 Early Stopping: Nếu max_fitness > 98, coi như hội tụ
+        if max(recent) >= 98.0:
+            return True
+        # Check if no improvement in the last 5 generations (was self._stagnation_threshold)
+        if len(self._best_fitness_history) >= 5:
+            last_5 = self._best_fitness_history[-5:]
+            if max(last_5) - min(last_5) < 0.005:
+                return True
         return max(recent) - min(recent) < 0.005
 
     def _restart_population(self):
@@ -962,40 +806,84 @@ class TestSuiteOptimizer:
         crossover_count = 0
         mutation_count = 0
 
-        # 2. Sinh các Test Cases con thông qua Crossover & Mutation
+        # 2. Sinh các Test Cases con thông qua Crossover
+        offspring_to_mutate = []
+        
         while len(next_suite) < self.config["popSize"]:
             p1_ind = self.select_parent()
             p2_ind = self.select_parent()
 
             c1, c2 = self.mix_testcases(p1_ind["values"], p2_ind["values"])
-            c1_mut, m1 = self.tweak_values(c1)
-            c2_mut, m2 = self.tweak_values(c2)
+            rate = self.get_adaptive_mutation_rate()
 
-            if not m1:
-                crossover_count += 1
-            else:
-                mutation_count += 1
-
+            # Offspring 1
+            idx1 = len(next_suite)
             next_suite.append({
                 "id": str(uuid.uuid4()),
                 "parent_id": p1_ind.get("id"),
-                "values": c1_mut,
+                "values": c1,
                 "fitness": 0.0,
-                "origin": "Mutation" if m1 else "Crossover"
+                "origin": "Crossover"
             })
+            crossover_count += 1
+            
+            if random.random() <= rate:
+                from .fitness_engine import FitnessEngine
+                fitness_res = None
+                try: fitness_res = FitnessEngine.evaluate(c1, self.schema)
+                except: pass
+                offspring_to_mutate.append({
+                    "index": idx1,
+                    "values": c1,
+                    "fitness_res": fitness_res
+                })
 
+            # Offspring 2
             if len(next_suite) < self.config["popSize"]:
-                if not m2:
-                    crossover_count += 1
-                else:
-                    mutation_count += 1
+                idx2 = len(next_suite)
                 next_suite.append({
                     "id": str(uuid.uuid4()),
                     "parent_id": p2_ind.get("id"),
-                    "values": c2_mut,
+                    "values": c2,
                     "fitness": 0.0,
-                    "origin": "Mutation" if m2 else "Crossover"
+                    "origin": "Crossover"
                 })
+                crossover_count += 1
+                
+                if random.random() <= rate:
+                    from .fitness_engine import FitnessEngine
+                    fitness_res = None
+                    try: fitness_res = FitnessEngine.evaluate(c2, self.schema)
+                    except: pass
+                    offspring_to_mutate.append({
+                        "index": idx2,
+                        "values": c2,
+                        "fitness_res": fitness_res
+                    })
+
+        # 2b. Thực thi Mutation theo Batch
+        if offspring_to_mutate:
+            llm_provider = self.config.get("llm_provider", "gemini")
+            api_key_override = self.config.get("api_key_override", None)
+            from .mutation_planner import MutationExecutor
+            
+            mutated_results = MutationExecutor.batch_execute(
+                offspring_to_mutate, 
+                self.schema, 
+                llm_provider=llm_provider, 
+                api_key_override=api_key_override,
+                batch_size=20
+            )
+            
+            for i, req in enumerate(offspring_to_mutate):
+                idx = req["index"]
+                original_val = req["values"]
+                new_val = mutated_results[i]
+                if new_val != original_val:
+                    next_suite[idx]["values"] = new_val
+                    next_suite[idx]["origin"] = "Mutation"
+                    mutation_count += 1
+                    crossover_count -= 1
 
         # 3. Thay đổi bộ dữ liệu test và tái chấm điểm
         # 3a. Enum Constraint Repair: đảm bảo các trường Enum không bị biến dạng

@@ -29,12 +29,15 @@ def resolve_policy(field: dict) -> str:
         return "boundary"
         
     # 3. Heuristic Field Name (If semantic type is missing or generic)
-    freeze_keywords = ["name", "desc", "id", "code", "sku", "category", "title"]
+    freeze_keywords = ["name", "desc", "id", "code", "sku", "category", "title", "address", "addr", "location"]
     if any(kw in field_name for kw in freeze_keywords):
         return "freeze"
         
-    if "email" in field_name:
+    if "email" in field_name or "phone" in field_name or "tel" in field_name or "mobile" in field_name:
         return "format_preserving"
+
+    if "pass" in field_name or "password" in field_name:
+        return "constraint_preserving"
         
     # 4. Datatype Fallback
     if data_type in ["number", "integer", "float", "date", "datetime"]:
