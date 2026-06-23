@@ -37,9 +37,19 @@ class NSGA2Engine:
 
     @staticmethod
     def dominates(fitness1, fitness2):
-        # A dominates B if A >= B on all objectives and A > B on at least one
-        better_or_equal = all(fitness1.get(k, 0) >= fitness2.get(k, 0) for k in fitness1)
-        strictly_better = any(fitness1.get(k, 0) > fitness2.get(k, 0) for k in fitness1)
+        # V6 Lexicographic Constrained Pareto
+        r1, r2 = fitness1.get("rule", 0), fitness2.get("rule", 0)
+        # If Rule score is significantly better, it dominates outright
+        if r1 > r2 + 0.05: return True
+        if r2 > r1 + 0.05: return False
+        
+        b1, b2 = fitness1.get("boundary", 0), fitness2.get("boundary", 0)
+        s1, s2 = fitness1.get("security", 0), fitness2.get("security", 0)
+        o1, o2 = fitness1.get("oracle", 0), fitness2.get("oracle", 0)
+        
+        # If Rule is roughly equal, apply standard Pareto on the remaining objectives
+        better_or_equal = (b1 >= b2 and s1 >= s2 and o1 >= o2)
+        strictly_better = (b1 > b2 or s1 > s2 or o1 > o2)
         return better_or_equal and strictly_better
 
     @staticmethod

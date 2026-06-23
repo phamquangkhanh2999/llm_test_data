@@ -1379,30 +1379,30 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
             })
             await asyncio.sleep(0.3)
             
-            hc_stats_list = []
+            from .algorithms.local_pareto_optimizer import LocalParetoOptimizer
+            fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, [p["values"] for p in optimizer.test_suite])
+            hc_optimizer = LocalParetoOptimizer(schema_rules, fitness_evaluator, max_iterations=10)
+            
+            raw_population = [p["values"] for p in optimizer.test_suite]
+            optimized_values_list, hc_tweak_stats = hc_optimizer.optimize(raw_population)
+            
             for idx, ind in enumerate(optimizer.test_suite):
-                best_candidate = ind["values"]
-                raw_suite_values = [p["values"] for p in optimizer.test_suite]
-                fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)[0]
-                hc_optimized, stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator, max_iterations=10, llm_provider=req.llm_provider, api_key_override=req.api_key_override)
-                ind["values"] = hc_optimized
-                ind["fitness"] = stats.optimized_fitness
-                ind["origin"] = "HC_ONLY"
-                
-                hc_stats_list.append(stats)
+                if idx < len(optimized_values_list):
+                    ind["values"] = optimized_values_list[idx]
+                    ind["fitness"] = fitness_evaluator(optimized_values_list[idx])[0]
+                    ind["origin"] = "HC_ONLY"
                 
                 await websocket.send_json({
                     "event": "HC_PROGRESS",
                     "data": {
                         "status": "ACTIVE",
-                        "log": f"Tinh chỉnh cá thể #{idx+1} | Fitness: {stats.optimized_fitness:.4f}"
+                        "log": f"Tinh chỉnh cá thể #{idx+1} | Fitness: {ind['fitness']:.4f}"
                     }
                 })
                 await asyncio.sleep(0.03)
                 
             optimizer.test_suite.sort(key=lambda x: x["fitness"], reverse=True)
-            if hc_stats_list:
-                hc_tweak_stats = hc_stats_list[0]
+            hc_tweak_stats.optimized_fitness = optimizer.test_suite[0]["fitness"]
             
         else: # hybrid
             # Chạy GA di truyền rồi leo đồi HC (Mặc định)
@@ -1448,10 +1448,12 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
             })
             await asyncio.sleep(0.4)
             
-            best_candidate = optimizer.test_suite[0]["values"]
-            raw_suite_values = [p["values"] for p in optimizer.test_suite]
-            fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)[0]
-            hc_optimized, hc_tweak_stats = optimize_testcase_boundaries(best_candidate, schema_rules, fitness_evaluator, llm_provider=req.llm_provider, api_key_override=req.api_key_override)
+            from .algorithms.local_pareto_optimizer import LocalParetoOptimizer
+            fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, [p["values"] for p in optimizer.test_suite])
+            hc_optimizer = LocalParetoOptimizer(schema_rules, fitness_evaluator)
+            
+            raw_population = [p["values"] for p in optimizer.test_suite]
+            optimized_values_list, hc_tweak_stats = hc_optimizer.optimize(raw_population)
             
             for detail in hc_tweak_stats.details:
                 await websocket.send_json({
@@ -1463,9 +1465,15 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
                 })
                 await asyncio.sleep(0.03)
                 
-            optimizer.test_suite[0]["values"] = hc_optimized
-            optimizer.test_suite[0]["fitness"] = hc_tweak_stats.optimized_fitness
-            optimizer.test_suite[0]["origin"] = "HC_FINE_TUNED"
+            for idx, ind in enumerate(optimizer.test_suite):
+                if idx < len(optimized_values_list):
+                    ind["values"] = optimized_values_list[idx]
+                    ind["fitness"] = fitness_evaluator(optimized_values_list[idx])[0]
+                    ind["origin"] = "HC_FINE_TUNED"
+                    
+            optimizer.test_suite.sort(key=lambda x: x["fitness"], reverse=True)
+            hc_tweak_stats.optimized_fitness = optimizer.test_suite[0]["fitness"]
+            
             await asyncio.sleep(0.02)
 
         # 6. Lắp ráp bộ kết quả tối ưu CUỐI CÙNG (HoF + tinh gọn + chốt sàn seed F0).

@@ -164,9 +164,17 @@ class V4TestSuiteOptimizer:
                 if not re.search(r'\d', val): nodes.append(f"{name.upper()}_NO_DIGIT")
                 if not re.search(r'[^a-zA-Z0-9]', val): nodes.append(f"{name.upper()}_NO_SPECIAL")
                 
-        # Global Security Nodes
-        if "OR 1=1" in str_all or "DROP TABLE" in str_all: nodes.append("SECURITY_SQLI")
-        if "<script>" in str_all or "javascript:" in str_all: nodes.append("SECURITY_XSS")
+        # V6 Security-Aware Execution Validator
+        for field in self.schema:
+            name = field["name"]
+            ftype = field.get("type", "string")
+            val = str(values.get(name, ""))
+            
+            # Only reward XSS/SQLi if the field is a string. If it's a number, the system will reject it as a type error anyway, so it's not a real security threat.
+            if ftype == "string":
+                if "OR 1=1" in val or "DROP TABLE" in val: nodes.append(f"SECURITY_SQLI_{name.upper()}")
+                if "<script>" in val or "javascript:" in val: nodes.append(f"SECURITY_XSS_{name.upper()}")
+                
         if any(len(str(v)) > 100 for v in values.values()): nodes.append("SECURITY_OVERFLOW")
                 
         return nodes
@@ -192,18 +200,20 @@ class V4TestSuiteOptimizer:
         sec_hits = sum(1 for n in nodes if "SECURITY" in n)
         str_all = str(values)
         
-        # V5.1 Anti-Noise
+        # V6 Soft Penalty Anti-Noise
         noise_score = 0
         if "🫥" in str_all or "💩" in str_all or "🤷" in str_all: noise_score += 0.6
         if "" in str_all: noise_score += 0.5
         if len(str_all) > 500 and "A" * 50 in str_all: noise_score += 0.4
         
+        # V6 Security-Aware Execution Validator
         security_score = 0.0
         if sec_hits > 0:
-            if noise_score < 0.4:
-                security_score = min(1.0, sec_hits / 3.0)
-            else:
-                security_score = 0.1 # Fake security hit
+            security_score = min(1.0, sec_hits / 3.0)
+            
+        # V6 Soft Penalty Anti-Noise
+        lambda_weight = 0.5
+        security_score = max(0.0, security_score - (lambda_weight * noise_score))
                 
         oracle_score = 1.0 # Will be refined by real oracle
         
@@ -224,14 +234,8 @@ class V4TestSuiteOptimizer:
             ind["fitness_vector"] = fit_vector
             ind["noise_score"] = noise
             
-        # V5.1 Anti-Noise Reject
-        filtered_suite = [ind for ind in self.test_suite if ind.get("noise_score", 0) <= 0.8]
-        if not filtered_suite and self.test_suite:
-            # Fallback if everything is noise (prevent crash)
-            self.test_suite.sort(key=lambda x: x.get("noise_score", 0))
-            self.test_suite = self.test_suite[:max(1, len(self.test_suite) // 10)]
-        else:
-            self.test_suite = filtered_suite
+        # V6: Soft Penalty only, remove Hard Reject
+        # We keep all population to maintain diversity
             
         # Cập nhật matrix
         for ind in self.test_suite:
@@ -421,6 +425,9 @@ class V4TestSuiteOptimizer:
         else:
             # RANDOM_POLICY: fallback
             res[name] = None if random.random() > 0.5 else "INVALID_VAL"
+            
+        from .oracle_engine import OracleEngine
+        res = OracleEngine.align_labels(res, self.schema)
             
         return res, mutated
 

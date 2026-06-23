@@ -103,7 +103,11 @@ def optimize_testcase_boundaries(test_case: dict, schema: list, fitness_evaluato
             batch_size=5
         )
 
+        from .oracle_engine import OracleEngine
         for i, neighbor in enumerate(mutated_results):
+            # Tự động đồng bộ Label (Semantic Alignment)
+            neighbor = OracleEngine.align_labels(neighbor, schema)
+            
             try:
                 if fitness_evaluator:
                     n_fitness = fitness_evaluator(neighbor)
@@ -117,14 +121,34 @@ def optimize_testcase_boundaries(test_case: dict, schema: list, fitness_evaluato
                 best_neighbor = neighbor
                 best_step = offspring_to_mutate[i]["hc_step"]
                 
-        # Áp dụng nếu neighbor tốt hơn
-        if best_neighbor is not None and best_neighbor_fitness > current_fitness:
-            optimized = best_neighbor
-            current_fitness = best_neighbor_fitness
-            tweaks_count += 1
-            details.append(f"Vòng {iteration}: Tinh chỉnh '{field_name}' step='{best_step}' -> Fitness {current_fitness:.2f}")
+        import math
+        
+        # V6: Probabilistic HC Acceptance (Simulated Annealing)
+        if best_neighbor is not None:
+            delta_fitness = best_neighbor_fitness - current_fitness
+            temperature = max(0.1, 5.0 / iteration) # Cooling schedule
+            
+            accept = False
+            prob = 0.0
+            if delta_fitness > 0:
+                accept = True
+            else:
+                prob = math.exp(delta_fitness / temperature)
+                if random.random() < prob:
+                    accept = True
+                    
+            if accept:
+                optimized = best_neighbor
+                current_fitness = best_neighbor_fitness
+                tweaks_count += 1
+                if delta_fitness > 0:
+                    details.append(f"Vòng {iteration}: Cải thiện '{field_name}' step='{best_step}' -> Fitness {current_fitness:.2f}")
+                else:
+                    details.append(f"Vòng {iteration}: SA Escape (Prob={prob:.2f}) '{field_name}' -> Fitness {current_fitness:.2f}")
+            else:
+                details.append(f"Vòng {iteration}: Từ chối (Delta={delta_fitness:.2f}) '{field_name}'.")
         else:
-            details.append(f"Vòng {iteration}: Không tìm thấy lân cận tốt hơn cho '{field_name}'.")
+            details.append(f"Vòng {iteration}: Không tìm thấy lân cận cho '{field_name}'.")
             
     stats = BoundaryTweakStats(
         original_fitness=original_fitness,
