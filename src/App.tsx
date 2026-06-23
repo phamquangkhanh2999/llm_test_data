@@ -492,7 +492,7 @@ function App() {
             textAlign: 'right',
           }}
         >
-          © 2026 AI Optimizer — LLM + GA + HC · PostgreSQL
+          © 2026 AI Optimizer — LLM + GA + HC · SQLite
         </footer>
       </main>
 

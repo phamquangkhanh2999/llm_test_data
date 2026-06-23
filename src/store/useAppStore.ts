@@ -55,7 +55,7 @@ interface AppState {
   evaluationMetrics: any | null; // Thông số định lượng F0 (coverage/fitness/dupRate/total) ở Bước Đánh giá
   specificationHistory: any[];
   isFetchingHistory: boolean;
-  // ── Lịch sử phiên chạy tối ưu lấy từ Postgres (Trang Lịch Sử) ──
+  // ── Lịch sử phiên chạy tối ưu lấy từ SQLite (Trang Lịch Sử) ──
   jobs: any[];
   isFetchingJobs: boolean;
   // ── Lịch sử SNAPSHOT gộp 4 bước (màn Xuất Kết Quả - Bước 6) ──
@@ -135,7 +135,7 @@ interface AppState {
   handleEvaluateSeeds: (testMethod: string) => Promise<void>;
   handleGenerateTestSuite: () => Promise<void>;
   fetchSpecificationHistory: () => Promise<void>;
-  // ── Trang Lịch Sử (Postgres) ──
+  // ── Trang Lịch Sử (SQLite) ──
   fetchJobs: () => Promise<void>;
   fetchJobDetail: (jobId: string) => Promise<any | null>;
   deleteJob: (jobId: string) => Promise<void>;
@@ -645,7 +645,7 @@ export const useAppStore = create<AppState>((set, get) => {
       }
     },
 
-    // ── TRANG LỊCH SỬ: nạp danh sách phiên chạy tối ưu từ Postgres ──
+    // ── TRANG LỊCH SỬ: nạp danh sách phiên chạy tối ưu từ SQLite ──
     fetchJobs: async () => {
       const { isFetchingJobs } = get();
       if (isFetchingJobs) return;
@@ -663,7 +663,7 @@ export const useAppStore = create<AppState>((set, get) => {
       } catch (error) {
         console.error('Lỗi khi tải lịch sử phiên chạy (jobs):', error);
         toast.error(
-          'Không thể tải Lịch sử từ máy chủ. Hãy đảm bảo Backend + Postgres đang chạy.',
+          'Không thể tải Lịch sử từ máy chủ. Hãy đảm bảo Backend + SQLite đang chạy.',
         );
       } finally {
         set({ isFetchingJobs: false });
@@ -732,7 +732,7 @@ export const useAppStore = create<AppState>((set, get) => {
           error,
         );
         toast.error(
-          'Không thể tải lịch sử báo cáo. Hãy đảm bảo Backend + Postgres đang chạy.',
+          'Không thể tải lịch sử báo cáo. Hãy đảm bảo Backend + SQLite đang chạy.',
         );
       } finally {
         set({ isFetchingGenHistory: false });

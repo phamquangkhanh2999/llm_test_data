@@ -361,9 +361,7 @@ export const GeneticOptimize: React.FC = () => {
   const [generations, setGenerations] = useState(60);
   const [popSize, setPopSize] = useState(Math.max(50, Math.min(100, initialSeeds.length || 50)));
   const [crossoverRate, setCrossoverRate] = useState(0.8);
-  const [mutationRate, setMutationRate] = useState(0.15);
-  const [localSearchRate, setLocalSearchRate] = useState(0.1);
-  const [localSearchIters, setLocalSearchIters] = useState(5);
+  const [mutationRate, setMutationRate] = useState(0.30);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [ma, setMa] = useState<RunResult | null>(null);
@@ -411,8 +409,6 @@ export const GeneticOptimize: React.FC = () => {
         popSize,
         crossoverRate,
         mutationRate,
-        localSearchRate,
-        localSearchIters,
         weights,
         initial_seeds: initialSeeds,
         schema_rules: schema,
@@ -443,6 +439,7 @@ export const GeneticOptimize: React.FC = () => {
       expectedResult: tc.expectedResult,
       errorDescription: tc.errorDescription,
       rationale: tc.rationale,
+      scenario: tc.rationale || tc.scenario || tc.origin,
       categories: tc.categories || tc.category ? (Array.isArray(tc.categories) ? tc.categories : [tc.category || tc.categories]) : ['positive'],
     }));
 
@@ -510,7 +507,7 @@ export const GeneticOptimize: React.FC = () => {
       );
     } catch (e: any) {
       console.error(e);
-      toast.error(`Lỗi khi chạy tối ưu: ${e.message || 'Hãy kiểm tra Backend + Postgres.'}`);
+      toast.error(`Lỗi khi chạy tối ưu: ${e.message || 'Hãy kiểm tra Backend + SQLite.'}`);
     } finally {
       setIsOptimizing(false);
       setOptimizationPhase('');
@@ -708,16 +705,7 @@ export const GeneticOptimize: React.FC = () => {
             onChange={setGenerations}
             info='Số lượng thế hệ (vòng lặp tiến hóa) thuật toán di truyền sẽ thực hiện để tìm kiếm bộ test tối ưu.'
           />
-          <Slider
-            label='Tỉ lệ học tập cục bộ (MA)'
-            value={localSearchRate}
-            min={0}
-            max={1}
-            step={0.05}
-            onChange={setLocalSearchRate}
-            pct
-            info='Tỉ lệ phần trăm cá thể tốt nhất được chọn để áp dụng thuật toán tối ưu hóa cục bộ (Hill Climbing/Simulated Annealing) trong mỗi thế hệ.'
-          />
+
           {showAdvanced && (
             <>
               <Slider
@@ -749,15 +737,7 @@ export const GeneticOptimize: React.FC = () => {
                 pct
                 info='Xác suất biến đổi ngẫu nhiên giá trị của một vài trường dữ liệu trong ca kiểm thử con để tăng tính đa dạng.'
               />
-              <Slider
-                label='Số vòng leo đồi / cá thể'
-                value={localSearchIters}
-                min={1}
-                max={20}
-                step={1}
-                onChange={setLocalSearchIters}
-                info='Số lượt leo đồi tối đa để tinh chỉnh cận biên và nâng cao chất lượng cục bộ cho mỗi cá thể được chọn.'
-              />
+
             </>
           )}
         </div>
@@ -808,111 +788,169 @@ export const GeneticOptimize: React.FC = () => {
       {/* Chỉ số GA */}
       {ma && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: 12,
-            }}
-          >
-            <Metric
-              icon={<Cpu size={18} />}
-              label='Total Candidates Evaluated'
-              vnLabel='Tổng số cá thể đã đánh giá'
-              infoText='Tổng số lượng ca kiểm thử ứng viên (nhiễm sắc thể) đã được tạo và tính toán độ thích nghi (Fitness) trong suốt quá trình tiến hóa.'
-              value={String(ma.maStats?.totalCandidatesEvaluated ?? 0)}
-              accent='var(--brand-primary)'
-            />
-            <Metric
-              icon={<TrendingUp size={18} />}
-              label='Best Fitness'
-              vnLabel='Độ thích nghi tốt nhất'
-              infoText='Điểm chất lượng (Fitness) cao nhất đạt được bởi ca kiểm thử tối ưu nhất hiện tại trong quần thể (từ 0% đến 100%).'
-              value={`${(ma.bestFitness * 100).toFixed(1)}%`}
-              accent='var(--color-emerald)'
-            />
-            <Metric
-              icon={<Activity size={18} />}
-              label='Average Fitness'
-              vnLabel='Độ thích nghi trung bình'
-              infoText='Điểm chất lượng trung bình của toàn bộ các cá thể trong quần thể thế hệ hiện tại.'
-              value={ma.maStats ? `${(ma.maStats.avgFitness * 100).toFixed(1)}%` : 'N/A'}
-              accent='var(--color-teal)'
-            />
-            <Metric
-              icon={<Sparkles size={18} />}
-              label='Diversity Score'
-              vnLabel='Độ đa dạng quần thể'
-              infoText='Tỷ lệ số lượng ca kiểm thử độc nhất (không trùng lặp) so với kích thước quần thể, đo lường khả năng tránh hội tụ sớm.'
-              value={ma.maStats?.diversity ? ma.maStats.diversity.toFixed(2) : 'N/A'}
-              accent='var(--color-teal)'
-            />
-            <Metric
-              icon={<ShieldCheck size={18} />}
-              label='Duplicates Removed'
-              vnLabel='Số ca trùng lặp bị phạt/loại bỏ'
-              infoText='Số lượng cá thể trùng lặp cấu trúc dữ liệu bị phát hiện và áp dụng hình phạt độ thích nghi (hoặc loại bỏ khỏi thế hệ).'
-              value={String(ma.maStats?.duplicatesRemoved ?? 0)}
-              accent='var(--color-rose)'
-            />
-            <Metric
-              icon={<ShieldCheck size={18} />}
-              label='Security Case Rate'
-              vnLabel='Tỉ lệ ca kiểm thử bảo mật'
-              infoText='Tỉ lệ ca kiểm thử trong bộ test cuối cùng có chứa payload tấn công (SQL Injection / XSS / Path Traversal). Theo kịch bản luận văn.'
-              value={
-                ma.maStats?.securityCaseRate != null
-                  ? `${(ma.maStats.securityCaseRate * 100).toFixed(1)}%`
-                  : 'N/A'
-              }
-              accent='var(--color-rose)'
-            />
+          {/* 1. KẾT QUẢ CUỐI CÙNG */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <TrendingUp size={16} style={{ color: 'var(--brand-primary)' }} />
+            <h3 style={{ fontSize: 14, margin: 0, fontWeight: 600 }}>Kết quả cuối cùng</h3>
           </div>
-
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
               gap: 12,
+              marginBottom: 24,
+            }}
+          >
+            <Metric
+              icon={<TrendingUp size={18} />}
+              label='Coverage Score'
+              vnLabel='Độ phủ tổng thể'
+              infoText='Điểm chất lượng (Coverage Score) dựa trên tổng các node bao phủ được.'
+              value={`${((ma.maStats?.coverageScore ?? ma.bestFitness ?? 0) * 100).toFixed(1)}%`}
+              accent='var(--color-emerald)'
+            />
+            <Metric
+              icon={<ShieldCheck size={18} />}
+              label='Rule Coverage'
+              vnLabel='Độ phủ Rule nghiệp vụ'
+              infoText='Tỉ lệ các ràng buộc bắt buộc và danh mục Enum đã được quét qua.'
+              value={ma.maStats?.ruleCoverage != null ? `${(ma.maStats.ruleCoverage * 100).toFixed(1)}%` : 'N/A'}
+              accent='var(--color-teal)'
+            />
+            <Metric
+              icon={<Activity size={18} />}
+              label='Boundary Coverage'
+              vnLabel='Độ phủ giá trị biên'
+              infoText='Tỉ lệ các trường hợp biên (Max, Min, Empty, v.v) đã được quét.'
+              value={ma.maStats?.boundaryCoverage != null ? `${(ma.maStats.boundaryCoverage * 100).toFixed(1)}%` : 'N/A'}
+              accent='var(--color-blue)'
+            />
+            <Metric
+              icon={<Sparkles size={18} />}
+              label='Security Coverage'
+              vnLabel='Độ phủ bảo mật'
+              infoText='Tỉ lệ các kịch bản tấn công (SQLi, XSS) đã được áp dụng.'
+              value={ma.maStats?.securityCoverage != null ? `${(ma.maStats.securityCoverage * 100).toFixed(1)}%` : 'N/A'}
+              accent='var(--color-rose)'
+            />
+            <Metric
+              icon={<Activity size={18} />}
+              label='Happy Path Coverage'
+              vnLabel='Độ phủ Luồng Chính (Happy)'
+              infoText='GA đã tìm được ít nhất 1 ca kiểm thử hợp lệ 100% (Success).'
+              value={ma.maStats?.happyPathCoverage != null ? `${ma.maStats.happyPathCoverage}/1` : 'N/A'}
+              accent='var(--color-emerald)'
+            />
+            <Metric
+              icon={<Layers size={18} />}
+              label='Business Rule Coverage'
+              vnLabel='Độ phủ Nghiệp vụ'
+              infoText='GA đã tìm được ít nhất 1 ca kiểm thử vi phạm Business Rule.'
+              value={ma.maStats?.businessRuleCoverage != null ? `${ma.maStats.businessRuleCoverage}/1` : 'N/A'}
+              accent='var(--color-teal)'
+            />
+            <Metric
+              icon={<Layers size={18} />}
+              label='Unique Test Cases'
+              vnLabel='Số ca kiểm thử duy nhất'
+              infoText='Số lượng ca kiểm thử có bộ dữ liệu hoàn toàn khác biệt.'
+              value={String(ma.maStats?.uniqueTestCases ?? 0)}
+              accent='var(--brand-primary)'
+            />
+          </div>
+
+          {/* 2. HIỆU QUẢ TỐI ƯU HÓA */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <Activity size={16} style={{ color: 'var(--color-amber)' }} />
+            <h3 style={{ fontSize: 14, margin: 0, fontWeight: 600 }}>Hiệu quả tối ưu hóa</h3>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: 12,
+              marginBottom: 24,
+            }}
+          >
+            <Metric
+              icon={<TrendingUp size={16} />}
+              label='Covered Nodes'
+              vnLabel='Số Node phủ được'
+              infoText='Số lượng Node mà GA quét được (Tuyệt đối).'
+              value={ma.maStats?.initialStats != null ? `${(ma.maStats.ruleNodesCount || 0) + (ma.maStats.boundaryNodesCount || 0)} (+${(ma.maStats.ruleNodesCount || 0) + (ma.maStats.boundaryNodesCount || 0) - ((ma.maStats.initialStats.ruleNodesCount || 0) + (ma.maStats.initialStats.boundaryNodesCount || 0))})` : 'N/A'}
+              accent='var(--color-emerald)'
+            />
+            <Metric
+              icon={<Layers size={16} />}
+              label='Rules Added'
+              vnLabel='Quy tắc mới khai phá'
+              infoText='Số lượng Business Rules mới được GA tìm ra so với tập hạt giống ban đầu.'
+              value={ma.maStats?.initialStats != null ? `+${(ma.maStats.ruleNodesCount || 0) - (ma.maStats.initialStats.ruleNodesCount || 0)}` : 'N/A'}
+              accent='var(--color-teal)'
+            />
+            <Metric
+              icon={<Activity size={16} />}
+              label='Boundary Cases Added'
+              vnLabel='Biên mới khai phá'
+              infoText='Số lượng giá trị biên mới được GA tìm ra.'
+              value={ma.maStats?.initialStats != null ? `+${(ma.maStats.boundaryNodesCount || 0) - (ma.maStats.initialStats.boundaryNodesCount || 0)}` : 'N/A'}
+              accent='var(--color-blue)'
+            />
+            <Metric
+              icon={<ShieldCheck size={16} />}
+              label='Security Gain'
+              vnLabel='Tăng trưởng bảo mật'
+              infoText='Phần trăm độ phủ bảo mật tăng thêm.'
+              value={ma.maStats?.initialStats != null ? `+${((ma.maStats.securityCoverage - ma.maStats.initialStats.securityCoverage) * 100).toFixed(1)}%` : 'N/A'}
+              accent='var(--color-rose)'
+            />
+          </div>
+
+          {/* 3. DEBUG GIAI ĐOẠN TIẾN HÓA (ẨN) */}
+          <details
+            style={{
               background: 'rgba(255, 255, 255, 0.01)',
               padding: '14px',
               borderRadius: '8px',
               border: '1px solid var(--border-subtle)',
+              cursor: 'pointer'
             }}
           >
-            <Metric
-              icon={<Sparkles size={16} />}
-              label='Elite Count'
-              vnLabel='Số cá thể tinh hoa giữ lại'
-              infoText='Số lượng cá thể xuất sắc nhất từ thế hệ trước được bảo tồn nguyên vẹn sang thế hệ tiếp theo (Elitism).'
-              value={String(ma.maStats?.eliteCount ?? 0)}
-            />
-            <Metric
-              icon={<Activity size={16} />}
-              label='Mutation Count'
-              vnLabel='Số lần đột biến (Biên / Bảo mật)'
-              infoText='Tổng số lần đột biến, tách riêng Đột biến biên (Boundary Mutation) và Đột biến bảo mật (Security Mutation) theo kịch bản luận văn.'
-              value={
-                ma.maStats
-                  ? `${ma.maStats.mutationCount ?? 0} (B:${ma.maStats.boundaryMutationCount ?? 0} / S:${ma.maStats.securityMutationCount ?? 0})`
-                  : '0'
-              }
-            />
-            <Metric
-              icon={<Layers size={16} />}
-              label='Crossover Count'
-              vnLabel='Số lần lai ghép'
-              infoText='Tổng số lần thực hiện toán tử lai ghép (Crossover) kết hợp các trường dữ liệu từ hai cá thể cha mẹ.'
-              value={String(ma.maStats?.crossoverCount ?? 0)}
-            />
-            <Metric
-              icon={<Settings2 size={16} />}
-              label='Local Search Count'
-              vnLabel='Số lần tìm kiếm cục bộ'
-              infoText='Tổng số lần áp dụng thuật toán tối ưu hóa cục bộ (Hill Climbing / Simulated Annealing) để tinh chỉnh giá trị tiệm cận biên.'
-              value={String(ma.maStats?.localSearchCount ?? 0)}
-            />
-          </div>
+            <summary style={{ fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>Advanced Algorithm Debug Statistics</summary>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: 12,
+                marginTop: 14
+              }}
+            >
+              <Metric
+                icon={<Cpu size={16} />}
+                label='Generation'
+                vnLabel='Tiến trình'
+                value={ma.maStats?.generationProgress != null ? `${ma.maStats.generationProgress}%` : 'N/A'}
+              />
+              <Metric
+                icon={<Activity size={16} />}
+                label='Population Size'
+                vnLabel='Kích thước quần thể'
+                value="50"
+              />
+              <Metric
+                icon={<Sparkles size={16} />}
+                label='Diversity Score'
+                vnLabel='Độ đa dạng'
+                value={ma.maStats?.uniqueTestCases ? `${((ma.maStats.uniqueTestCases / 50) * 100).toFixed(1)}%` : 'N/A'}
+              />
+              <Metric
+                icon={<Layers size={16} />}
+                label='Duplicates Removed'
+                vnLabel='Trùng lặp bị loại'
+                value="Ẩn (Xử lý ngầm)"
+              />
+            </div>
+          </details>
         </div>
       )}
 
@@ -1262,7 +1300,7 @@ export const GeneticOptimize: React.FC = () => {
                         )}
                       </td>
 
-                      {/* Mục tiêu cải tiến (Scenario) */}
+                      {/* Mục tiêu cải tiến (Scenario / Rationale) */}
                       <td
                         style={{
                           padding: '10px 16px',
@@ -1272,7 +1310,7 @@ export const GeneticOptimize: React.FC = () => {
                           minWidth: 200,
                         }}
                       >
-                        {tc.scenario || <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                        {tc.rationale || tc.scenario || <span style={{ color: 'var(--text-muted)' }}>—</span>}
                       </td>
 
                       {/* Fitness sau MA */}

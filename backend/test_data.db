@@ -1,0 +1,5 @@
+Yêu cầu hệ thống đăng nhập tài khoản
+Email: Bắt buộc, phải là định dạng email hợp lệ.
+Mật khẩu: Bắt buộc, tối thiểu 8 ký tự, tối đa 30 ký tự, gồm ít nhất 1 chữ cái hoa, 1 chữ cái thường, 1 chữ số và 1 ký tự đặc biệt.
+Trạng thái tài khoản: Bắt buộc, chỉ nhận một trong các giá trị active, inactive. Chỉ tài khoản có trạng thái active mới được phép đăng nhập. Tài khoản inactive phải bị từ chối và hiển thị thông báo lỗi phù hợp.
+Chức năng đăng nhập chỉ thành công khi email hợp lệ, mật khẩu hợp lệ và tài khoản đang active. Nếu email sai định dạng, mật khẩu không đạt yêu cầu, dữ liệu bị bỏ trống, thông tin đăng nhập không chính xác hoặc tài khoản bị khóa/chưa kích hoạt, hệ thống phải hiển thị thông báo lỗi và không cho phép đăng nhập.

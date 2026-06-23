@@ -14,9 +14,13 @@ class FitnessEngine:
         schema_score = compute_schema_correctness(values, schema)
         coverage_score, missing_rules = compute_rule_coverage(values, schema)
         boundary_score, field_analysis = compute_boundary_quality(values, schema)
-        diversity_score = 100.0 # Placeholder for phase 2
         
-        # Calculate penalties based on invalid types
+        # Diversity score Placeholder
+        diversity_score = 100.0 
+        
+        # Calculate scores for negative tests / error paths instead of penalizing
+        error_path_score = 0.0
+        business_rule_score = 100.0 # Base score if no violations
         penalty = 0.0
         invalid_reasons = []
         is_negative = "negative" in [c.lower() for c in categories]
@@ -30,40 +34,40 @@ class FitnessEngine:
             semantic_sum += status_res.quality.semantic_score
             
             if status == InvalidType.INVALID_TYPE:
-                if not is_negative:
-                    penalty += 100.0 # STRICT GATE
+                error_path_score += 25.0
                 invalid_reasons.append(f"{field['name']} has invalid type")
             elif status == InvalidType.INVALID_REQUIRED:
-                if not is_negative:
-                    penalty += 100.0 # STRICT GATE
+                error_path_score += 25.0
                 invalid_reasons.append(f"{field['name']} is required but missing")
             elif status == InvalidType.INVALID_FORMAT:
-                if not is_negative: 
-                    penalty += 100.0 # STRICT GATE
+                error_path_score += 25.0
                 invalid_reasons.append(f"{field['name']} has invalid format/semantic")
             elif status == InvalidType.INVALID_ENUM:
-                if not is_negative: 
-                    penalty += 100.0 # STRICT GATE
+                error_path_score += 25.0
                 invalid_reasons.append(f"{field['name']} has invalid enum")
+            elif status == InvalidType.INVALID_BOUNDARY:
+                error_path_score += 25.0
+                invalid_reasons.append(f"{field['name']} breaks boundary constraint")
                     
             if status_res.quality.semantic_score < 1.0 and status != InvalidType.INVALID_FORMAT:
-                if not is_negative:
-                    penalty += 15.0
+                # Slight penalty for semantic failure if not intentional negative format
+                penalty += 5.0
                 invalid_reasons.append(f"{field['name']} fails heuristic semantic check")
                 
         semantic_score = (semantic_sum / total_fields) * 100.0
 
-        # Adjust weights based on user suggestion
-        # Schema 15%, Coverage (Rule) 35%, Boundary 30%, Semantic 10%, Diversity 10%
+        # Adjust weights to support Coverage-Driven Optimization
+        # Schema 15%, Coverage 25%, Boundary 25%, Error Path 20%, Semantic 15%
+        # If it's a negative test case, we heavily rely on error path score
         raw_fitness = (
             schema_score * 0.15 +
-            coverage_score * 0.35 +
-            boundary_score * 0.30 +
-            diversity_score * 0.10 +
-            semantic_score * 0.10
+            coverage_score * 0.25 +
+            boundary_score * 0.25 +
+            min(error_path_score, 100.0) * 0.20 +
+            semantic_score * 0.15
         )
         
-        # If penalty is massive, final_fitness becomes 0 (Strict Gate)
+        # Diversity impact can be applied later via population scaling
         final_fitness = max(0.0, raw_fitness - penalty)
         
         # Weak points logic for GA mutation target
@@ -95,6 +99,8 @@ class FitnessEngine:
                 boundary=round(boundary_score, 2),
                 diversity=round(diversity_score, 2),
                 semantic=round(semantic_score, 2),
+                error_path_score=round(error_path_score, 2),
+                business_rule_score=round(business_rule_score, 2),
                 penalty=round(penalty, 2),
                 raw_fitness=round(raw_fitness, 2)
             ),

@@ -37,6 +37,8 @@ class FitnessBreakdown(BaseModel):
     boundary: float
     diversity: float
     semantic: float
+    error_path_score: float = 0.0
+    business_rule_score: float = 0.0
     penalty: float
     raw_fitness: float
 

@@ -1,7 +1,6 @@
 import os
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
 # Bước 1: Nạp các biến môi trường từ tệp tin .env cục bộ
@@ -10,7 +9,14 @@ load_dotenv()
 # Bước 2: Đảm bảo DB luôn được lưu trong thư mục 'backend' thay vì thư mục hiện hành khi gọi uvicorn từ ngoài vào
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 db_path = os.path.join(BASE_DIR, "testforge.db")
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{db_path}")
+
+# Lấy DATABASE_URL từ .env, nếu là đường dẫn tương đối mặc định thì ghi đè bằng đường dẫn tuyệt đối để tránh lỗi tạo sai thư mục
+env_db_url = os.getenv("DATABASE_URL")
+if not env_db_url or env_db_url == "sqlite:///./testforge.db":
+    DATABASE_URL = f"sqlite:///{db_path}"
+else:
+    DATABASE_URL = env_db_url
+
 
 # Bước 3: Khởi tạo Engine SQLAlchemy. 
 # Tham số "connect_args={'check_same_thread': False}" là bắt buộc đối với SQLite 

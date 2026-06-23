@@ -56,7 +56,7 @@ class Job(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     specification_id = Column(String(36), ForeignKey("specifications.id"), nullable=False)
     status = Column(String(20), default="PENDING") # PENDING | RUNNING | COMPLETE | FAILED
-    algorithm_config = Column(String(1000), nullable=True) # Tham số cấu hình GA/HC dưới dạng chuỗi JSON
+    algorithm_config = Column(Text, nullable=True) # Tham số cấu hình GA/HC dưới dạng chuỗi JSON
     final_coverage = Column(Float, default=0.0) # Độ bao phủ cuối cùng đạt được (%)
     final_duplicate_rate = Column(Float, default=0.0) # Tỉ lệ trùng lặp cuối cùng (%)
     created_at = Column(DateTime, default=datetime.utcnow)
