@@ -127,7 +127,22 @@ def calculate_diversity_score(test_case, subset):
 # dựa trên định nghĩa cứng của schema (ví dụ: minValue, maxValue, minLength, maxLength) 
 # mà không qua quá trình học máy hay tối ưu hóa tiến hóa.
 # =========================================================================
-def generate_random_field_value(field, mode="valid"):
+def extract_domain_vocab(seeds, schema):
+    vocab = {"product": [], "desc": []}
+    if not seeds: return vocab
+    for s in seeds:
+        vals = s.get("values", s)
+        for field in schema:
+            fname = field["name"].lower()
+            val = vals.get(field["name"])
+            if not isinstance(val, str) or not val: continue
+            if "product" in fname or "item" in fname: vocab["product"].append(val)
+            elif "desc" in fname or "note" in fname: vocab["desc"].append(val)
+    vocab["product"] = list(set(vocab["product"]))
+    vocab["desc"] = list(set(vocab["desc"]))
+    return vocab
+
+def generate_random_field_value(field, mode="valid", domain_vocab=None):
     special_chars = ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "_", "+", "=", "[", "]", "{", "}", ";", ":", "'", '"', "<", ">", "/", "?", "\\", "|", "`", "~"]
 
     # Sinh dữ liệu theo kiểu
@@ -230,8 +245,57 @@ def generate_random_field_value(field, mode="valid"):
         if length <= 0:
             return ""
 
-        chars = string.ascii_letters + string.digits
-        str_val = "".join(random.choice(chars) for _ in range(length))
+        try:
+            from faker import Faker
+            fake = Faker(['vi_VN', 'en_US'])
+            
+            # Check for regex/pattern rules first
+            pattern = field.get("pattern") or field.get("regex")
+            if pattern:
+                import rstr
+                str_val = rstr.xeger(pattern)
+            else:
+                # Identify semantic by field name if possible
+                fname = field.get("name", "").lower()
+                if "product" in fname or "item" in fname:
+                    products = domain_vocab.get("product") if domain_vocab and domain_vocab.get("product") else ["Sản phẩm tiêu chuẩn", "Vật phẩm mẫu", "Mặt hàng cao cấp", "Sản phẩm thử nghiệm"]
+                    str_val = random.choice(products)
+                elif "name" in fname:
+                    str_val = fake.name()
+                elif "company" in fname:
+                    str_val = fake.company()
+                elif "address" in fname:
+                    str_val = fake.address().replace('\n', ' ')
+                elif "phone" in fname:
+                    str_val = fake.phone_number()
+                elif "desc" in fname or "note" in fname:
+                    descs = domain_vocab.get("desc") if domain_vocab and domain_vocab.get("desc") else [
+                        "Sản phẩm thiết kế hiện đại, sang trọng và dễ sử dụng trong mọi điều kiện.",
+                        "Trang bị công nghệ tiên tiến nhất, mang lại hiệu suất vượt trội và ổn định.",
+                        "Chất liệu cao cấp, độ bền bỉ cao, an toàn tuyệt đối cho người sử dụng.",
+                        "Giải pháp tối ưu cho công việc và giải trí hàng ngày của bạn.",
+                        "Được tích hợp nhiều tính năng thông minh, đem đến trải nghiệm hoàn hảo."
+                    ]
+                    str_val = random.choice(descs)
+                    while len(str_val) < length:
+                        str_val += " " + random.choice(descs)
+                elif "word" in fname:
+                    str_val = fake.word()
+                else:
+                    str_val = fake.word() + " " + fake.word()
+                
+            # Ensure length boundary is met perfectly
+            if len(str_val) > length:
+                str_val = str_val[:length]
+            elif len(str_val) < length:
+                # Pad to meet length
+                padding_words = [" cao cấp", " chính hãng", " tuyệt vời", " mới", " siêu bền", " vip"]
+                while len(str_val) < length:
+                    str_val += random.choice(padding_words)
+                str_val = str_val[:length]
+        except:
+            chars = string.ascii_letters + string.digits
+            str_val = "".join(random.choice(chars) for _ in range(length))
 
         if mode == "boundary" and random.random() > 0.7:
             # nhúng ký tự đặc biệt ở biên cuối chuỗi
@@ -286,8 +350,48 @@ class TestSuiteOptimizer:
         self.hall_of_fame = []
         self._max_hof_size = 20
 
+        # Stats tracking for UI metrics
+        self.stats = {
+            "total_candidates_evaluated": 0,
+            "crossover_count": 0,
+            "mutation_count": 0,
+            "boundary_mutation_count": 0,
+            "security_mutation_count": 0,
+            "elite_count": 0,
+            "local_search_count": 0,
+            "duplicates_removed": 0
+        }
+
         # Static evaluations cache (caching validation, boundary, security scores)
         self.static_cache = {}
+        
+    def get_stats(self):
+        # Calculate dynamic metrics like diversity and avg fitness
+        if not self.test_suite:
+            return self.stats
+        
+        avg_fitness = sum(ind["fitness"] for ind in self.test_suite) / len(self.test_suite)
+        unique_fingerprints = set(str(sorted(ind["values"].items())) for ind in self.test_suite)
+        diversity = len(unique_fingerprints) / len(self.test_suite)
+        
+        # Count items containing security payloads
+        sec_payloads = ["'", "OR", "--", "SELECT", "DROP", "<script>"]
+        sec_count = 0
+        for ind in self.test_suite:
+            is_sec = False
+            for v in ind["values"].values():
+                val_str = str(v).upper()
+                if any(p in val_str for p in sec_payloads):
+                    is_sec = True
+                    break
+            if is_sec: sec_count += 1
+            
+        return {
+            **self.stats,
+            "avgFitness": avg_fitness,
+            "diversity": diversity,
+            "securityCaseRate": sec_count / len(self.test_suite)
+        }
 
     # ═══════════════════════════════════════════════════════════
     # ADAPTIVE RATE HELPERS
@@ -327,16 +431,16 @@ class TestSuiteOptimizer:
         if categories is None:
             categories = ["positive"]
         result = FitnessEngine.evaluate(test_case, self.schema, categories)
-        fitness = result.fitness / 100.0
+        fitness = result.fitness
         
         dup_count = sum(
             1 for other in current_suite_values
             if all(str(test_case.get(k["name"])) == str(other.get(k["name"])) for k in self.schema)
         )
         if dup_count > 1:
-            fitness -= (dup_count - 1) * 0.05
+            fitness -= (dup_count - 1) * 5.0
 
-        return max(0.001, min(fitness, 1.0)), result.weak_points
+        return max(0.1, min(fitness, 100.0)), result.weak_points
 
 
 
@@ -364,11 +468,13 @@ class TestSuiteOptimizer:
         self._best_fitness_history = []
 
         # 1. Đưa các hạt giống thông minh ban đầu vào bộ dữ liệu
+        domain_vocab = extract_domain_vocab(seeds, self.schema)
+        self.domain_vocab = domain_vocab
         for s in seeds:
             cleaned_tc = {}
             for field in self.schema:
                 name = field["name"]
-                cleaned_tc[name] = s["values"][name] if name in s["values"] else generate_random_field_value(field, "valid")
+                cleaned_tc[name] = s["values"][name] if name in s["values"] else generate_random_field_value(field, "valid", domain_vocab)
             self.test_suite.append({
                 "id": str(uuid.uuid4()),
                 "parent_id": None,
@@ -384,7 +490,7 @@ class TestSuiteOptimizer:
             record = {}
             mode = modes[len(self.test_suite) % len(modes)]
             for field in self.schema:
-                record[field["name"]] = generate_random_field_value(field, mode)
+                record[field["name"]] = generate_random_field_value(field, mode, domain_vocab)
             self.test_suite.append({
                 "id": str(uuid.uuid4()),
                 "parent_id": None,
@@ -513,11 +619,12 @@ class TestSuiteOptimizer:
 
         # 3. Seed F0 gốc làm SÀN chất lượng
         if original_seeds:
+            domain_vocab = getattr(self, "domain_vocab", None)
             for s in original_seeds:
                 cleaned = {}
                 for field in self.schema:
                     name = field["name"]
-                    cleaned[name] = s[name] if name in s else generate_random_field_value(field, "valid")
+                    cleaned[name] = s[name] if name in s else generate_random_field_value(field, "valid", domain_vocab)
                 fit = self.evaluate_testcase_quality(cleaned, raw_values)
                 _add(cleaned, fit, "Seed_F0")
 
@@ -739,9 +846,9 @@ class TestSuiteOptimizer:
         # Check if no improvement in the last 5 generations (was self._stagnation_threshold)
         if len(self._best_fitness_history) >= 5:
             last_5 = self._best_fitness_history[-5:]
-            if max(last_5) - min(last_5) < 0.005:
+            if max(last_5) - min(last_5) < 0.5:
                 return True
-        return max(recent) - min(recent) < 0.005
+        return max(recent) - min(recent) < 0.5
 
     def _restart_population(self):
         """
@@ -799,7 +906,11 @@ class TestSuiteOptimizer:
                 "parent_id": self.test_suite[i].get("parent_id"),
                 "values": {**self.test_suite[i]["values"]},
                 "fitness": self.test_suite[i]["fitness"],
-                "origin": "Elite"
+                "origin": "Elite",
+                "lineage": self.test_suite[i].get("lineage", {
+                    "parents": [],
+                    "operations": ["elite_preservation"]
+                })
             })
 
         # Track operation counts per generation
@@ -823,7 +934,11 @@ class TestSuiteOptimizer:
                 "parent_id": p1_ind.get("id"),
                 "values": c1,
                 "fitness": 0.0,
-                "origin": "Crossover"
+                "origin": "Crossover",
+                "lineage": {
+                    "parents": [p1_ind.get("id"), p2_ind.get("id")],
+                    "operations": ["crossover"]
+                }
             })
             crossover_count += 1
             
@@ -846,7 +961,11 @@ class TestSuiteOptimizer:
                     "parent_id": p2_ind.get("id"),
                     "values": c2,
                     "fitness": 0.0,
-                    "origin": "Crossover"
+                    "origin": "Crossover",
+                    "lineage": {
+                        "parents": [p1_ind.get("id"), p2_ind.get("id")],
+                        "operations": ["crossover"]
+                    }
                 })
                 crossover_count += 1
                 
@@ -875,15 +994,23 @@ class TestSuiteOptimizer:
                 batch_size=20
             )
             
-            for i, req in enumerate(offspring_to_mutate):
-                idx = req["index"]
-                original_val = req["values"]
-                new_val = mutated_results[i]
-                if new_val != original_val:
-                    next_suite[idx]["values"] = new_val
-                    next_suite[idx]["origin"] = "Mutation"
-                    mutation_count += 1
-                    crossover_count -= 1
+            for i, item in enumerate(offspring_to_mutate):
+                idx = item["index"]
+                mutated_tc = mutated_results[i]
+                old_values = next_suite[idx]["values"]
+                next_suite[idx]["values"] = mutated_tc
+                if mutated_tc != old_values:
+                    next_suite[idx]["origin"] = "Crossover + Mutation"
+                    next_suite[idx]["lineage"]["operations"].append("mutation")
+                    
+                    # Optional: Track exactly what changed for Explainable AI
+                    changes = {}
+                    for k, v in mutated_tc.items():
+                        if old_values.get(k) != v:
+                            changes[k] = {"from": old_values.get(k), "to": v}
+                    next_suite[idx]["lineage"]["changes"] = changes
+                mutation_count += 1
+                crossover_count -= 1
 
         # 3. Thay đổi bộ dữ liệu test và tái chấm điểm
         # 3a. Enum Constraint Repair: đảm bảo các trường Enum không bị biến dạng
@@ -892,6 +1019,13 @@ class TestSuiteOptimizer:
         self._last_enum_violations = enum_violations
         self.test_suite = next_suite
         self.evaluate_suite()
+        
+        # Cập nhật global stats
+        self.stats["total_candidates_evaluated"] += len(self.test_suite)
+        self.stats["elite_count"] = elite_size
+        self.stats["crossover_count"] += crossover_count
+        self.stats["mutation_count"] += mutation_count
+        self.stats["duplicates_removed"] += getattr(self, "_last_duplicates_removed", 0)
 
         # Track best fitness for stagnation detection
         best_fit = self.test_suite[0]["fitness"]
@@ -906,7 +1040,7 @@ class TestSuiteOptimizer:
         coverage = self._compute_full_coverage()
 
         # Số cá thể thích nghi tốt được giữ lại (fitness >= ngưỡng thích nghi)
-        threshold = 0.40 + min(self.generation / self.max_generations, 1.0) * 0.20
+        threshold = 40.0 + min(self.generation / self.max_generations, 1.0) * 20.0
         selected_count = sum(1 for ind in self.test_suite if ind["fitness"] >= threshold)
 
         return {

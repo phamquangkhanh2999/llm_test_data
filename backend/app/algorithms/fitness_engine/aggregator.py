@@ -30,35 +30,40 @@ class FitnessEngine:
             semantic_sum += status_res.quality.semantic_score
             
             if status == InvalidType.INVALID_TYPE:
-                penalty += 20.0
+                if not is_negative:
+                    penalty += 100.0 # STRICT GATE
                 invalid_reasons.append(f"{field['name']} has invalid type")
             elif status == InvalidType.INVALID_REQUIRED:
-                penalty += 30.0
+                if not is_negative:
+                    penalty += 100.0 # STRICT GATE
                 invalid_reasons.append(f"{field['name']} is required but missing")
             elif status == InvalidType.INVALID_FORMAT:
                 if not is_negative: 
-                    penalty += 35.0
-                    invalid_reasons.append(f"{field['name']} has invalid format/semantic")
+                    penalty += 100.0 # STRICT GATE
+                invalid_reasons.append(f"{field['name']} has invalid format/semantic")
             elif status == InvalidType.INVALID_ENUM:
                 if not is_negative: 
-                    penalty += 20.0
-                    invalid_reasons.append(f"{field['name']} has invalid enum")
+                    penalty += 100.0 # STRICT GATE
+                invalid_reasons.append(f"{field['name']} has invalid enum")
                     
             if status_res.quality.semantic_score < 1.0 and status != InvalidType.INVALID_FORMAT:
                 if not is_negative:
                     penalty += 15.0
-                    invalid_reasons.append(f"{field['name']} fails heuristic semantic check")
+                invalid_reasons.append(f"{field['name']} fails heuristic semantic check")
                 
         semantic_score = (semantic_sum / total_fields) * 100.0
 
+        # Adjust weights based on user suggestion
+        # Schema 15%, Coverage (Rule) 35%, Boundary 30%, Semantic 10%, Diversity 10%
         raw_fitness = (
-            schema_score * 0.20 +
-            coverage_score * 0.25 +
-            boundary_score * 0.35 +
+            schema_score * 0.15 +
+            coverage_score * 0.35 +
+            boundary_score * 0.30 +
             diversity_score * 0.10 +
             semantic_score * 0.10
         )
         
+        # If penalty is massive, final_fitness becomes 0 (Strict Gate)
         final_fitness = max(0.0, raw_fitness - penalty)
         
         # Weak points logic for GA mutation target

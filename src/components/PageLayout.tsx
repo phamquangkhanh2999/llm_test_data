@@ -1,7 +1,6 @@
 import React from 'react';
 import {
-  ArrowRight, CheckCircle2, AlertTriangle, Info,
-  ArrowLeft
+  ArrowRight, CheckCircle2, AlertTriangle, Info, ArrowLeft,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
@@ -14,19 +13,21 @@ export interface WorkflowStep {
 }
 
 export const WORKFLOW_STEPS: WorkflowStep[] = [
-  { id: 'prepare', label: 'Phân Tích & Chuẩn Bị', shortLabel: 'Chuẩn Bị', color: '#1d4ed8' },
-  { id: 'optimize', label: 'Tối Ưu & So Sánh', shortLabel: 'Tối Ưu', color: '#6d28d9' },
-  { id: 'export', label: 'Lịch Sử & Xuất Kết Quả', shortLabel: 'Xuất Bản', color: '#0f766e' },
+  { id: 'input', label: 'Đầu vào', shortLabel: 'Đầu vào', color: '#0891B2' },
+  { id: 'analyze', label: 'Phân tích', shortLabel: 'Phân tích', color: '#0891B2' },
+  { id: 'evaluate', label: 'Đánh giá', shortLabel: 'Đánh giá', color: '#0891B2' },
+  { id: 'optimize', label: 'Tối ưu LLM+MA', shortLabel: 'LLM+MA', color: '#4F46E5' },
+  { id: 'compare', label: 'So sánh', shortLabel: 'So sánh', color: '#10B981' },
+  { id: 'export', label: 'Lịch sử & Xuất', shortLabel: 'Lịch sử', color: '#10B981' },
 ];
 
-// ─── Prerequisite definition ──────────────────────────────────────────────────
+// ─── Prerequisite definition ───────────────────────────────────────────────────
 export interface Prerequisite {
   met: boolean;
   warningText: string;
   goBackScreen?: string;
   goBackLabel?: string;
 }
-
 
 // ─── PageLayout ────────────────────────────────────────────────────────────────
 interface PageLayoutProps {
@@ -42,8 +43,6 @@ interface PageLayoutProps {
   nextLabel?: string;
   nextIcon?: React.ReactNode;
   accentColor?: string;
-  /** Ẩn data flow panel (ví dụ: trang dashboard) */
-  hideFlowPanel?: boolean;
   children: React.ReactNode;
 }
 
@@ -82,12 +81,16 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
       {stepId && (
         <div style={{
           background: 'var(--bg-card)',
-          border: '1.5px solid var(--border-subtle)',
+          border: '1px solid var(--border-subtle)',
           borderRadius: 'var(--radius-md)',
           padding: '12px 18px',
           boxShadow: 'var(--shadow-sm)',
+          overflowX: 'auto',
+          msOverflowStyle: 'none',
+          scrollbarWidth: 'none',
+          WebkitOverflowScrolling: 'touch',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', minWidth: 'max-content' }}>
             {WORKFLOW_STEPS.map((step, idx) => {
               const isDone = completedScreens.includes(step.id);
               const isCurrent = step.id === stepId;
@@ -108,9 +111,9 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
                       width: '32px', height: '32px', borderRadius: '50%',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '13px', fontWeight: 700,
-                      background: isCurrent ? step.color : isDone || isPast ? 'rgba(15,118,110,0.12)' : 'var(--divider)',
+                      background: isCurrent ? step.color : isDone || isPast ? 'rgba(13,148,136,0.12)' : 'var(--divider)',
                       color: isCurrent ? '#fff' : isDone || isPast ? 'var(--color-teal)' : 'var(--text-muted)',
-                      border: isCurrent ? `2.5px solid ${step.color}` : isDone || isPast ? '2.5px solid rgba(15,118,110,0.45)' : '2.5px solid var(--border-subtle)',
+                      border: isCurrent ? `2px solid ${step.color}` : isDone || isPast ? '2px solid rgba(13,148,136,0.4)' : '2px solid var(--border-subtle)',
                       boxShadow: isCurrent ? `0 4px 12px ${step.color}40` : 'none',
                       transition: 'all 0.3s ease', flexShrink: 0,
                     }}>
@@ -119,16 +122,16 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
                     <span style={{
                       fontSize: '13px',
                       color: isCurrent ? step.color : isDone || isPast ? 'var(--text-secondary)' : 'var(--text-muted)',
-                      fontWeight: isCurrent ? 700 : 600, whiteSpace: 'nowrap',
+                      fontWeight: isCurrent ? 700 : 500, whiteSpace: 'nowrap',
                     }}>
                       {step.label}
                     </span>
                   </button>
                   {idx < WORKFLOW_STEPS.length - 1 && (
                     <div style={{
-                      flex: 1, height: '2.5px', margin: '0 12px',
+                      width: '40px', flexShrink: 0, height: '2px', margin: '0 12px',
                       background: isDone || isPast
-                        ? 'linear-gradient(90deg, rgba(15,118,110,0.6), rgba(15,118,110,0.25))'
+                        ? 'linear-gradient(90deg, rgba(13,148,136,0.5), rgba(13,148,136,0.15))'
                         : 'var(--border-subtle)',
                       transition: 'background 0.4s ease',
                     }} />
@@ -140,16 +143,11 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
         </div>
       )}
 
-      {/* ── DATA FLOW PANEL ── */}
-      {/* {!hideFlowPanel && stepId && (
-        <DataFlowPanel currentScreen={stepId} />
-      )} */}
-
       {/* ── PAGE HEADER ── */}
       <div style={{
-        background: `linear-gradient(135deg, ${accentColor}0f 0%, var(--bg-card) 60%)`,
-        border: `1.5px solid var(--border-subtle)`,
-        borderLeft: `5px solid ${accentColor}`,
+        background: `linear-gradient(135deg, ${accentColor}0f 0%, var(--bg-card) 55%)`,
+        border: `1px solid var(--border-subtle)`,
+        borderLeft: `4px solid ${accentColor}`,
         borderRadius: 'var(--radius-md)',
         padding: '16px 20px',
         display: 'flex', alignItems: 'flex-start', gap: '14px',
@@ -206,14 +204,14 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
         <div key={i} style={{
           display: 'flex', alignItems: 'flex-start', gap: '14px',
           padding: '14px 18px', borderRadius: '10px',
-          background: 'rgba(180,83,9,0.08)', border: '1.5px solid rgba(180,83,9,0.4)',
+          background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.28)',
         }}>
-          <AlertTriangle size={18} style={{ color: '#b45309', flexShrink: 0, marginTop: '1px' }} />
+          <AlertTriangle size={18} style={{ color: '#f59e0b', flexShrink: 0, marginTop: '1px' }} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '13.5px', color: '#b45309', fontWeight: 700, marginBottom: '5px' }}>
+            <div style={{ fontSize: '13px', color: '#f59e0b', fontWeight: 700, marginBottom: '5px' }}>
               Cần hoàn thành bước trước để dùng được màn hình này
             </div>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 10px 0', lineHeight: 1.6, fontWeight: 500 }}>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 10px 0', lineHeight: 1.6 }}>
               {prereq.warningText}
             </p>
             {prereq.goBackScreen && (
@@ -221,15 +219,9 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
                 onClick={() => setActiveScreen(prereq.goBackScreen!)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '6px',
-                  padding: '8px 16px', borderRadius: '8px', fontSize: '12.5px', fontWeight: 700,
-                  background: 'rgba(180,83,9,0.12)', border: '1.5px solid rgba(180,83,9,0.45)',
-                  color: '#b45309', cursor: 'pointer', transition: 'all 0.2s',
-                }}
-                onMouseOver={e => {
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(180,83,9,0.18)';
-                }}
-                onMouseOut={e => {
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(180,83,9,0.12)';
+                  padding: '7px 14px', borderRadius: '8px', fontSize: '12.5px', fontWeight: 600,
+                  background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
+                  color: '#f59e0b', cursor: 'pointer',
                 }}
               >
                 <ArrowLeft size={13} />

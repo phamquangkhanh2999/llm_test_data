@@ -306,6 +306,17 @@ def api_generate_seeds(req: SeedGenerationRequest, db: Session = Depends(get_db)
             db=db,
             llm_provider=req.llm_provider
         )
+        
+        # Cập nhật fitness cho các hạt giống vừa sinh ra
+        from app.engines.fitness_engine import evaluate_individual_fitness
+        for s in seeds:
+            if "fitness" not in s or s["fitness"] is None:
+                s["fitness"] = evaluate_individual_fitness(
+                    test_case=s,
+                    rules=req.business_rules or [],
+                    constraints=req.constraints or []
+                )
+
         return {
             "initialPopulation": seeds,
             "coverageSummary": coverage_summary,
@@ -597,50 +608,75 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
         final_result_mapped = []
         export_data = None
 
-        if algo == "ga_hc":
-            optimizer.initialize_suite(llm_seeds_mapped)
-            for _ in range(config_dict["generations"]):
-                if req.job_id and ACTIVE_JOBS.get(req.job_id) == "cancelled":
-                    raise HTTPException(status_code=499, detail="Job cancelled by user")
-                optimizer.evolve_one_generation()
-                
-            ga_population = sorted(optimizer.test_suite, key=lambda x: x["fitness"], reverse=True)
-            raw_suite_values = [p["values"] for p in ga_population]
-            
+        if algo in ["ga_hc", "ga", "hc"]:
             global_coverage_set = set()
             
+            if algo in ["ga_hc", "ga"]:
+                optimizer.initialize_suite(llm_seeds_mapped)
+                for _ in range(config_dict["generations"]):
+                    if req.job_id and ACTIVE_JOBS.get(req.job_id) == "cancelled":
+                        raise HTTPException(status_code=499, detail="Job cancelled by user")
+                    optimizer.evolve_one_generation()                
+                
+                ga_population = sorted(optimizer.test_suite, key=lambda x: x["fitness"], reverse=True)
+            else:
+                # algo == "hc": input dataset is passed via req.ga_dataset or initial_seeds
+                ga_population = [{"values": extract_values(tc)} for tc in cleaned_initial_seeds]
+
+            raw_suite_values = [p["values"] for p in ga_population]
+            
+            def reclassify_categories(vals, base_cats):
+                from .services.ai_service import check_record_expected_result
+                msg = check_record_expected_result(vals, schema_rules)
+                vld = (msg == "Hợp lệ")
+                c = list(base_cats)
+                if vld and "negative" in c:
+                    c = [x for x in c if x != "negative"]
+                    if not c or "positive" not in c:
+                        c.append("positive")
+                elif not vld and "negative" not in c:
+                    c.append("negative")
+                    c = [x for x in c if x != "positive"]
+                return list(set(c))
+
             for i, llm_tc in enumerate(llm_seeds_mapped):
                 if req.job_id and ACTIVE_JOBS.get(req.job_id) == "cancelled":
                     raise HTTPException(status_code=499, detail="Job cancelled by user")
                     
                 tc_id = llm_tc["tcId"]
                 
-                # Tìm GA candidate có điểm số cao nhất đối với llm_tc["categories"]
-                best_ga_candidate = ga_population[0] if ga_population else {"values": llm_tc["values"]}
-                best_ga_score = -1
-                for ga_c in ga_population:
-                    score = calculate_v2_scores(ga_c["values"], llm_tc["categories"])["fitness"]
-                    if score > best_ga_score:
-                        best_ga_score = score
-                        best_ga_candidate = ga_c
-                        
-                ga_values = best_ga_candidate["values"]
-                scores_ga = calculate_v2_scores(ga_values, llm_tc["categories"])
-                
-                # Chạy HC trên GA candidate
-                fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)[0]
-                hc_values, hc_stats = optimize_testcase_boundaries(ga_values, schema_rules, fitness_evaluator, max_iterations=10, global_coverage_set=global_coverage_set, llm_provider=req.llm_provider, api_key_override=req.api_key_override, categories=llm_tc["categories"])
-                scores_hc = calculate_v2_scores(hc_values, llm_tc["categories"])
-                
-                # Fallback logic & merge & polish
-                if scores_hc["fitness"] >= scores_ga["fitness"]:
-                    candidate_values = hc_values
-                    candidate_origin = "HC"
-                    candidate_reason = "Thuật toán leo đồi HC tối ưu tốt hơn GA"
+                # Lấy 1-1 candidate từ ga_population để đảm bảo tính đa dạng, tránh gom tụ về 1 cá thể Elite
+                if i < len(ga_population):
+                    best_ga_candidate = ga_population[i]
                 else:
+                    best_ga_candidate = {"values": llm_tc["values"]}
+                    
+                ga_values = best_ga_candidate["values"]
+                ga_cats = reclassify_categories(ga_values, llm_tc["categories"])
+                scores_ga = calculate_v2_scores(ga_values, ga_cats)
+                
+                if algo in ["ga_hc", "hc"]:
+                    # Chạy HC trên GA candidate
+                    fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)[0]
+                    hc_values, hc_stats = optimize_testcase_boundaries(ga_values, schema_rules, fitness_evaluator, max_iterations=10, global_coverage_set=global_coverage_set, llm_provider=req.llm_provider, api_key_override=req.api_key_override, categories=ga_cats)
+                    hc_cats = reclassify_categories(hc_values, ga_cats)
+                    scores_hc = calculate_v2_scores(hc_values, hc_cats)
+                    
+                    if scores_hc["fitness"] > scores_ga["fitness"]:
+                        candidate_values = hc_values
+                        candidate_origin = "HC"
+                        candidate_reason = "Thuật toán leo đồi HC tối ưu tốt hơn GA"
+                    else:
+                        candidate_values = ga_values
+                        candidate_origin = "GA"
+                        candidate_reason = "Thuật toán leo đồi HC không tối ưu hơn GA (Sử dụng kết quả GA)"
+                else:
+                    # algo == "ga": bypass HC
+                    hc_values = ga_values
+                    scores_hc = scores_ga
                     candidate_values = ga_values
                     candidate_origin = "GA"
-                    candidate_reason = "Thuật toán leo đồi HC không tối ưu hơn GA (Sử dụng kết quả GA)"
+                    candidate_reason = "Chỉ chạy thuật toán GA, không chạy HC"
 
                 # Ghi nhận Provenance mà không ghi đè dữ liệu của thuật toán
                 provenance = {}
@@ -658,7 +694,8 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
 
                 # Tính điểm thực tế sau gộp và polish
                 _clean_for_score = {k: v for k, v in final_values.items() if not k.startswith("_")}
-                scores_final = calculate_v2_scores(_clean_for_score, llm_tc["categories"])
+                final_cats = reclassify_categories(_clean_for_score, llm_tc["categories"])
+                scores_final = calculate_v2_scores(_clean_for_score, final_cats)
 
                 # So sánh điểm thực tế cuối cùng với điểm hạt giống LLM
                 if scores_final["fitness"] >= llm_tc["llmFitness"]:
@@ -675,6 +712,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                 else:
                     # Nếu điểm cuối cùng kém hơn LLM gốc, lùi về LLM gốc hoàn toàn
                     final_values = {**llm_tc["values"], "_provenance": {f["name"]: "LLM" for f in schema_rules}}
+                    final_cats = llm_tc["categories"]
                     final_fit = llm_tc["llmFitness"]
                     final_val_score = llm_tc["validationScore"]
                     final_bound_score = llm_tc["boundaryScore"]
@@ -742,7 +780,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                 ga_tc = {
                     "tcId": tc_id,
                     "scenario": llm_tc["scenario"],
-                    "categories": llm_tc["categories"],
+                    "categories": ga_cats,
                     "values": ga_values,
                     "expectedResult": ga_expected,
                     "errorDescription": ga_err_desc,
@@ -753,10 +791,11 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                     "llmFitness": llm_tc["llmFitness"],
                     "gaFitness": scores_ga["fitness"]
                 }
+                
                 hc_tc = {
                     "tcId": tc_id,
                     "scenario": llm_tc["scenario"],
-                    "categories": llm_tc["categories"],
+                    "categories": hc_cats if algo in ["ga_hc", "hc"] else ga_cats,
                     "values": hc_values,
                     "expectedResult": hc_expected,
                     "errorDescription": hc_err_desc,
@@ -768,10 +807,11 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                     "gaFitness": scores_ga["fitness"],
                     "hcFitness": scores_hc["fitness"]
                 }
+                
                 final_tc = {
                     "tcId": tc_id, 
                     "scenario": llm_tc["scenario"], 
-                    "categories": llm_tc["categories"], 
+                    "categories": final_cats, 
                     "values": final_values, 
                     "expectedResult": final_expected, 
                     "errorDescription": final_err_desc, 
@@ -1038,7 +1078,8 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
             "finalResult": final_result_mapped,
             "comparisonData": comparison_data,
             "fitnessReport": fitness_report,
-            "exportData": export_data
+            "exportData": export_data,
+            "maStats": optimizer.get_stats() if algo in ["ga_hc", "ga"] else None
         }
     except Exception as e:
         import traceback

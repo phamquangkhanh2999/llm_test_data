@@ -275,7 +275,7 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
                       userSelect: 'none',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                       {/* Status Dot */}
                       <span
                         style={{
@@ -298,8 +298,6 @@ export const AILogsViewer: React.FC<AILogsViewerProps> = ({ isOpen, onClose }) =
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
-                          flex: 1,
-                          minWidth: 0,
                         }}
                       >
                         {log.endpoint}

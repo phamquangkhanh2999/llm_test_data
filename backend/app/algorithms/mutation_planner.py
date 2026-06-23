@@ -76,6 +76,39 @@ class MutationExecutor:
     """Thực thi Kế hoạch Đột biến do MutationPlanner tạo ra"""
     
     @staticmethod
+    def _semantic_pad(base_str: str, target_len: int, is_email: bool = False) -> str:
+        import random
+        if len(base_str) >= target_len:
+            return base_str
+            
+        if is_email:
+            parts = base_str.split('@')
+            if len(parts) == 2:
+                needed = target_len - len(base_str)
+                pads = ["test", "demo", "user", "vip", "pro", "max", "new"]
+                ext = ""
+                while len(ext) < needed:
+                    ext += random.choice(pads)
+                ext = ext[:needed]
+                return parts[0] + ext + '@' + parts[1]
+            
+        padding_words = [" cao cấp", " chính hãng", " thế hệ mới", " siêu bền", " nhập khẩu", " chất lượng", " phiên bản", " giới hạn", " vip", " pro", " max"]
+        needed = target_len - len(base_str)
+        ext = ""
+        while len(ext) < needed:
+            ext += random.choice(padding_words)
+        ext = ext[:needed]
+        return base_str + ext
+        
+    @staticmethod
+    def _semantic_truncate(base_str: str, target_len: int) -> str:
+        if len(base_str) <= target_len:
+            return base_str
+        # Try to cut at word boundary if possible, else just cut string
+        cut = base_str[:target_len]
+        return cut
+    
+    @staticmethod
     def execute(values: Dict[str, Any], schema: List[Dict[str, Any]], fitness_res=None, hc_step=None, llm_provider="gemini", api_key_override=None) -> Dict[str, Any]:
         mutated_values = dict(values)
         weak_points = getattr(fitness_res, "weak_points", []) if fitness_res else []
@@ -117,45 +150,28 @@ class MutationExecutor:
             action = plan.get('action', '')
             target = str(plan.get('target', ''))
             
-            # Fast programmatic string mutation (No LLM)
+            # Semantic string mutation
             new_val = current_val
             max_len = field_schema.get("maxLength", 100)
+            is_email = "email" in semantic_type
             
             if "maxLength" in target or action == "approach_boundary":
-                if len(new_val) < max_len:
-                    if "email" in semantic_type:
-                        parts = new_val.split('@')
-                        if len(parts) == 2:
-                            needed = max_len - len(new_val)
-                            new_val = parts[0] + 'b'*needed + '@' + parts[1]
-                        else:
-                            new_val = new_val.ljust(max_len, 'b')
-                    else:
-                        new_val = new_val.ljust(max_len, 'b')
+                new_val = MutationExecutor._semantic_pad(new_val, max_len, is_email)
             elif "minLength" in target:
                 min_len = field_schema.get("minLength", 1)
-                if len(new_val) > min_len:
-                    new_val = new_val[:min_len-1]
+                new_val = MutationExecutor._semantic_truncate(new_val, max_len if max_len < min_len else min_len)
             elif action == "incremental_step" and hc_step:
                 if "chars" in hc_step:
                     try:
                         num_str = hc_step.split(' ')[0]
                         num = int(num_str)
                         if num > 0:
-                            chars_to_add = min(num, max_len - len(new_val))
-                            if chars_to_add > 0:
-                                if "email" in semantic_type:
-                                    parts = new_val.split('@')
-                                    if len(parts) == 2:
-                                        new_val = parts[0] + 'b'*chars_to_add + '@' + parts[1]
-                                    else:
-                                        new_val += 'b'*chars_to_add
-                                else:
-                                    new_val += 'b'*chars_to_add
+                            target_len = min(len(new_val) + num, max_len)
+                            new_val = MutationExecutor._semantic_pad(new_val, target_len, is_email)
                         else:
                             chars_to_remove = abs(num)
-                            if len(new_val) > chars_to_remove:
-                                new_val = new_val[:-chars_to_remove]
+                            target_len = max(len(new_val) - chars_to_remove, 1)
+                            new_val = MutationExecutor._semantic_truncate(new_val, target_len)
                     except:
                         pass
                         
@@ -228,25 +244,16 @@ class MutationExecutor:
                 action = plan.get('action', '')
                 target = str(plan.get('target', ''))
                 
-                # Fast programmatic string mutation (No LLM)
+                # Semantic string mutation
                 new_val = current_val
                 max_len = field_schema.get("maxLength", 100)
+                is_email = "email" in semantic_type
                 
                 if "maxLength" in target or action == "approach_boundary":
-                    if len(new_val) < max_len:
-                        if "email" in semantic_type:
-                            parts = new_val.split('@')
-                            if len(parts) == 2:
-                                needed = max_len - len(new_val)
-                                new_val = parts[0] + 'b'*needed + '@' + parts[1]
-                            else:
-                                new_val = new_val.ljust(max_len, 'b')
-                        else:
-                            new_val = new_val.ljust(max_len, 'b')
+                    new_val = MutationExecutor._semantic_pad(new_val, max_len, is_email)
                 elif "minLength" in target:
                     min_len = field_schema.get("minLength", 1)
-                    if len(new_val) > min_len:
-                        new_val = new_val[:min_len-1]
+                    new_val = MutationExecutor._semantic_truncate(new_val, max_len if max_len < min_len else min_len)
                 elif action == "incremental_step" and hc_step:
                     if "chars" in hc_step:
                         try:
@@ -254,20 +261,12 @@ class MutationExecutor:
                             num_str = hc_step.split(' ')[0]
                             num = int(num_str)
                             if num > 0:
-                                chars_to_add = min(num, max_len - len(new_val))
-                                if chars_to_add > 0:
-                                    if "email" in semantic_type:
-                                        parts = new_val.split('@')
-                                        if len(parts) == 2:
-                                            new_val = parts[0] + 'b'*chars_to_add + '@' + parts[1]
-                                        else:
-                                            new_val += 'b'*chars_to_add
-                                    else:
-                                        new_val += 'b'*chars_to_add
+                                target_len = min(len(new_val) + num, max_len)
+                                new_val = MutationExecutor._semantic_pad(new_val, target_len, is_email)
                             else:
                                 chars_to_remove = abs(num)
-                                if len(new_val) > chars_to_remove:
-                                    new_val = new_val[:-chars_to_remove]
+                                target_len = max(len(new_val) - chars_to_remove, 1)
+                                new_val = MutationExecutor._semantic_truncate(new_val, target_len)
                         except:
                             pass
                             

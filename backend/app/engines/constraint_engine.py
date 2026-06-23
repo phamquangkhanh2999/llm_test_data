@@ -6,7 +6,7 @@ def evaluate_constraints(test_case: dict, constraints: list) -> float:
     if not constraints:
         return 1.0
         
-    data = test_case.get("data", test_case)
+    data = test_case.get("values", test_case.get("data", test_case))
     total_applicable = 0
     satisfied_count = 0
     
