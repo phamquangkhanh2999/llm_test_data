@@ -175,9 +175,11 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
         except:
             initial_seeds = []
             
-        from .services.ai_service import generate_coverage_summary
+        from .services.ai_service import generate_coverage_summary, ensure_complete_business_rules
         coverage_summary = generate_coverage_summary(initial_seeds, fields)
-            
+        # Bổ sung rule còn thiếu để đầy đủ với mọi field (kể cả spec cũ trong cache)
+        business_rules = ensure_complete_business_rules(business_rules, fields)
+
         return {
             "specification_id": existing_spec.id,
             "project_id": existing_spec.project_id,
@@ -807,12 +809,12 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                     scenario_normalized = f"Kiểm thử lỗi: {final_err_desc}"
                     
                 final_tc = {
-                    "tcId": tc_id, 
-                    "scenario": scenario_normalized, 
+                    "tcId": tc_id,
+                    "scenario": scenario_normalized,
                     "scenario_original": scenario_original,
                     "scenario_normalized": scenario_normalized,
-                    "categories": final_cats, 
-                    "values": final_values, 
+                    "categories": final_cats,
+                    "values": {k: v for k, v in final_values.items() if not str(k).startswith("_")},
                     "expectedResult": final_expected, 
                     "errorDescription": final_err_desc, 
                     "rationale": final_rationale, 

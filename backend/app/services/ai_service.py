@@ -138,22 +138,34 @@ def derive_expected_result(record: dict, fields: list) -> dict:
         # ── Priority 5: Format/structural validation → HTTP 422 ────────────────
         format_ok = True
         format_desc = ""
-        if ftype == "email":
-            if not _re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
-                format_ok = False
-                format_desc = f"'{name}' sai định dạng email"
-        elif ftype == "card":
-            if not _re.match(r"^\d{16}$", val_str):
-                format_ok = False
-                format_desc = f"'{name}' phải gồm đúng 16 chữ số"
-        elif ftype == "phone":
-            if not _re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
-                format_ok = False
-                format_desc = f"'{name}' sai đầu số di động VN"
-        elif ftype == "date":
-            if not is_valid_iso_date(val_str):
-                format_ok = False
-                format_desc = f"'{name}' sai định dạng ngày ISO (YYYY-MM-DD)"
+        spec_regex = f.get("regex")
+        if spec_regex:
+            # Spec tự khai báo regex -> ƯU TIÊN TUYỆT ĐỐI (đúng cho mọi bài toán,
+            # không áp default cứng VN/16-số... lên các kiểu có sẵn).
+            try:
+                if not _re.search(spec_regex, val_str):
+                    format_ok = False
+                    format_desc = f"'{name}' không khớp định dạng quy định"
+            except _re.error:
+                pass  # regex hỏng trong spec -> bỏ qua, dùng default theo type bên dưới
+                spec_regex = None
+        if format_ok and not spec_regex:
+            if ftype == "email":
+                if not _re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
+                    format_ok = False
+                    format_desc = f"'{name}' sai định dạng email"
+            elif ftype == "card":
+                if not _re.match(r"^\d{16}$", val_str):
+                    format_ok = False
+                    format_desc = f"'{name}' phải gồm đúng 16 chữ số"
+            elif ftype == "phone":
+                if not _re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
+                    format_ok = False
+                    format_desc = f"'{name}' sai đầu số di động VN"
+            elif ftype == "date":
+                if not is_valid_iso_date(val_str):
+                    format_ok = False
+                    format_desc = f"'{name}' sai định dạng ngày ISO (YYYY-MM-DD)"
 
         if not format_ok:
             errors_422.append(format_desc)
@@ -793,6 +805,84 @@ def generate_seeds(fields: list, test_method: str, boundary_count: int = 4, part
     if not active_key or active_key.strip() == "":
         print(f">>> INFO: No API key found. Running local seed generator for method '{test_method}'...")
 
+def ensure_complete_business_rules(rules: list, fields: list) -> list:
+    """
+    Đảm bảo Business Rules ĐẦY ĐỦ & nhất quán với schema: mọi field có ràng buộc
+    (required / length / value / regex / enum) đều phải có rule tương ứng.
+    Bổ sung deterministic những rule LLM bỏ sót (vd 'phone' bắt buộc nhưng thiếu rule),
+    GIỮ NGUYÊN rule do LLM sinh (ưu tiên mô tả chất lượng) — chỉ lấp phần thiếu.
+    """
+    rules = list(rules or [])
+    existing = set()
+    for r in rules:
+        fld = str(r.get("field", "")).lower()
+        cat = str(r.get("rule_category") or r.get("rule_operator") or "").lower()
+        existing.add((fld, cat))
+
+    def has(fld, *cats):
+        f = str(fld).lower()
+        return any((f, c) in existing for c in cats)
+
+    def add(rule):
+        rules.append(rule)
+        existing.add((str(rule["field"]).lower(), rule["rule_category"]))
+
+    for fdef in (fields or []):
+        name = fdef.get("name")
+        if not name:
+            continue
+        up = str(name).upper()
+
+        if fdef.get("required") and not has(name, "presence", "required"):
+            add({
+                "rule_id": f"R_{up}_REQUIRED", "field": name,
+                "rule_category": "presence", "rule_operator": "required",
+                "rule_value": "true", "priority": "high",
+                "description": f"Trường '{name}' là bắt buộc, không được để trống.",
+                "errorMessage": f"Vui lòng nhập '{name}'."
+            })
+
+        if (fdef.get("minLength") is not None or fdef.get("maxLength") is not None) and not has(name, "length"):
+            mn, mx = fdef.get("minLength"), fdef.get("maxLength")
+            add({
+                "rule_id": f"R_{up}_LENGTH", "field": name,
+                "rule_category": "length", "rule_operator": "length_range",
+                "rule_value": f"{mn}-{mx}", "priority": "medium",
+                "description": f"Trường '{name}' phải có độ dài từ {mn} đến {mx} ký tự.",
+                "errorMessage": f"'{name}' phải dài {mn}-{mx} ký tự."
+            })
+
+        if (fdef.get("minValue") is not None or fdef.get("maxValue") is not None) and not has(name, "value"):
+            mn, mx = fdef.get("minValue"), fdef.get("maxValue")
+            add({
+                "rule_id": f"R_{up}_VALUE", "field": name,
+                "rule_category": "value", "rule_operator": "value_range",
+                "rule_value": f"{mn}-{mx}", "priority": "medium",
+                "description": f"Trường '{name}' phải nằm trong khoảng {mn} đến {mx}.",
+                "errorMessage": f"'{name}' phải trong khoảng {mn}-{mx}."
+            })
+
+        if fdef.get("regex") and not has(name, "format"):
+            add({
+                "rule_id": f"R_{up}_FORMAT", "field": name,
+                "rule_category": "format", "rule_operator": "format",
+                "rule_value": fdef.get("regex"), "priority": "medium",
+                "description": f"Trường '{name}' phải đúng định dạng quy định.",
+                "errorMessage": f"'{name}' sai định dạng quy định."
+            })
+
+        if fdef.get("allowedValues") and not has(name, "domain", "allowed_values"):
+            add({
+                "rule_id": f"R_{up}_ENUM", "field": name,
+                "rule_category": "domain", "rule_operator": "allowed_values",
+                "rule_value": fdef.get("allowedValues"), "priority": "medium",
+                "description": f"Trường '{name}' chỉ nhận giá trị trong: {fdef.get('allowedValues')}.",
+                "errorMessage": f"'{name}' không nằm trong danh sách cho phép."
+            })
+
+    return rules
+
+
 def parse_spec_with_ai(raw_text: str, api_key_override: str = None, llm_provider: str = "gemini", db: Session = None) -> dict:
     import time as _time
     t_total = _time.time()
@@ -827,13 +917,17 @@ def parse_spec_with_ai(raw_text: str, api_key_override: str = None, llm_provider
             if field["type"] in ["numeric", "integer", "float"]:
                 field["type"] = "number"
         validate_schema(schema_fields)
-        
-        print(f">>> [STEP 1/1] ✓ Hoàn thành | {len(rules_data['rules'])} rules, {len(schema_fields)} fields | {_time.time()-t1:.1f}s", flush=True)
-        
+
+        # Bổ sung deterministic các rule LLM bỏ sót để Business Rules ĐẦY ĐỦ với mọi field
+        # (vd 'phone' bắt buộc nhưng LLM quên sinh rule -> tự thêm rule 'required').
+        complete_rules = ensure_complete_business_rules(rules_data.get("rules", []), schema_fields)
+
+        print(f">>> [STEP 1/1] ✓ Hoàn thành | {len(complete_rules)} rules ({len(rules_data['rules'])} từ LLM), {len(schema_fields)} fields | {_time.time()-t1:.1f}s", flush=True)
+
         # [P0 OPT] STEP 2 (seed generation) removed — seeds generated on-demand
         # via /api/generate-seeds to avoid blocking parse with an extra LLM call.
         final_result = {
-            "business_rules": rules_data.get("rules", []),
+            "business_rules": complete_rules,
             "constraints": rules_data.get("constraints", []),
             "ambiguities": [],
             "fields": schema_fields,
@@ -922,7 +1016,7 @@ def generate_seeds_with_ai(
         if len(all_seeds) > 0:
             context_str = json.dumps([s["values"] for s in all_seeds[-5:]], ensure_ascii=False)
             
-        sys_prompt, usr_prompt = get_seed_generation_instructions(batch_size, distribution_str, previous_context=context_str)
+        sys_prompt, usr_prompt = get_seed_generation_instructions(batch_size, distribution_str, previous_context=context_str, test_methods=test_methods)
         usr_prompt_full = f"{usr_prompt}\n\nFields Schema:\n{json.dumps(fields, ensure_ascii=False)}"
         
         if business_rules:
@@ -1230,17 +1324,44 @@ def batch_semantic_polish(
                         notes = r.get("polish_notes", {})
                         original_optimized = tc_map[tc_id].get("hc_values", tc_map[tc_id].get("values", {}))
                         
+                        import re as _re
+                        _PLACEHOLDER = _re.compile(
+                            r"(invalid input|no valid|not provided|no address|placeholder|"
+                            r"\bunknown\b|sample value|input detected|\bn/a\b|no data|"
+                            r"không hợp lệ|không có dữ liệu)", _re.IGNORECASE)
+
                         enum_safe_polished = {**original_optimized}
                         for f in schema:
                             name = f.get("name")
                             if name not in polished: continue
                             new_val = polished[name]
+                            keep_orig = original_optimized.get(name, new_val)
+
+                            # a) Enum: phải nằm trong allowedValues
                             allowed = f.get("allowedValues")
                             if allowed and str(new_val) not in [str(v) for v in allowed]:
-                                print(f">>> [POLISH] Enum violation cho '{name}': LLM sinh '{new_val}' không trong {allowed}. Giữ nguyên.")
-                                enum_safe_polished[name] = original_optimized.get(name, new_val)
-                            else:
-                                enum_safe_polished[name] = new_val
+                                print(f">>> [POLISH] Enum violation '{name}': '{new_val}'. Giữ giá trị thuật toán.")
+                                enum_safe_polished[name] = keep_orig
+                                continue
+
+                            # b) Regex của spec: polished phải khớp, nếu không -> giữ giá trị thuật toán
+                            freg = f.get("regex")
+                            if freg and isinstance(new_val, str):
+                                try:
+                                    if not _re.search(freg, new_val):
+                                        print(f">>> [POLISH] Regex violation '{name}': '{new_val[:40]}'. Giữ giá trị thuật toán.")
+                                        enum_safe_polished[name] = keep_orig
+                                        continue
+                                except _re.error:
+                                    pass
+
+                            # c) Text placeholder/mô tả (không phải giá trị thật) -> từ chối
+                            if isinstance(new_val, str) and _PLACEHOLDER.search(new_val):
+                                print(f">>> [POLISH] Placeholder text '{name}': '{new_val[:40]}'. Giữ giá trị thuật toán.")
+                                enum_safe_polished[name] = keep_orig
+                                continue
+
+                            enum_safe_polished[name] = new_val
                                 
                         polished_results_map[tc_id] = {
                             "polished_values": enum_safe_polished,

@@ -25,10 +25,9 @@ const TYPE_OPTIONS: { v: FieldConstraint['type']; label: string }[] = [
 ];
 
 const TECHNIQUES: { id: string; title: string; desc: string; recommended?: boolean }[] = [
-  { id: 'ep', title: 'Phân vùng tương đương', desc: 'Nhóm dữ liệu đầu vào thành các phân vùng hành xử tương tự để giảm dư thừa.', recommended: true },
-  { id: 'bva', title: 'Phân tích giá trị biên', desc: 'Kiểm thử các điểm biên của phân vùng — nơi lỗi dễ xuất hiện nhất.' },
-  { id: 'decision', title: 'Bảng quyết định', desc: 'Bao phủ logic nghiệp vụ phức tạp gồm nhiều điều kiện và hành động.' },
-  { id: 'state', title: 'Chuyển tiếp trạng thái', desc: 'Phù hợp luồng mà hành vi hệ thống phụ thuộc trạng thái hiện tại.' },
+  { id: 'ep', title: 'Phân vùng tương đương (EP)', desc: 'Nhóm dữ liệu đầu vào thành các phân vùng hành xử tương tự để giảm dư thừa.', recommended: true },
+  { id: 'bva', title: 'Phân tích giá trị biên (BVA)', desc: 'Kiểm thử các điểm biên của phân vùng — nơi lỗi dễ xuất hiện nhất.' },
+  { id: 'random', title: 'Chọn ngẫu nhiên (Random)', desc: 'Sinh ngẫu nhiên các giá trị để kiểm tra độ tin cậy của hệ thống.' },
 ];
 
 const RenderConstraintBadges: React.FC<{ f: FieldConstraint }> = ({ f }) => {

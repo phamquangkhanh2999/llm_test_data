@@ -31,22 +31,23 @@ def create_seed_plan(test_methods: List[str], schema_rules: List[Dict[str, Any]]
     boundary_weight = 0.0
     invalid_weight = 0.0
     
+    # Ưu tiên sinh nhiều case HỢP LỆ hơn (đa số ~50%+) để pipeline có đủ case thành công.
     for m in test_methods:
         if m == "bva":
-            boundary_weight += 2.0
-            valid_weight += 0.5
+            boundary_weight += 1.5
+            valid_weight += 1.5
             invalid_weight += 0.5
         elif m == "ep":
-            valid_weight += 1.5
-            invalid_weight += 1.5
+            valid_weight += 2.0
+            invalid_weight += 1.0
         elif m == "random":
-            valid_weight += 1.0
+            valid_weight += 1.5
             boundary_weight += 1.0
             invalid_weight += 1.0
-            
+
     total_weight = valid_weight + boundary_weight + invalid_weight
     if total_weight == 0:
-        valid_weight, boundary_weight, invalid_weight = 0.4, 0.4, 0.2
+        valid_weight, boundary_weight, invalid_weight = 0.5, 0.3, 0.2
         total_weight = 1.0
         
     valid_count = math.ceil(total_requested * (valid_weight / total_weight))

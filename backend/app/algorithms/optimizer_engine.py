@@ -142,19 +142,126 @@ def extract_domain_vocab(seeds, schema):
     vocab["desc"] = list(set(vocab["desc"]))
     return vocab
 
+def _fit_length(text, min_l, max_l):
+    """
+    Ràng buộc độ dài chuỗi một cách SẠCH:
+      - Vượt max_l: cắt bớt.
+      - Dưới min_l: nối thêm bằng cách lặp lại chính nội dung realistic (không marketing-word).
+    """
+    text = str(text).strip() or "Du lieu mau"
+    if len(text) > max_l:
+        return text[:max_l].rstrip()
+    if len(text) < min_l:
+        seed = text
+        out = text
+        while len(out) < min_l:
+            out += " " + seed
+        return out[:max_l].rstrip()[:max_l] if len(out) > max_l else out[:max_l]
+    return text
+
+
+def _generate_password(min_l, max_l, pattern=None):
+    """Sinh mật khẩu mạnh REALISTIC (chữ hoa + thường + số [+ ký tự đặc biệt]) trong [min_l, max_l]."""
+    import re as _re
+    # Token kỹ thuật TRUNG TÍNH (không gắn địa danh/ngôn ngữ) -> dùng được mọi miền.
+    bases = ["Pass", "User", "Auth", "Login", "Secure", "Access", "Master",
+             "Token", "Account", "Member", "System", "Welcome"]
+    specials = ["!", "@", "#", "$", "%"]
+    min_l = max(int(min_l or 6), 6)
+    max_l = max(int(max_l or 32), min_l)
+    cand = ""
+    for _ in range(25):
+        base = random.choice(bases)
+        digits = "".join(str(random.randint(0, 9)) for _ in range(random.randint(2, 4)))
+        sp = random.choice(specials) if random.random() > 0.4 else ""
+        cand = f"{base}{digits}{sp}"
+        # Đệm bằng số nếu chưa đủ độ dài (vẫn đảm bảo có chữ + số)
+        while len(cand) < min_l:
+            cand += str(random.randint(0, 9))
+        if len(cand) > max_l:
+            cand = cand[:max_l]
+            if not _re.search(r"\d", cand):
+                cand = cand[:-1] + "1"
+        if not (min_l <= len(cand) <= max_l):
+            continue
+        if not pattern:
+            return cand
+        try:
+            if _re.search(pattern, cand):
+                return cand
+        except _re.error:
+            return cand
+    return cand
+
+
 def generate_random_field_value(field, mode="valid", domain_vocab=None):
     special_chars = ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "_", "+", "=", "[", "]", "{", "}", ";", ":", "'", '"', "<", ">", "/", "?", "\\", "|", "`", "~"]
 
     if mode == "security":
         return random.choice([
-            "' OR 1=1 --", 
-            "<script>alert(1)</script>", 
+            "' OR 1=1 --",
+            "<script>alert(1)</script>",
             "\"><img src=x onerror=prompt(1)>",
             "1; DROP TABLE users"
         ])
 
+    # ── GROUNDING: ưu tiên giá trị MẪU do chính bài toán/spec khai báo ──
+    # successValues = ví dụ HỢP LỆ; failureValues = ví dụ LỖI (kèm lý do).
+    # Dùng trực tiếp -> dữ liệu bám đúng yêu cầu gốc, KHÔNG sinh lan man/rác.
+    success_vals = field.get("successValues")
+    failure_vals = field.get("failureValues")
+
+    if mode in ("valid", "ep_valid") and success_vals:
+        usable = [v for v in success_vals if v is not None and str(v) != ""]
+        if usable:
+            return random.choice(usable)
+
+    if mode in ("invalid", "ep_invalid") and failure_vals:
+        fails = []
+        if isinstance(failure_vals, list):
+            for item in failure_vals:
+                if isinstance(item, dict):
+                    if item.get("value") is not None:
+                        fails.append(item["value"])      # dạng {value, reason}
+                elif item is not None:
+                    fails.append(item)                   # dạng list[str]
+        if fails:
+            return random.choice(fails)
+
     # Sinh dữ liệu theo kiểu
     f_type = field.get("type", "string")
+    spec_regex = field.get("regex") or field.get("pattern")
+
+    # ƯU TIÊN regex của SPEC cho các kiểu có sẵn (email/phone/card): KHÔNG đóng đinh
+    # định dạng VN / 16-số... -> sinh đúng theo quy định riêng của từng bài toán.
+    if spec_regex and f_type in ("email", "phone", "card"):
+        if mode in ("invalid", "ep_invalid"):
+            return "INVALID_VAL"   # vi phạm regex có chủ đích
+        import re as _re
+        # Thử giá trị REALISTIC theo kiểu trước (đẹp & vẫn khớp regex); chỉ xeger khi bất khả kháng.
+        if f_type == "email":
+            candidates = [f"user{random.randint(10, 99)}@example.com",
+                          "standard.user@example.com",
+                          f"test.user{random.randint(1, 99)}@company.com"]
+        elif f_type == "phone":
+            candidates = ["0" + "".join(str(random.randint(0, 9)) for _ in range(9)),
+                          "".join(str(random.randint(0, 9)) for _ in range(10)),
+                          "0987654321"]
+        else:  # card
+            candidates = ["".join(str(random.randint(0, 9)) for _ in range(16)),
+                          "".join(str(random.randint(0, 9)) for _ in range(15)),
+                          "".join(str(random.randint(0, 9)) for _ in range(19))]
+        for c in candidates:
+            try:
+                if _re.search(spec_regex, c):
+                    return c
+            except _re.error:
+                return c  # regex hỏng -> dùng tạm giá trị realistic
+        try:
+            import rstr
+            return rstr.xeger(spec_regex)   # cuối cùng mới chấp nhận giá trị "máy"
+        except Exception:
+            pass  # rơi xuống default theo type bên dưới
 
     if f_type == "email":
         if mode in ("invalid", "ep_invalid"):
@@ -241,73 +348,78 @@ def generate_random_field_value(field, mode="valid", domain_vocab=None):
 
         min_l = int(field.get("minLength", 3) or 3)
         max_l = int(field.get("maxLength", 20) or 20)
+        fname = field.get("name", "").lower()
+        pattern = field.get("pattern") or field.get("regex")
 
-        length = random.randint(min_l, max_l)
+        # ── Mật khẩu: sinh chuỗi mạnh REALISTIC hợp regex (không gibberish) ──
+        if "password" in fname or "pass" in fname or "pwd" in fname:
+            if mode in ("invalid", "ep_invalid"):
+                return "123"  # quá ngắn / thiếu chữ -> vi phạm rule có chủ đích
+            return _generate_password(min_l, max_l, pattern)
+
+        # ── Xác định độ dài mục tiêu theo mode ──
         if mode in ("invalid", "ep_invalid"):
-            length = max(0, min_l - 10) if random.random() > 0.5 else max_l + 10
+            target_len = max(0, min_l - 1) if random.random() > 0.5 else max_l + 5
         elif mode == "boundary":
-            length = min_l if random.random() > 0.5 else max_l
-        elif mode == "ep_valid":
-            length = (min_l + max_l) // 2
+            target_len = min_l if random.random() > 0.5 else max_l
+        else:  # valid / ep_valid -> độ dài TỰ NHIÊN, chỉ ràng trong [min_l, max_l]
+            target_len = None
 
-        if length <= 0:
+        if target_len is not None and target_len <= 0:
             return ""
+
+        # ── Sinh nội dung realistic theo ngữ nghĩa tên trường ──
+        def _semantic_value(_fake):
+            if "product" in fname or "item" in fname:
+                if domain_vocab and domain_vocab.get("product"):
+                    return random.choice(domain_vocab["product"])
+                return f"{_fake.word().capitalize()} {_fake.bothify('??-####').upper()}"
+            if "name" in fname:
+                return _fake.name()
+            if "company" in fname:
+                return _fake.company()
+            if "address" in fname:
+                return _fake.address().replace('\n', ', ')
+            if "phone" in fname:
+                return _fake.phone_number()
+            if "desc" in fname or "note" in fname:
+                return _fake.sentence(nb_words=8)
+            if "word" in fname:
+                return _fake.word()
+            return _fake.word() + " " + _fake.word()
 
         try:
             from faker import Faker
             fake = Faker(['vi_VN', 'en_US'])
-            
-            # Check for regex/pattern rules first
-            pattern = field.get("pattern") or field.get("regex")
-            if pattern:
-                import rstr
-                str_val = rstr.xeger(pattern)
-            else:
-                # Identify semantic by field name if possible
-                fname = field.get("name", "").lower()
-                if "product" in fname or "item" in fname:
-                    products = domain_vocab.get("product") if domain_vocab and domain_vocab.get("product") else ["Sản phẩm tiêu chuẩn", "Vật phẩm mẫu", "Mặt hàng cao cấp", "Sản phẩm thử nghiệm"]
-                    str_val = random.choice(products)
-                elif "name" in fname:
-                    str_val = fake.name()
-                elif "company" in fname:
-                    str_val = fake.company()
-                elif "address" in fname:
-                    str_val = fake.address().replace('\n', ' ')
-                elif "phone" in fname:
-                    str_val = fake.phone_number()
-                elif "desc" in fname or "note" in fname:
-                    descs = domain_vocab.get("desc") if domain_vocab and domain_vocab.get("desc") else [
-                        "Sản phẩm thiết kế hiện đại, sang trọng và dễ sử dụng trong mọi điều kiện.",
-                        "Trang bị công nghệ tiên tiến nhất, mang lại hiệu suất vượt trội và ổn định.",
-                        "Chất liệu cao cấp, độ bền bỉ cao, an toàn tuyệt đối cho người sử dụng.",
-                        "Giải pháp tối ưu cho công việc và giải trí hàng ngày của bạn.",
-                        "Được tích hợp nhiều tính năng thông minh, đem đến trải nghiệm hoàn hảo."
-                    ]
-                    str_val = random.choice(descs)
-                    while len(str_val) < length:
-                        str_val += " " + random.choice(descs)
-                elif "word" in fname:
-                    str_val = fake.word()
-                else:
-                    str_val = fake.word() + " " + fake.word()
-                
-            # Ensure length boundary is met perfectly
-            if len(str_val) > length:
-                str_val = str_val[:length]
-            elif len(str_val) < length:
-                # Pad to meet length
-                padding_words = [" cao cấp", " chính hãng", " tuyệt vời", " mới", " siêu bền", " vip"]
-                while len(str_val) < length:
-                    str_val += random.choice(padding_words)
-                str_val = str_val[:length]
-        except:
-            chars = string.ascii_letters + string.digits
-            str_val = "".join(random.choice(chars) for _ in range(length))
+            str_val = _semantic_value(fake)
 
-        if mode == "boundary" and random.random() > 0.7:
-            # nhúng ký tự đặc biệt ở biên cuối chuỗi
-            str_val = str_val[:-1] + random.choice(special_chars)
+            # Có regex: GIỮ giá trị realistic nếu khớp; nếu không, thử nhiều mẫu realistic
+            # (ưu tiên ASCII en_US dễ khớp) TRƯỚC khi đành dùng xeger (giá trị "máy").
+            if pattern:
+                import re as _re
+                try:
+                    matched = bool(_re.search(pattern, str_val))
+                except _re.error:
+                    pattern, matched = None, True   # regex hỏng -> bỏ qua
+                if pattern and not matched:
+                    fake_en = Faker('en_US')
+                    for _ in range(10):
+                        cand = _semantic_value(fake_en)
+                        if _re.search(pattern, cand):
+                            str_val, matched = cand, True
+                            break
+                if pattern and not matched:
+                    import rstr
+                    str_val = rstr.xeger(pattern)
+        except Exception:
+            str_val = "".join(random.choice(string.ascii_letters) for _ in range(max(min_l, 6)))
+
+        # ── Áp ràng buộc độ dài một cách SẠCH (không marketing-word padding) ──
+        if target_len is not None:
+            str_val = _fit_length(str_val, target_len, target_len)   # boundary/invalid: ép đúng độ dài
+        else:
+            str_val = _fit_length(str_val, min_l, max_l)             # valid: chỉ ràng trong [min,max]
+
         return str_val
 
 

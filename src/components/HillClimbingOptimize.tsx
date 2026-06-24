@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle2, GitCompare, Play, RefreshCw, Settings2, Sparkles, Terminal } from 'lucide-react';
+import { ArrowRight, CheckCircle2, GitCompare, Play, RefreshCw, Settings2, Sparkles, Terminal, XCircle } from 'lucide-react';
 import React, { useState } from 'react';
 import { config } from '../config';
 import { useAppStore } from '../store/useAppStore';
@@ -214,7 +214,7 @@ export const HillClimbingOptimize: React.FC = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ background: 'var(--surface-subtle)', textAlign: 'left', position: 'sticky', top: 0, zIndex: 5 }}>
-                  <ColHeader en='HC TC ID' vi='Mã ca kiểm thử' width={110} />
+                  <ColHeader en='Test Code' vi='Mã ca kiểm thử' />
                   <ColHeader en='Origin' vi='Nguồn' width={120} />
                   {schema.map((f: any) => (
                     <ColHeader
@@ -224,9 +224,9 @@ export const HillClimbingOptimize: React.FC = () => {
                       minWidth={150}
                     />
                   ))}
-                  <ColHeader en='Expected Result' vi='Kết quả mong muốn' minWidth={160} />
-                  <ColHeader en='Expected Error' vi='Lỗi mong muốn' minWidth={160} />
-                  <ColHeader en='Improvement Goal' vi='Mục tiêu cải tiến' minWidth={200} />
+                  <ColHeader en='Expected Result' vi='Kết quả mong muốn' minWidth={260} />
+                  <ColHeader en='Expected Error' vi='Lỗi mong muốn' minWidth={260} />
+                  <ColHeader en='Improvement Goal' vi='Mục tiêu cải tiến' minWidth={260} />
                   <ColHeader en='Fitness' vi='Fitness sau HC' width={100} align='right' />
                 </tr>
               </thead>
@@ -251,8 +251,16 @@ export const HillClimbingOptimize: React.FC = () => {
                         e.currentTarget.style.backgroundColor = 'transparent';
                       }}
                     >
-                      <td style={{ padding: '10px 16px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', verticalAlign: 'top' }}>
-                        {tc.id || `TC-HC-${String(200 + i).padStart(5, '0')}`}
+                      <td
+                        style={{
+                          padding: '10px 16px',
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--text-secondary)',
+                          verticalAlign: 'top',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {`TC-HC-${String(i + 1).padStart(3, '0')}`}
                       </td>
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
                         <span style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 600, backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
@@ -269,21 +277,34 @@ export const HillClimbingOptimize: React.FC = () => {
                         );
                       })}
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        <div style={{ maxWidth: 200, wordBreak: 'break-word' }}>
-                          {isError ? <span style={{ color: 'var(--error)', fontWeight: 500 }}>Error</span> : <span style={{ color: 'var(--color-emerald)', fontWeight: 500 }}>Success</span>}
+                        <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                          {isError ? (
+                            <span style={{ color: 'var(--error)', fontWeight: 700, marginRight: '4px' }}>
+                              Error:
+                            </span>
+                          ) : (
+                            <span style={{ color: '#10b981', fontWeight: 700, marginRight: '4px' }}>
+                              Success:
+                            </span>
+                          )}
+                          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                            {typeof tc.expectedResult === 'string' ? tc.expectedResult : (tc.expectedResult?.statusText || String(tc.expectedResult || ''))}
+                          </span>
                         </div>
                       </td>
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        {isError ? (
-                          <span style={{ color: 'var(--error)', fontWeight: 500 }}>
-                            {typeof tc.expectedResult === 'object' ? tc.expectedResult.errorDescription : (tc.errorDescription || 'Lỗi hệ thống/Validation')}
-                          </span>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Không có</span>
-                        )}
+                        <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                          {isError ? (
+                            <span style={{ color: 'var(--error)', fontWeight: 500 }}>
+                              {typeof tc.expectedResult === 'object' ? tc.expectedResult.errorDescription : (tc.errorDescription || 'Lỗi hệ thống/Validation')}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Không có</span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        <div style={{ maxWidth: 240, wordBreak: 'break-word' }}>
+                        <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
                           {tc.rationale ? <span style={{ color: 'var(--text-secondary)' }}>{tc.rationale}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                         </div>
                       </td>

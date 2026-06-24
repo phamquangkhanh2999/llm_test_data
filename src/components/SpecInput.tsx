@@ -1150,12 +1150,12 @@ const isInvalid = idx % 9 === 0;
                 ⚙️ Cấu hình phương pháp sinh F0 Seeds
               </span>
 
-              {/* Phương pháp check boxes - Trả lại 4 phương pháp */}
+              {/* Phương pháp check boxes - Trả lại 3 phương pháp */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
                 {[
-                  { id: 'bva', name: 'Phân tích Giá trị biên (BVA)', desc: 'Sinh test case xoay quanh cận dưới, cận trên và giá trị vi phạm.' },
-                  { id: 'ep', name: 'Phân vùng Tương đương (EP)', desc: 'Sinh đại diện cho các tập giá trị hợp lệ và không hợp lệ.' },
-                  { id: 'random', name: 'Sinh dữ liệu Ngẫu nhiên (Random)', desc: 'Trộn lẫn ngẫu nhiên dữ liệu để kiểm tra tính Robustness.' }
+                  { id: 'ep', name: 'Phân vùng tương đương (Equivalence Partitioning - EP)', desc: 'Sinh đại diện cho các tập giá trị hợp lệ và không hợp lệ.' },
+                  { id: 'bva', name: 'Phân tích giá trị biên (Boundary Value Analysis - BVA)', desc: 'Sinh test case xoay quanh cận dưới, cận trên và giá trị vi phạm.' },
+                  { id: 'random', name: 'Chọn ngẫu nhiên (Random Testing)', desc: 'Trộn lẫn ngẫu nhiên dữ liệu để kiểm tra tính Robustness.' }
                 ].map((method) => (
                   <label key={method.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px', background: selectedMethods.includes(method.id) ? 'rgba(13, 148, 136, 0.04)' : 'transparent', borderRadius: '8px', border: `1px solid ${selectedMethods.includes(method.id) ? 'rgba(13, 148, 136, 0.3)' : 'var(--border-subtle)'}`, cursor: 'pointer', transition: 'all 0.2s ease' }}>
                     <input

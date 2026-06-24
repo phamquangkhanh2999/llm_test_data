@@ -104,6 +104,27 @@ class V4TestSuiteOptimizer:
                     res[vf] = generate_random_field_value(fdef, "ep_valid", self.domain_vocab)
         return res
 
+    def evaluate_testcase_quality(self, values, current_pop_values=None, categories=None):
+        """
+        Tương thích HC (boundary_tweak): trả (scalar_fitness, weak_points).
+        Tự suy category từ `categories` truyền vào hoặc từ oracle nếu không có.
+        """
+        category = None
+        if categories:
+            up = [str(x).upper() for x in categories]
+            if any("SECURITY" in x or x in ("XSS", "SQLI") for x in up):
+                category = "NEGATIVE_SECURITY"
+            elif any("NEGATIVE" in x or x in ("INVALID", "ERROR") for x in up):
+                category = "NEGATIVE_FUNCTIONAL"
+            elif any("BOUNDARY" in x for x in up):
+                category = "BOUNDARY"
+            elif any("POSITIVE" in x or x == "VALID" for x in up):
+                category = "POSITIVE"
+        if category is None:
+            category = self._classify_record({}, values)
+        scalar, _vector, _noise = self.compute_fitness(values, category)
+        return scalar, []
+
     def _classify_record(self, seed, values):
         """Phân loại category cho một record dựa trên nhãn LLM (nếu có) + oracle thật."""
         cats = [str(x).lower() for x in (seed.get("categories") or [])] if isinstance(seed, dict) else []

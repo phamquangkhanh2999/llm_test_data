@@ -1,28 +1,28 @@
 import {
-  CheckCircle2,
-  Database,
-  FileInput,
-  Gauge,
-  GitCompare,
-  History as HistoryIcon,
-  Menu,
-  Terminal,
-  X,
-  Zap,
+    CheckCircle2,
+    Database,
+    FileInput,
+    Gauge,
+    GitCompare,
+    History as HistoryIcon,
+    Menu,
+    Terminal,
+    X,
+    Zap,
+    GitBranch,
 } from 'lucide-react';
 import React from 'react';
 import { AILogsViewer } from './components/AILogsViewer';
 import { AnalysisDesign } from './components/AnalysisDesign';
+import { EvaluateData } from './components/EvaluateData';
+import ExportReportCenter from './components/ExportReportCenter';
 import { GeneticOptimize } from './components/GeneticOptimize';
 import { HillClimbingOptimize } from './components/HillClimbingOptimize';
+import { InputRequirement } from './components/InputRequirement';
+import { LoadingOverlay } from './components/LoadingOverlay';
 import { PageLayout } from './components/PageLayout';
 import { ToastContainer } from './components/ToastContainer';
 import { useAppStore } from './store/useAppStore';
-import { LoadingOverlay } from './components/LoadingOverlay';
-import ExportReportCenter from './components/ExportReportCenter';
-import { InputRequirement } from './components/InputRequirement';
-import { EvaluateData } from './components/EvaluateData';
-
 
 // ─── Sidebar nav item ─────────────────────────────────────────────────────────
 interface NavItemProps {
@@ -40,12 +40,12 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon, active, done, onClick })
       display: 'flex',
       alignItems: 'center',
       gap: '11px',
-      padding: '10px 12px',
+      padding: '10px 16px',
       fontSize: '13.5px',
-      borderRadius: '6px',
-      background: active ? 'var(--surface-subtle)' : 'transparent',
+      borderRadius: '8px',
+      background: active ? 'linear-gradient(90deg, #8b5cf6, #6d28d9)' : 'transparent',
       border: '1px solid transparent',
-      color: active ? 'var(--brand-primary)' : 'var(--text-secondary)',
+      color: active ? '#ffffff' : '#94a3b8',
       cursor: 'pointer',
       transition: 'all 0.14s ease',
       fontWeight: active ? 600 : 500,
@@ -53,13 +53,19 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon, active, done, onClick })
       position: 'relative',
     }}
     onMouseEnter={(e) => {
-      if (!active) e.currentTarget.style.background = 'rgba(15,23,42,0.035)';
+      if (!active) {
+        e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+        e.currentTarget.style.color = '#e2e8f0';
+      }
     }}
     onMouseLeave={(e) => {
-      if (!active) e.currentTarget.style.background = 'transparent';
+      if (!active) {
+        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.color = '#94a3b8';
+      }
     }}
   >
-    <span style={{ flexShrink: 0, color: active ? 'var(--brand-primary)' : 'var(--text-muted)' }}>
+    <span style={{ flexShrink: 0, color: active ? '#ffffff' : '#94a3b8' }}>
       {icon}
     </span>
     <span style={{ flex: 1 }}>{label}</span>
@@ -144,8 +150,8 @@ function App() {
       <aside
         style={{
           width: '256px',
-          background: 'var(--bg-deep)',
-          borderRight: '1px solid var(--border-subtle)',
+          background: '#0f172a',
+          borderRight: '1px solid #1e293b',
           padding: '20px 0',
           display: 'flex',
           flexDirection: 'column',
@@ -172,16 +178,15 @@ function App() {
             style={{
               width: 36,
               height: 36,
-              // borderRadius: 8,
-              // background: 'var(--brand-primary)',
+              borderRadius: 8,
+              background: '#8b5cf6',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
             }}
           >
-            <img style={{ width: 36, height: 36 }} src='/favicon.png' alt='AI Optimizer' />
-            {/* <GitBranch size={19} style={{ color: '#fff' }} /> */}
+            <GitBranch size={20} style={{ color: '#fff' }} />
           </div>
 
           <div>
@@ -189,12 +194,12 @@ function App() {
               style={{
                 fontSize: '15px',
                 fontWeight: 700,
-                color: 'var(--brand-primary)',
-                letterSpacing: '-0.01em',
+                color: '#ffffff',
+                letterSpacing: '0.02em',
                 lineHeight: 1.1,
               }}
             >
-              AI Optimizer
+              TEST ENGINE
             </div>
             {/* <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Technical Precision</div> */}
           </div>
@@ -250,12 +255,34 @@ function App() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
             {mobile && (
               <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(15,23,42,0.04)', padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>AI:</span>
-                  <select 
-                    value={llmProvider} 
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'rgba(15,23,42,0.04)',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <span
+                    style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}
+                  >
+                    AI:
+                  </span>
+                  <select
+                    value={llmProvider}
                     onChange={(e) => setLlmProvider(e.target.value as 'gemini' | 'openai')}
-                    style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', fontWeight: 600, color: 'var(--brand-primary)', cursor: 'pointer' }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: 'var(--brand-primary)',
+                      cursor: 'pointer',
+                    }}
                   >
                     <option value='gemini'>Gemini</option>
                     <option value='openai'>OpenAI</option>
@@ -263,21 +290,21 @@ function App() {
                 </div>
 
                 <button
-                    onClick={toggleSidebar}
-                    aria-label='menu'
-                    style={{
-                      background: 'rgba(15,23,42,0.04)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: '6px',
-                      padding: '8px',
-                      cursor: 'pointer',
-                      color: 'var(--text-primary)',
-                      display: 'flex',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
-                  </button>
+                  onClick={toggleSidebar}
+                  aria-label='menu'
+                  style={{
+                    background: 'rgba(15,23,42,0.04)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: '6px',
+                    padding: '8px',
+                    cursor: 'pointer',
+                    color: 'var(--text-primary)',
+                    display: 'flex',
+                    flexShrink: 0,
+                  }}
+                >
+                  {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
+                </button>
               </>
             )}
             <span
@@ -292,14 +319,33 @@ function App() {
             </span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(15,23,42,0.04)', padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>AI:</span>
-              <select 
-                value={llmProvider} 
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'rgba(15,23,42,0.04)',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                AI:
+              </span>
+              <select
+                value={llmProvider}
                 onChange={(e) => setLlmProvider(e.target.value as 'gemini' | 'openai')}
-                style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', fontWeight: 600, color: 'var(--brand-primary)', cursor: 'pointer' }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: 'var(--brand-primary)',
+                  cursor: 'pointer',
+                }}
               >
                 <option value='gemini'>Gemini</option>
                 <option value='openai'>OpenAI</option>
@@ -506,11 +552,3 @@ function App() {
 }
 
 export default App;
-
-
-
-
-
-
-
-

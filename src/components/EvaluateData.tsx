@@ -11,6 +11,7 @@ import {
   Sparkles,
   Wand2,
   X,
+  XCircle,
 } from 'lucide-react';
 import React, { useMemo } from 'react';
 import type { FieldConstraint } from '../algorithms/presets';
@@ -26,10 +27,9 @@ import { toast } from '../store/useToastStore';
 // =============================================================================
 
 const METHODS: { id: string; label: string; desc: string }[] = [
-  { id: 'random', label: 'Ngẫu nhiên', desc: 'Sinh giá trị hợp lệ ngẫu nhiên' },
-  { id: 'bva', label: 'Phân tích biên (BVA)', desc: 'Tập trung các giá trị biên min/max' },
-  { id: 'ep', label: 'Phân vùng tương đương (EP)', desc: 'Đại diện mỗi lớp tương đương' },
-  { id: 'decision', label: 'Bảng quyết định', desc: 'Tổ hợp điều kiện logic' },
+  { id: 'ep', label: 'Phân vùng tương đương (Equivalence Partitioning - EP)', desc: 'Đại diện mỗi lớp tương đương' },
+  { id: 'bva', label: 'Phân tích giá trị biên (Boundary Value Analysis - BVA)', desc: 'Tập trung các giá trị biên min/max' },
+  { id: 'random', label: 'Chọn ngẫu nhiên (Random Testing)', desc: 'Sinh giá trị hợp lệ ngẫu nhiên' },
 ];
 
 // Kiểm tra 1 ca test có hợp lệ theo schema không (đơn giản hóa)
@@ -1002,10 +1002,9 @@ export const EvaluateData: React.FC = () => {
                   }}
                 >
                   <option value='all'>Tất cả phương pháp</option>
-                  <option value='bva'>Phân tích biên (BVA)</option>
                   <option value='ep'>Phân vùng tương đương (EP)</option>
-                  <option value='decision'>Bảng quyết định</option>
-                  <option value='random'>Ngẫu nhiên</option>
+                  <option value='bva'>Phân tích giá trị biên (BVA)</option>
+                  <option value='random'>Chọn ngẫu nhiên (Random)</option>
                 </select>
               </div>
             </div>
@@ -1021,7 +1020,7 @@ export const EvaluateData: React.FC = () => {
                       zIndex: 5,
                     }}
                   >
-                    <ColHeader en='Test Case' vi='Mã ca kiểm thử' width={110} />
+                    <ColHeader en='Test Code' vi='Mã ca kiểm thử' />
                     {parsedSchema.map((f: any) => (
                       <ColHeader
                         key={f.name}
@@ -1030,9 +1029,9 @@ export const EvaluateData: React.FC = () => {
                         minWidth={150}
                       />
                     ))}
-                    <ColHeader en='Expected Result' vi='Kết quả mong muốn' minWidth={160} />
-                    <ColHeader en='Expected Error' vi='Lỗi mong muốn' minWidth={160} />
-                    <ColHeader en='Fitness' vi='Fitness' width={100} align='right' />
+                    <ColHeader en='Expected Result' vi='Kết quả mong muốn' minWidth={260} />
+                    <ColHeader en='Expected Error' vi='Lỗi mong muốn' minWidth={260} />
+                    <ColHeader en='Fitness' vi='Fitness' align='right' />
                   </tr>
                 </thead>
                 <tbody>
@@ -1109,28 +1108,35 @@ export const EvaluateData: React.FC = () => {
 
                         {/* Kết quả mong muốn */}
                         <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                          <div style={{ maxWidth: 200, wordBreak: 'break-word' }}>
+                          <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
                             {getExpectedResultShort(row.expectedResult) === 'Error' ? (
-                              <span style={{ color: 'var(--error)', fontWeight: 500 }}>Error</span>
+                              <span style={{ color: 'var(--error)', fontWeight: 700, marginRight: '4px' }}>
+                                Error:
+                              </span>
                             ) : (
-                              <span style={{ color: 'var(--color-emerald)', fontWeight: 500 }}>
-                                Success
+                              <span style={{ color: '#10b981', fontWeight: 700, marginRight: '4px' }}>
+                                Success:
                               </span>
                             )}
+                            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                              {typeof row.expectedResult === 'string' ? row.expectedResult : (row.expectedResult?.statusText || String(row.expectedResult || ''))}
+                            </span>
                           </div>
                         </td>
 
                         {/* Lỗi mong muốn */}
                         <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                          {getExpectedResultShort(row.expectedResult) === 'Error' ? (
-                            <span style={{ color: 'var(--error)', fontWeight: 500 }}>
-                              {getExpectedError(row.expectedResult)}
-                            </span>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-                              Không có
-                            </span>
-                          )}
+                          <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                            {getExpectedResultShort(row.expectedResult) === 'Error' ? (
+                              <span style={{ color: 'var(--error)', fontWeight: 500 }}>
+                                {getExpectedError(row.expectedResult)}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                                Không có
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Fitness */}

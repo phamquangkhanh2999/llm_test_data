@@ -27,7 +27,13 @@ def get_parse_spec_combined_prompt(raw_text: str) -> tuple[str, str]:
         "3. Mỗi quy tắc nghiệp vụ phải có thông báo lỗi tương ứng bằng tiếng Việt ('errorMessage').\n"
         "4. Bắt buộc điền đúng loại dữ liệu 'type' của trường từ danh sách: ['string', 'number', 'email', 'card', 'phone', 'date', 'boolean']. Không dùng các loại khác.\n"
         "5. Xác định đúng kiểu nhập liệu 'inputType' của trường (ví dụ: 'textbox', 'dropdown', 'datepicker', 'checkbox').\n"
-        "6. Định dạng đầu ra phải là chuỗi JSON thuần khiết, không có thẻ markdown wrapped (ví dụ: không có ```json).\n\n"
+        "6. Định dạng đầu ra phải là chuỗi JSON thuần khiết, không có thẻ markdown wrapped (ví dụ: không có ```json).\n"
+        "7. Mỗi trường BẮT BUỘC có 'successValues' (2-3 ví dụ HỢP LỆ, thực tế, thỏa MỌI ràng buộc) và "
+        "'failureValues' (1-3 ví dụ vi phạm, mỗi cái kèm 'reason' nêu rõ vi phạm ràng buộc nào). "
+        "Đây là dữ liệu mẫu để sinh test case bám đúng yêu cầu — KHÔNG bịa giá trị vô nghĩa.\n"
+        "8. LƯU Ý QUAN TRỌNG VỀ REGEX: Nếu trường dữ liệu (ví dụ: họ tên, địa chỉ) cho phép tiếng Việt có dấu, "
+        "regex BẮT BUỘC phải hỗ trợ ký tự Unicode (sử dụng \\p{L} thay vì chỉ a-zA-Z). Ví dụ: '^[\\p{L}0-9\\s]+$' thay vì '^[a-zA-Z0-9\\s]+$'. "
+        "Đảm bảo regex không xung đột và phải bao phủ được toàn bộ các ký tự có trong 'successValues'.\n\n"
         
         "# EXECUTION PROCESS\n"
         "Thực hiện theo đúng thứ tự sau:\n"
@@ -73,6 +79,8 @@ def get_parse_spec_combined_prompt(raw_text: str) -> tuple[str, str]:
         "      \"maxValue\": null,\n"
         "      \"regex\": \"<regex pattern string or null>\",\n"
         "      \"allowedValues\": null,\n"
+        "      \"successValues\": [\"<2-3 ví dụ HỢP LỆ, thực tế, thỏa MỌI ràng buộc của trường>\"],\n"
+        "      \"failureValues\": [{\"value\": \"<ví dụ vi phạm ràng buộc>\", \"reason\": \"<lý do sai bằng tiếng Việt>\"}],\n"
         "      \"description\": \"<Brief Vietnamese business meaning of this field>\",\n"
         "      \"security_risk\": \"<xss|sql_injection|null>\",\n"
         "      \"inputType\": \"<textbox|dropdown|datepicker|checkbox>\",\n"
@@ -238,13 +246,24 @@ def get_benchmark_analysis_prompt(results: dict) -> tuple[str, str]:
     user_prompt = f"Phân tích dữ liệu benchmark sau và trả về đánh giá JSON:\n{json.dumps(results, ensure_ascii=False)}"
     return system_instruction, user_prompt
 
-def get_seed_generation_instructions(target_count: int, distribution_str: str, previous_context: str = "") -> tuple[str, str]:
+def get_seed_generation_instructions(target_count: int, distribution_str: str, previous_context: str = "", test_methods: list = None) -> tuple[str, str]:
     """
     Hàm sinh prompt cho LLM để sinh toàn bộ dữ liệu F0 theo phân phối (distribution) yêu cầu trong 1 lần gọi.
     """
+    techniques_str = ""
+    if test_methods:
+        method_names = {
+            "ep": "Phân vùng tương đương (Equivalence Partitioning - EP)",
+            "bva": "Phân tích giá trị biên (Boundary Value Analysis - BVA)",
+            "random": "Chọn ngẫu nhiên (Random Testing)"
+        }
+        applied = [method_names.get(m, m) for m in test_methods]
+        techniques_str = f"**KỸ THUẬT KIỂM THỬ ÁP DỤNG (APPLIED TECHNIQUES):**\nBạn PHẢI tập trung sử dụng các kỹ thuật sau để thiết kế Testcase: {', '.join(applied)}.\n\n"
+
     system_instruction = (
         "**VAI TRÒ (ROLE):**\nBạn là Test Data Engineer xuất sắc với chuyên môn sâu về Kỹ thuật thiết kế Testcase.\n\n"
         "**NHIỆM VỤ (TASK):**\nSinh bộ dữ liệu kiểm thử F0 (Test Seeds) toàn diện dựa trên Fields Schema được cung cấp.\n\n"
+        f"{techniques_str}"
         "**YÊU CẦU PHÂN PHỐI DỮ LIỆU (DISTRIBUTION REQUIREMENTS):**\n"
         f"Bạn PHẢI sinh ĐÚNG tổng cộng {target_count} test cases, với phân phối chính xác như sau:\n{distribution_str}\n\n"
         "- 'valid': Các kịch bản HỢP LỆ (Happy Path, normal cases).\n"
@@ -395,18 +414,28 @@ def get_batch_semantic_polish_prompt(schema: list, tc_batch: list) -> tuple:
             "maxLength": f.get("maxLength"),
             "minLength": f.get("minLength"),
             "allowedValues": f.get("allowedValues"),
+            "regex": f.get("regex"),
         })
 
     system_instruction = (
         "You are a test data semantic polisher processing a BATCH of test cases.\n"
         "Your task is to rewrite 'optimized' values to look realistic like 'original' values, "
-        "WHILE STRICTLY KEEPING ALL OPTIMIZED CONSTRAINTS (length, characters, boundary, enum).\n\n"
-        
+        "WHILE STRICTLY KEEPING ALL OPTIMIZED CONSTRAINTS (length, characters, boundary, enum, regex).\n\n"
+
         "# RULES\n"
-        "1. Strings: If optimized length is 191, the polished string MUST also be exactly 191 chars.\n"
+        "1. Strings: If optimized length is 191, the polished string MUST also be exactly 191 chars "
+        "(fill by repeating REALISTIC real-world content, e.g. a real address repeated — never filler words).\n"
         "2. Enum: MUST strictly use allowedValues.\n"
-        "3. Keep boundary numbers exactly the same.\n\n"
-        
+        "3. Keep boundary numbers exactly the same.\n"
+        "4. If a field has a 'regex', the polished value MUST fully match that regex.\n"
+        "5. Output ONLY concrete, plausible real-world values a real user would actually type "
+        "(real names, real emails, real addresses, real passwords).\n"
+        "6. ABSOLUTELY FORBIDDEN: status/description/placeholder text instead of a value — "
+        "e.g. 'Invalid Input Detected', 'No valid address provided', 'N/A', 'unknown', 'error', "
+        "'không hợp lệ', 'không có'. These are NOT valid field values.\n"
+        "7. Preserve VALIDITY: if 'optimized' is a valid value, the polished value must stay valid; "
+        "if it is intentionally invalid (negative/security test), keep it invalid in the SAME way.\n\n"
+
         f"# SCHEMA CONSTRAINTS\n{json.dumps(field_constraints, ensure_ascii=False, indent=2)}\n\n"
         
         "# OUTPUT FORMAT\n"

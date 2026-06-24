@@ -85,20 +85,16 @@ class MutationExecutor:
             parts = base_str.split('@')
             if len(parts) == 2:
                 needed = target_len - len(base_str)
-                pads = ["test", "demo", "user", "vip", "pro", "max", "new"]
-                ext = ""
-                while len(ext) < needed:
-                    ext += random.choice(pads)
-                ext = ext[:needed]
+                # Nối hậu tố chữ-số SẠCH vào phần local của email (đọc được, không marketing-word)
+                ext = "".join(str(i % 10) for i in range(needed))
                 return parts[0] + ext + '@' + parts[1]
-            
-        padding_words = [" cao cấp", " chính hãng", " thế hệ mới", " siêu bền", " nhập khẩu", " chất lượng", " phiên bản", " giới hạn", " vip", " pro", " max"]
-        needed = target_len - len(base_str)
-        ext = ""
-        while len(ext) < needed:
-            ext += random.choice(padding_words)
-        ext = ext[:needed]
-        return base_str + ext
+
+        # Nối SẠCH bằng cách lặp lại chính nội dung gốc (giữ chuỗi đọc được, không "đáng sợ")
+        seed = base_str.strip() or "Du lieu mau"
+        out = base_str
+        while len(out) < target_len:
+            out += " " + seed
+        return out[:target_len].rstrip()[:target_len] if len(out) > target_len else out[:target_len]
         
     @staticmethod
     def _semantic_truncate(base_str: str, target_len: int) -> str:

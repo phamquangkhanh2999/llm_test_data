@@ -544,7 +544,7 @@ export const GeneticOptimize: React.FC = () => {
       const rowData: string[] = [];
 
       // 1. MA TC ID
-      rowData.push(tc.id || `TC-${String(200 + i).padStart(5, '0')}`);
+      rowData.push(`TC-GA-${String(i + 1).padStart(3, '0')}`);
 
       // 2. LLM Source
       rowData.push(isSeed ? 'LLM (Seed)' : tc.origin || 'MA');
@@ -595,7 +595,7 @@ export const GeneticOptimize: React.FC = () => {
       const cleaned: any = {};
 
       // 1. Metadata khớp bảng Xem trước
-      cleaned.id = tc.id || `TC-${String(200 + i).padStart(5, '0')}`;
+      cleaned.id = `TC-GA-${String(i + 1).padStart(3, '0')}`;
       cleaned.llm_source = isSeed ? 'LLM (Seed)' : tc.origin || 'MA';
       cleaned.ma_operator = badge.label;
 
@@ -1172,7 +1172,7 @@ export const GeneticOptimize: React.FC = () => {
                     zIndex: 5,
                   }}
                 >
-                  <ColHeader en='GA TC ID' vi='Mã ca kiểm thử' width={110} />
+                  <ColHeader en='Test Code' vi='Mã ca kiểm thử' />
                   <ColHeader en='LLM Source' vi='Nguồn LLM' width={120} />
                   <ColHeader en='GA Operator' vi='Toán tử GA' width={150} />
                   {schema.map((f: any) => (
@@ -1183,9 +1183,9 @@ export const GeneticOptimize: React.FC = () => {
                       minWidth={150}
                     />
                   ))}
-                  <ColHeader en='Expected Result' vi='Kết quả mong muốn' minWidth={160} />
-                  <ColHeader en='Expected Error' vi='Lỗi mong muốn' minWidth={160} />
-                  <ColHeader en='Improvement Goal' vi='Mục tiêu cải tiến' minWidth={200} />
+                  <ColHeader en='Expected Result' vi='Kết quả mong muốn' minWidth={260} />
+                  <ColHeader en='Expected Error' vi='Lỗi mong muốn' minWidth={260} />
+                  <ColHeader en='Improvement Goal' vi='Mục tiêu cải tiến' minWidth={260} />
                   <ColHeader en='Fitness' vi='Fitness sau GA' width={100} align='right' />
                 </tr>
               </thead>
@@ -1207,16 +1207,16 @@ export const GeneticOptimize: React.FC = () => {
                         cursor: 'pointer',
                       }}
                     >
-                      {/* GA TC ID */}
                       <td
                         style={{
                           padding: '10px 16px',
                           fontFamily: 'var(--font-mono)',
                           color: 'var(--text-secondary)',
                           verticalAlign: 'top',
+                          whiteSpace: 'nowrap',
                         }}
                       >
-                        {tc.id || `TC-${String(200 + i).padStart(5, '0')}`}
+                        {`TC-GA-${String(i + 1).padStart(3, '0')}`}
                       </td>
 
                       {/* Nguồn LLM */}
@@ -1287,56 +1287,33 @@ export const GeneticOptimize: React.FC = () => {
 
                       {/* Kết quả mong muốn */}
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        <div style={{ maxWidth: 200, wordBreak: 'break-word' }}>
+                        <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
                           {getExpectedResultShort(tc.expectedResult) === 'Error' ? (
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                                color: 'var(--error)',
-                                padding: '4px 10px',
-                                borderRadius: '12px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                border: '1px solid rgba(239, 68, 68, 0.2)',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              <XCircle size={14} /> Error
+                            <span style={{ color: 'var(--error)', fontWeight: 700, marginRight: '4px' }}>
+                              Error:
                             </span>
                           ) : (
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                                color: 'var(--color-emerald)',
-                                padding: '4px 10px',
-                                borderRadius: '12px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                border: '1px solid rgba(16, 185, 129, 0.2)',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              <CheckCircle2 size={14} /> Success
+                            <span style={{ color: '#10b981', fontWeight: 700, marginRight: '4px' }}>
+                              Success:
                             </span>
                           )}
+                          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                            {typeof tc.expectedResult === 'string' ? tc.expectedResult : (tc.expectedResult?.statusText || String(tc.expectedResult || ''))}
+                          </span>
                         </div>
                       </td>
 
                       {/* Lỗi mong muốn */}
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        {getExpectedResultShort(tc.expectedResult) === 'Error' ? (
-                          <span style={{ color: 'var(--error)', fontWeight: 500 }}>
-                            {getExpectedError(tc.expectedResult)}
-                          </span>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Không có</span>
-                        )}
+                        <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                          {getExpectedResultShort(tc.expectedResult) === 'Error' ? (
+                            <span style={{ color: 'var(--error)', fontWeight: 500 }}>
+                              {getExpectedError(tc.expectedResult)}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Không có</span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Mục tiêu cải tiến (Scenario / Rationale) */}

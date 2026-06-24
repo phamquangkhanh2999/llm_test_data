@@ -16,9 +16,9 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
   { id: 'input', label: 'Đầu vào', shortLabel: 'Đầu vào', color: '#0891B2' },
   { id: 'analyze', label: 'Phân tích', shortLabel: 'Phân tích', color: '#0891B2' },
   { id: 'evaluate', label: 'Đánh giá', shortLabel: 'Đánh giá', color: '#0891B2' },
-  { id: 'optimize', label: 'Tối ưu LLM+MA', shortLabel: 'LLM+MA', color: '#4F46E5' },
-  { id: 'compare', label: 'So sánh', shortLabel: 'So sánh', color: '#10B981' },
-  { id: 'export', label: 'Lịch sử & Xuất', shortLabel: 'Lịch sử', color: '#10B981' },
+  { id: 'ga', label: 'Tối ưu GA', shortLabel: 'GA', color: '#4F46E5' },
+  { id: 'hc', label: 'Tối ưu HC', shortLabel: 'HC', color: '#4F46E5' },
+  { id: 'export', label: 'Lịch sử & Xuất', shortLabel: 'Xuất', color: '#10B981' },
 ];
 
 // ─── Prerequisite definition ───────────────────────────────────────────────────
@@ -103,26 +103,33 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
                     title={step.label}
                     style={{
                       display: 'flex', alignItems: 'center',
-                      gap: '8px', background: 'none', border: 'none',
-                      cursor: 'pointer', padding: '0 4px', flexShrink: 0,
+                      gap: '8px', 
+                      background: isCurrent ? `linear-gradient(90deg, #a855f7, #7c3aed)` : 'none', 
+                      border: 'none',
+                      borderRadius: '99px',
+                      padding: isCurrent ? '6px 16px 6px 6px' : '0 4px',
+                      cursor: 'pointer', flexShrink: 0,
+                      boxShadow: isCurrent ? `0 4px 12px rgba(124, 58, 237, 0.3)` : 'none',
+                      transition: 'all 0.3s ease',
                     }}
                   >
                     <div style={{
-                      width: '32px', height: '32px', borderRadius: '50%',
+                      width: isCurrent ? '26px' : '32px', 
+                      height: isCurrent ? '26px' : '32px', 
+                      borderRadius: '50%',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '13px', fontWeight: 700,
-                      background: isCurrent ? step.color : isDone || isPast ? 'rgba(13,148,136,0.12)' : 'var(--divider)',
-                      color: isCurrent ? '#fff' : isDone || isPast ? 'var(--color-teal)' : 'var(--text-muted)',
-                      border: isCurrent ? `2px solid ${step.color}` : isDone || isPast ? '2px solid rgba(13,148,136,0.4)' : '2px solid var(--border-subtle)',
-                      boxShadow: isCurrent ? `0 4px 12px ${step.color}40` : 'none',
+                      background: isCurrent ? '#fff' : isDone || isPast ? 'rgba(13,148,136,0.12)' : 'var(--divider)',
+                      color: isCurrent ? '#7c3aed' : isDone || isPast ? 'var(--color-teal)' : 'var(--text-muted)',
+                      border: isCurrent ? `none` : isDone || isPast ? '2px solid rgba(13,148,136,0.4)' : '2px solid var(--border-subtle)',
                       transition: 'all 0.3s ease', flexShrink: 0,
                     }}>
                       {isDone || isPast ? <CheckCircle2 size={15} /> : idx + 1}
                     </div>
                     <span style={{
-                      fontSize: '13px',
-                      color: isCurrent ? step.color : isDone || isPast ? 'var(--text-secondary)' : 'var(--text-muted)',
-                      fontWeight: isCurrent ? 700 : 500, whiteSpace: 'nowrap',
+                      fontSize: isCurrent ? '13.5px' : '13px',
+                      color: isCurrent ? '#fff' : isDone || isPast ? 'var(--text-secondary)' : 'var(--text-muted)',
+                      fontWeight: isCurrent ? 600 : 500, whiteSpace: 'nowrap',
                     }}>
                       {step.label}
                     </span>

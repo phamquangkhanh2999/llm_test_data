@@ -103,19 +103,31 @@ def optimize_testcase_boundaries(test_case: dict, schema: list, fitness_evaluato
             batch_size=5
         )
 
-        from .oracle_engine import OracleEngine
+        # Case POSITIVE phải GIỮ hợp lệ sau khi HC tinh chỉnh (đúng rule gốc).
+        is_positive = not any(
+            any(t in str(c).lower() for t in ("negative", "security", "invalid", "boundary", "error", "xss", "sqli"))
+            for c in categories
+        )
+        field_names = [f["name"] for f in schema]
+
         for i, neighbor in enumerate(mutated_results):
-            # Tự động đồng bộ Label (Semantic Alignment)
-            neighbor = OracleEngine.align_labels(neighbor, schema)
-            
+            # Chỉ giữ các trường thuộc schema (không để rò key meta ra ngoài)
+            neighbor = {k: neighbor.get(k) for k in field_names}
+
+            # Với POSITIVE: loại ngay neighbor làm dữ liệu sai rule (oracle != 200)
+            if is_positive:
+                from ..services.ai_service import derive_expected_result
+                if derive_expected_result(neighbor, schema).get("http_status") != 200:
+                    continue
+
             try:
                 if fitness_evaluator:
                     n_fitness = fitness_evaluator(neighbor)
                 else:
                     n_fitness = FitnessEngine.evaluate(neighbor, schema, categories).fitness
-            except:
+            except Exception:
                 n_fitness = -1
-                
+
             if n_fitness > best_neighbor_fitness:
                 best_neighbor_fitness = n_fitness
                 best_neighbor = neighbor
