@@ -26,7 +26,96 @@ class V4TestSuiteOptimizer:
         self.stats = {}
         self.initial_stats = None
         self.fitness_history = []
-        
+        self.domain_vocab = {"product": [], "desc": []}
+
+    # ═══════════════════════════════════════════════════════════
+    # ORACLE & CATEGORY HELPERS
+    # ═══════════════════════════════════════════════════════════
+    CATEGORIES = ["POSITIVE", "BOUNDARY", "NEGATIVE_FUNCTIONAL", "NEGATIVE_SECURITY"]
+    _MODE_BY_CAT = {
+        "POSITIVE": "valid",
+        "BOUNDARY": "boundary",
+        "NEGATIVE_FUNCTIONAL": "invalid",
+        "NEGATIVE_SECURITY": "security",
+    }
+
+    def _oracle(self, values):
+        """Suy diễn HTTP status thật từ schema (khớp định nghĩa Success của UI)."""
+        from ..services.ai_service import derive_expected_result
+        try:
+            return derive_expected_result(values, self.schema)
+        except Exception:
+            return {"http_status": 200, "violated_fields": []}
+
+    def _is_valid(self, values):
+        return self._oracle(values).get("http_status") == 200
+
+    def _category_quotas(self, n):
+        """Phân bổ ~70% POSITIVE / 12% BOUNDARY / 9% NEG_FUNC / 9% NEG_SEC."""
+        pos = int(n * 0.70)
+        bnd = int(n * 0.12)
+        nf = int(n * 0.09)
+        return {
+            "POSITIVE": pos,
+            "BOUNDARY": bnd,
+            "NEGATIVE_FUNCTIONAL": nf,
+            "NEGATIVE_SECURITY": max(0, n - pos - bnd - nf),
+        }
+
+    def _mk_ind(self, values, origin, category):
+        return {
+            "id": str(uuid.uuid4()),
+            "values": values,
+            "origin": origin,
+            "category": category,
+            "fitness": 0.0,
+        }
+
+    def _gen_record(self, mode):
+        return {f["name"]: generate_random_field_value(f, mode, self.domain_vocab) for f in self.schema}
+
+    def _make_valid_record(self, max_tries=10):
+        """Sinh một record HỢP LỆ đảm bảo (oracle HTTP 200), tự sửa field vi phạm nếu cần."""
+        for _ in range(max_tries):
+            rec = self._gen_record("valid")
+            if self._is_valid(rec):
+                return rec
+        # Sửa từng field vi phạm bằng giá trị chuẩn (ep_valid) cho tới khi hợp lệ
+        rec = self._gen_record("ep_valid")
+        for _ in range(max_tries):
+            res = self._oracle(rec)
+            if res.get("http_status") == 200:
+                return rec
+            for vf in res.get("violated_fields", []):
+                fdef = next((f for f in self.schema if f["name"] == vf), None)
+                if fdef:
+                    rec[vf] = generate_random_field_value(fdef, "ep_valid", self.domain_vocab)
+        return rec
+
+    def _repair_to_valid(self, values, max_tries=6):
+        res = {**values}
+        for _ in range(max_tries):
+            r = self._oracle(res)
+            if r.get("http_status") == 200:
+                return res
+            for vf in r.get("violated_fields", []):
+                fdef = next((f for f in self.schema if f["name"] == vf), None)
+                if fdef:
+                    res[vf] = generate_random_field_value(fdef, "ep_valid", self.domain_vocab)
+        return res
+
+    def _classify_record(self, seed, values):
+        """Phân loại category cho một record dựa trên nhãn LLM (nếu có) + oracle thật."""
+        cats = [str(x).lower() for x in (seed.get("categories") or [])] if isinstance(seed, dict) else []
+        str_all = str(values).lower()
+        if any(x in cats for x in ("security", "xss", "sqli")) or "<script>" in str_all or "or 1=1" in str_all or "drop table" in str_all:
+            return "NEGATIVE_SECURITY"
+        if self._is_valid(values):
+            return "POSITIVE"
+        if "boundary" in cats:
+            return "BOUNDARY"
+        return "NEGATIVE_FUNCTIONAL"
+
     def get_stats(self):
         if not self.test_suite:
             return {}
@@ -49,8 +138,18 @@ class V4TestSuiteOptimizer:
         covered_sec_patterns = len(security_patterns.intersection(self.coverage_matrix.keys()))
         security_cov = covered_sec_patterns / max(len(security_patterns), 1)
         
-        happy_cov = 1.0 if "GENERIC_SUCCESS" in self.coverage_matrix else 0.0
-        
+        # Validity thật của quần thể hiện tại (khớp định nghĩa Success của UI)
+        valid_count = sum(1 for ind in self.test_suite if self._is_valid(ind["values"]))
+        has_business_rule = any(
+            self._is_valid(ind["values"]) and any(
+                f.get("allowedValues") and len(f["allowedValues"]) > 1
+                and str(ind["values"].get(f["name"])) != str(f["allowedValues"][0])
+                for f in self.schema
+            )
+            for ind in self.test_suite
+        )
+        happy_cov = 1.0 if valid_count > 0 else 0.0
+
         # V6.0 Weighted Coverage Formula
         coverageScore = (0.4 * rule_cov) + (0.3 * boundary_cov) + (0.2 * security_cov) + (0.1 * happy_cov)
         coverageScore = min(max(coverageScore, 0.0), 1.0)
@@ -73,12 +172,14 @@ class V4TestSuiteOptimizer:
             "uniqueTestCases": len(unique_fps),
             "generationProgress": min(100, int((self.generation / self.max_generations) * 100)),
             "fitnessHistory": self.fitness_history,
-            
+
             # Raw counts for Gain calculation
             "ruleNodesCount": len([k for k in self.coverage_matrix if "REQUIRED" in k or "ENUM" in k]),
             "boundaryNodesCount": len(boundary_nodes),
-            "happyPathCoverage": 1.0 if "GENERIC_SUCCESS" in self.coverage_matrix else 0.0,
-            "businessRuleCoverage": 1.0 if any("BUSINESS_RULE_" in k for k in self.coverage_matrix) else 0.0
+            "validCaseCount": valid_count,
+            "successRate": round(valid_count / max(len(self.test_suite), 1), 4),
+            "happyPathCoverage": happy_cov,
+            "businessRuleCoverage": 1.0 if has_business_rule else 0.0
         }
         
         if self.initial_stats is not None:
@@ -189,47 +290,59 @@ class V4TestSuiteOptimizer:
                 }
             self.coverage_matrix[node]["hitCount"] += 1
 
-    def compute_fitness(self, values, current_pop_values):
+    def compute_fitness(self, values, category="POSITIVE"):
+        """
+        Hàm thích nghi theo VAI TRÒ (role-aware).
+        Mỗi cá thể được chấm điểm theo đúng mục tiêu của category mà nó đại diện:
+          - POSITIVE: thưởng MẠNH cho tính hợp lệ (oracle HTTP 200) — case pass là ưu tiên hàng đầu.
+          - BOUNDARY: thưởng khi chạm đúng cận min/max.
+          - NEGATIVE_FUNCTIONAL / NEGATIVE_SECURITY: thưởng khi thực sự bị hệ thống từ chối (oracle != 200)
+            và khi khai phá được mẫu lỗi/bảo mật.
+        Vector trả về dùng các khóa NSGA chuẩn (rule/boundary/security/oracle) để tương thích
+        với NSGA2Engine.dominates; khóa "oracle" mang ý nghĩa "mức độ hoàn thành vai trò".
+        """
         nodes = self._extract_coverage_nodes(values)
-        
-        # V5.1 Multi-Objective Vector
-        rule_score = sum(1 for n in nodes if "REQUIRED" in n or "INVALID_ENUM" in n or "MINUS_1" in n or "PLUS_1" in n) / max(len(self.schema) * 2, 1)
-        boundary_score = sum(1 for n in nodes if "MIN" in n or "MAX" in n or "EMPTY_LOCAL" in n) / max(len(self.schema) * 2, 1)
-        
-        # V5.1 Real Security Effectiveness (not fake count)
+
+        rule_raw = sum(1 for n in nodes if "REQUIRED" in n or "INVALID_ENUM" in n or "MINUS_1" in n or "PLUS_1" in n) / max(len(self.schema) * 2, 1)
+        boundary_raw = sum(1 for n in nodes if "MIN" in n or "MAX" in n or "EMPTY_LOCAL" in n) / max(len(self.schema) * 2, 1)
         sec_hits = sum(1 for n in nodes if "SECURITY" in n)
         str_all = str(values)
-        
+
         # V6 Soft Penalty Anti-Noise
         noise_score = 0
         if "🫥" in str_all or "💩" in str_all or "🤷" in str_all: noise_score += 0.6
-        if "" in str_all: noise_score += 0.5
         if len(str_all) > 500 and "A" * 50 in str_all: noise_score += 0.4
-        
-        # V6 Security-Aware Execution Validator
-        security_score = 0.0
-        if sec_hits > 0:
-            security_score = min(1.0, sec_hits / 3.0)
-            
-        # V6 Soft Penalty Anti-Noise
-        lambda_weight = 0.5
-        security_score = max(0.0, security_score - (lambda_weight * noise_score))
-                
-        oracle_score = 1.0 # Will be refined by real oracle
-        
-        vector = {
-            "rule": min(rule_score * 5, 1.0),
-            "boundary": min(boundary_score * 5, 1.0),
-            "security": security_score,
-            "oracle": oracle_score
-        }
-        scalar = sum(vector.values()) / 4.0 * 100
+
+        security_score = min(1.0, sec_hits / 3.0) if sec_hits > 0 else 0.0
+        security_score = max(0.0, security_score - 0.5 * noise_score)
+
+        rule_n = min(rule_raw * 5, 1.0)
+        boundary_n = min(boundary_raw * 5, 1.0)
+
+        # Oracle thật — định nghĩa "thành công" giống hệt cách UI đếm Success Rate.
+        is_valid = self._oracle(values).get("http_status") == 200
+
+        if category == "POSITIVE":
+            validity = 1.0 if is_valid else 0.0
+            vector = {"rule": rule_n, "boundary": boundary_n * 0.3, "security": 0.0, "oracle": validity}
+            scalar = (validity * 0.7 + rule_n * 0.2 + boundary_n * 0.1) * 100
+        elif category == "BOUNDARY":
+            vector = {"rule": rule_n, "boundary": boundary_n, "security": 0.0, "oracle": 0.5}
+            scalar = (boundary_n * 0.6 + rule_n * 0.4) * 100
+        elif category == "NEGATIVE_SECURITY":
+            rejected = 0.0 if is_valid else 1.0
+            vector = {"rule": rule_n, "boundary": boundary_n, "security": security_score, "oracle": rejected}
+            scalar = (security_score * 0.6 + rejected * 0.3 + boundary_n * 0.1) * 100
+        else:  # NEGATIVE_FUNCTIONAL
+            rejected = 0.0 if is_valid else 1.0
+            vector = {"rule": rule_n, "boundary": boundary_n, "security": 0.0, "oracle": rejected}
+            scalar = (rejected * 0.5 + rule_n * 0.3 + boundary_n * 0.2) * 100
+
         return scalar, vector, noise_score
 
     def evaluate_suite(self):
-        raw_values = [ind["values"] for ind in self.test_suite]
         for ind in self.test_suite:
-            fit_scalar, fit_vector, noise = self.compute_fitness(ind["values"], raw_values)
+            fit_scalar, fit_vector, noise = self.compute_fitness(ind["values"], ind.get("category", "POSITIVE"))
             ind["fitness"] = fit_scalar
             ind["fitness_vector"] = fit_vector
             ind["noise_score"] = noise
@@ -284,74 +397,53 @@ class V4TestSuiteOptimizer:
 
     def initialize_suite(self, seeds):
         self.test_suite = []
-        domain_vocab = extract_domain_vocab(seeds, self.schema)
-        
-        # 1. Seed Injection (Generation 0) Generic
-        injected_seeds = []
-        valid_seed = {}
-        for field in self.schema:
-            valid_seed[field["name"]] = generate_random_field_value(field, "valid", domain_vocab)
-            
-        # Happy Path
-        injected_seeds.append({**valid_seed, "_origin": "Seed_GENERIC_SUCCESS"})
-        
-        # Business Rule Paths
+        self.domain_vocab = extract_domain_vocab(seeds, self.schema)
+        pop_size = self.pop_size
+
+        # 1. Happy Path HỢP LỆ đảm bảo (oracle HTTP 200) — case pass luôn tồn tại.
+        happy = self._make_valid_record()
+        self.test_suite.append(self._mk_ind(happy, "Seed_GENERIC_SUCCESS", "POSITIVE"))
+
+        # 2. Business Rule Paths — vẫn hợp lệ nhưng chọn giá trị enum khác mặc định.
         for field in self.schema:
             if field.get("allowedValues") and len(field["allowedValues"]) > 1:
-                br_seed = {**valid_seed}
-                br_seed[field["name"]] = field["allowedValues"][-1]
-                br_seed["_origin"] = f"Seed_BR_{field['name'].upper()}"
-                injected_seeds.append(br_seed)
-                
-        # Required Empty Paths
+                br = {**happy, field["name"]: field["allowedValues"][-1]}
+                if self._is_valid(br):
+                    self.test_suite.append(self._mk_ind(br, f"Seed_BR_{field['name'].upper()}", "POSITIVE"))
+
+        # 3. Required-Empty Paths — case âm có chủ đích.
         for field in self.schema:
             if field.get("required"):
-                err_seed = {**valid_seed}
-                err_seed[field["name"]] = ""
-                err_seed["_origin"] = f"Seed_EMPTY_{field['name'].upper()}"
-                injected_seeds.append(err_seed)
-        
-        for inj in injected_seeds:
-            rec = {}
-            for field in self.schema:
-                name = field["name"]
-                if name in inj:
-                    rec[name] = inj[name]
-                else:
-                    rec[name] = generate_random_field_value(field, "valid", domain_vocab)
-            self.test_suite.append({
-                "id": str(uuid.uuid4()),
-                "values": rec,
-                "origin": inj["_origin"],
-                "fitness": 0.0
-            })
-            
-        # Add original LLM seeds
+                err = {**happy, field["name"]: ""}
+                self.test_suite.append(self._mk_ind(err, f"Seed_EMPTY_{field['name'].upper()}", "NEGATIVE_FUNCTIONAL"))
+
+        # 4. Hạt giống LLM — phân loại bằng oracle thật.
         for s in seeds:
             cleaned = {}
             for field in self.schema:
                 name = field["name"]
-                cleaned[name] = s["values"][name] if name in s["values"] else generate_random_field_value(field, "valid", domain_vocab)
-            self.test_suite.append({
-                "id": str(uuid.uuid4()),
-                "values": cleaned,
-                "origin": "Seed_LLM",
-                "fitness": 0.0
-            })
-            
-        modes = ["valid", "boundary", "invalid", "valid"]
-        while len(self.test_suite) < self.pop_size:
-            rec = {}
-            m = modes[len(self.test_suite) % len(modes)]
-            for field in self.schema:
-                rec[field["name"]] = generate_random_field_value(field, m, domain_vocab)
-            self.test_suite.append({
-                "id": str(uuid.uuid4()),
-                "values": rec,
-                "origin": f"Init_{m.upper()}",
-                "fitness": 0.0
-            })
-            
+                cleaned[name] = s["values"][name] if name in s.get("values", {}) else generate_random_field_value(field, "valid", self.domain_vocab)
+            cat = self._classify_record(s, cleaned)
+            self.test_suite.append(self._mk_ind(cleaned, "Seed_LLM", cat))
+
+        # 5. Lấp đầy quần thể theo hạn ngạch category (POSITIVE chiếm đa số).
+        quotas = self._category_quotas(pop_size)
+        current = {c: 0 for c in self.CATEGORIES}
+        for ind in self.test_suite:
+            c = ind.get("category", "POSITIVE")
+            if c in current:
+                current[c] += 1
+
+        for cat in self.CATEGORIES:
+            while current[cat] < quotas[cat] and len(self.test_suite) < pop_size:
+                if cat == "POSITIVE":
+                    rec = self._make_valid_record()
+                else:
+                    rec = self._gen_record(self._MODE_BY_CAT[cat])
+                self.test_suite.append(self._mk_ind(rec, f"Init_{cat}", cat))
+                current[cat] += 1
+
+        self.test_suite = self.test_suite[:pop_size]
         self.evaluate_suite()
         self.initial_stats = self.get_stats()
 
@@ -373,90 +465,81 @@ class V4TestSuiteOptimizer:
                 c2[name] = p2.get(name)
         return c1, c2
 
-    def select_mutation_policy(self, values):
-        # V5.1 Enterprise Mutation Scheduler
-        str_all = str(values)
-        if "🫥" in str_all or "💩" in str_all:
-            return "HEALING_POLICY" # Needs immediate repair
-        
-        # Cycle through policies based on generation
-        cycle = self.generation % 5
-        if cycle == 0: return "SECURITY_ATTACK_POLICY"
-        if cycle == 1: return "BOUNDARY_POLICY"
-        if cycle == 2: return "VALID_POLICY"
-        if cycle == 3: return "BUSINESS_POLICY"
-        return "RANDOM_POLICY"
-
-    def semantic_mutate(self, values):
-        mutated = False
+    def semantic_mutate(self, values, category="POSITIVE"):
+        """
+        Đột biến TÔN TRỌNG vai trò: POSITIVE chỉ đột biến trong không gian HỢP LỆ
+        (không bao giờ nhồi payload/giá trị sai), nên case pass không bị phá.
+        """
         res = {**values}
-        
         if random.random() > self.mutation_rate:
-            return res, mutated
-            
-        policy = self.select_mutation_policy(res)
-        mutated = True
-        
-        fields = list(self.schema)
-        random.shuffle(fields)
-        
-        # Only apply ONE mutation to avoid conflicts
-        field = fields[0]
+            return res, False
+
+        field = random.choice(self.schema)
         name = field["name"]
-        val = res.get(name)
-        str_val = str(val) if val is not None else ""
-        
-        if policy == "HEALING_POLICY" or policy == "VALID_POLICY":
-            res[name] = generate_random_field_value(field, "valid", extract_domain_vocab([], self.schema))
-        elif policy == "SECURITY_ATTACK_POLICY":
-            payloads = ["' OR 1=1 --", "<script>alert(1)</script>", "A" * 200]
-            res[name] = random.choice(payloads)
-        elif policy == "BOUNDARY_POLICY":
-            if field.get("type") == "number":
-                res[name] = float(str_val) + 1 if str_val.isnumeric() else 0
-            else:
-                res[name] = ""
-        elif policy == "BUSINESS_POLICY":
-            if field.get("allowedValues") and len(field["allowedValues"]) > 1:
-                others = [v for v in field["allowedValues"] if str(v) != str_val]
-                res[name] = random.choice(others) if others else res[name]
-            else:
-                res[name] = res[name]
-        else:
-            # RANDOM_POLICY: fallback
-            res[name] = None if random.random() > 0.5 else "INVALID_VAL"
-            
-        from .oracle_engine import OracleEngine
-        res = OracleEngine.align_labels(res, self.schema)
-            
-        return res, mutated
+
+        if category == "POSITIVE":
+            res[name] = generate_random_field_value(field, random.choice(["valid", "ep_valid"]), self.domain_vocab)
+            if not self._is_valid(res):
+                res = self._repair_to_valid(res)
+        elif category == "BOUNDARY":
+            res[name] = generate_random_field_value(field, "boundary", self.domain_vocab)
+        elif category == "NEGATIVE_SECURITY":
+            res[name] = random.choice(["' OR 1=1 --", "<script>alert(1)</script>", "A" * 200])
+        else:  # NEGATIVE_FUNCTIONAL
+            res[name] = generate_random_field_value(field, random.choice(["invalid", "ep_invalid"]), self.domain_vocab)
+
+        return res, True
 
 
     def evolve_one_generation(self):
+        # Tiến hóa PHÂN TẦNG theo category: mỗi thế hệ giữ nguyên hạn ngạch
+        # (≈70% POSITIVE) nên case hợp lệ không bị quần thể âm/bảo mật lấn át.
+        quotas = self._category_quotas(self.pop_size)
+
+        buckets = {c: [] for c in self.CATEGORIES}
+        for ind in self.test_suite:
+            buckets.get(ind.get("category", "POSITIVE"), buckets["POSITIVE"]).append(ind)
+
+        def tournament(pool, k=4):
+            cands = random.sample(pool, min(k, len(pool)))
+            cands.sort(key=lambda x: (x.get("rank", 0), -x.get("crowding_distance", 0)))
+            return cands[0]
+
         new_pop = []
-        # Elitism
-        elite_size = max(1, int(self.pop_size * 0.1))
-        for i in range(elite_size):
-            new_pop.append({
-                "id": str(uuid.uuid4()),
-                "values": {**self.test_suite[i]["values"]},
-                "fitness": self.test_suite[i]["fitness"],
-                "origin": "Elite"
-            })
-            
-        while len(new_pop) < self.pop_size:
-            p1 = self.select_parent()
-            p2 = self.select_parent()
-            c1, c2 = self.mix_testcases(p1, p2)
-            
-            c1, m1 = self.semantic_mutate(c1)
-            c2, m2 = self.semantic_mutate(c2)
-            
-            new_pop.append({"id": str(uuid.uuid4()), "values": c1, "origin": "Crossover+Mutate" if m1 else "Crossover", "fitness": 0.0})
-            if len(new_pop) < self.pop_size:
-                new_pop.append({"id": str(uuid.uuid4()), "values": c2, "origin": "Crossover+Mutate" if m2 else "Crossover", "fitness": 0.0})
-            
-        self.test_suite = new_pop
+        for cat in self.CATEGORIES:
+            target = quotas[cat]
+            if target <= 0:
+                continue
+            pool = buckets[cat]
+
+            # Elitism trong từng category (giữ ~20% xuất sắc nhất của category đó)
+            elite_n = min(len(pool), max(1, int(target * 0.2))) if pool else 0
+            produced = 0
+            for ind in pool[:elite_n]:
+                elite = self._mk_ind({**ind["values"]}, "Elite", cat)
+                elite["fitness"] = ind.get("fitness", 0.0)
+                new_pop.append(elite)
+                produced += 1
+
+            # Sinh con TRONG CÙNG category (cha mẹ cùng vai trò, con kế thừa vai trò)
+            while produced < target:
+                if len(pool) >= 2:
+                    p1 = tournament(pool)
+                    p2 = tournament(pool)
+                    c1, c2 = self.mix_testcases(p1["values"], p2["values"])
+                    child = c1 if produced % 2 == 0 else c2
+                    if cat == "POSITIVE" and not self._is_valid(child):
+                        child = self._repair_to_valid(child)
+                elif pool:
+                    child = {**pool[0]["values"]}
+                else:
+                    child = self._make_valid_record() if cat == "POSITIVE" else self._gen_record(self._MODE_BY_CAT[cat])
+
+                child, mutated = self.semantic_mutate(child, cat)
+                new_pop.append(self._mk_ind(child, "Crossover+Mutate" if mutated else "Crossover", cat))
+                produced += 1
+
+        self.test_suite = new_pop[:self.pop_size]
         self.evaluate_suite()
         
         # V6.0 Enterprise Adaptive Mutation based on Diversity
@@ -473,31 +556,66 @@ class V4TestSuiteOptimizer:
         self.generation += 1
 
     def assemble_optimized_dataset(self, original_seeds=None, target_size=None, max_size=None):
-        # Merge population + HoF + seeds
-        pool = []
+        """
+        Lắp ráp output cuối theo HẠN NGẠCH category: ~70% POSITIVE hợp lệ xếp ĐẦU,
+        phần còn lại phủ BOUNDARY/NEGATIVE/SECURITY. Nếu thiếu POSITIVE, sinh thêm
+        case hợp lệ đảm bảo (oracle 200) để Success Rate luôn đạt mục tiêu.
+        """
+        target = max_size or target_size or self.pop_size
+        field_names = [f["name"] for f in self.schema]
+
+        def clean(vals):
+            return {k: vals.get(k) for k in field_names}
+
+        pool = {c: [] for c in self.CATEGORIES}
         seen = set()
-        
+
         def _add(ind):
-            fp = str(sorted(ind["values"].items()))
-            if fp not in seen:
-                seen.add(fp)
-                pool.append(ind)
-                
-        for ind in self.test_suite: _add(ind)
-        for ind in self.hall_of_fame: _add(ind)
+            vals = clean(ind.get("values", {}))
+            fp = str(sorted((k, str(v)) for k, v in vals.items()))
+            if fp in seen:
+                return
+            seen.add(fp)
+            cat = ind.get("category") or self._classify_record(ind, vals)
+            if cat not in pool:
+                cat = "POSITIVE"
+            pool[cat].append({
+                "id": ind.get("id", str(uuid.uuid4())),
+                "values": vals,
+                "category": cat,
+                "fitness": ind.get("fitness", 0.0),
+                "origin": ind.get("origin", "GA"),
+            })
+
+        for ind in self.test_suite:
+            _add(ind)
+        for h in self.hall_of_fame:
+            _add(h)
         if original_seeds:
             for s in original_seeds:
-                vals = s.get("values", s)
-                fit_scalar, fit_vector, noise = self.compute_fitness(vals, [])
-                _add({"values": vals, "fitness": fit_scalar, "fitness_vector": fit_vector, "noise_score": noise, "origin": "Seed_F0"})
-                
-        def get_fit(x):
-            f = x.get("fitness", 0.0)
-            if isinstance(f, (tuple, list)): return f[0]
-            if isinstance(f, dict): return sum(f.values()) / max(len(f), 1)
-            return f
-            
-        pool.sort(key=get_fit, reverse=True)
-        if max_size and len(pool) > max_size:
-            pool = pool[:max_size]
-        return pool
+                _add({"values": s.get("values", s), "categories": s.get("categories"), "origin": "Seed_F0"})
+
+        for cat in pool:
+            pool[cat].sort(key=lambda x: x["fitness"], reverse=True)
+
+        quotas = self._category_quotas(target)
+        enriched = []
+        # POSITIVE trước tiên → case hợp lệ đứng đầu danh sách hiển thị.
+        for cat in self.CATEGORIES:
+            q = quotas[cat]
+            lst = pool[cat]
+            attempts = 0
+            while len(lst) < q and attempts < q * 20 + 50:
+                attempts += 1
+                if cat == "POSITIVE":
+                    rec = self._make_valid_record()
+                else:
+                    rec = self._gen_record(self._MODE_BY_CAT[cat])
+                fp = str(sorted((k, str(v)) for k, v in rec.items()))
+                if fp in seen:
+                    continue
+                seen.add(fp)
+                lst.append({"id": str(uuid.uuid4()), "values": rec, "category": cat, "fitness": 0.0, "origin": f"Fill_{cat}"})
+            enriched.extend(lst[:q])
+
+        return enriched[:target]

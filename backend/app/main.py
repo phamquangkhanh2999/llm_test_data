@@ -621,7 +621,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                 
                 # Use assemble_optimized_dataset to get 100% deduplicated data
                 max_out = req.pop_size if hasattr(req, 'pop_size') else config_dict.get("popSize", 50)
-                ga_population = optimizer.assemble_optimized_dataset(llm_seeds_mapped, max_size=max_out)
+                ga_population = optimizer.assemble_optimized_dataset(llm_seeds_mapped, target_size=max_out, max_size=max_out)
             else:
                 # algo == "hc": input dataset is passed via req.ga_dataset or initial_seeds
                 ga_population = [{"values": extract_values(tc)} for tc in cleaned_initial_seeds]
@@ -629,18 +629,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
             raw_suite_values = [p["values"] for p in ga_population]
             
             def reclassify_categories(vals, base_cats):
-                from .services.ai_service import check_record_expected_result
-                msg = check_record_expected_result(vals, schema_rules)
-                vld = (msg == "Hợp lệ")
-                c = list(base_cats)
-                if vld and "negative" in c:
-                    c = [x for x in c if x != "negative"]
-                    if not c or "positive" not in c:
-                        c.append("positive")
-                elif not vld and "negative" not in c:
-                    c.append("negative")
-                    c = [x for x in c if x != "positive"]
-                return list(set(c))
+                return list(set(base_cats))
 
             # Lặp qua ga_population thay vì llm_seeds_mapped để lấy toàn bộ kết quả GA
             for i, best_ga_candidate in enumerate(ga_population):

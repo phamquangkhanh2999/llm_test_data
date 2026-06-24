@@ -145,8 +145,16 @@ def extract_domain_vocab(seeds, schema):
 def generate_random_field_value(field, mode="valid", domain_vocab=None):
     special_chars = ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "_", "+", "=", "[", "]", "{", "}", ";", ":", "'", '"', "<", ">", "/", "?", "\\", "|", "`", "~"]
 
+    if mode == "security":
+        return random.choice([
+            "' OR 1=1 --", 
+            "<script>alert(1)</script>", 
+            "\"><img src=x onerror=prompt(1)>",
+            "1; DROP TABLE users"
+        ])
+
     # Sinh dữ liệu theo kiểu
-    f_type = field["type"]
+    f_type = field.get("type", "string")
 
     if f_type == "email":
         if mode in ("invalid", "ep_invalid"):
@@ -346,9 +354,14 @@ class TestSuiteOptimizer:
         self._best_fitness_history = []
         self._stagnation_threshold = 8  # generations without improvement
 
-        # Hall of Fame: archive of best unique test cases across ALL generations
-        self.hall_of_fame = []
-        self._max_hof_size = 20
+        # Hall of Fame: archive of best unique test cases across ALL generations, grouped by category
+        self.hall_of_fame = {
+            "POSITIVE": [],
+            "BOUNDARY": [],
+            "NEGATIVE_FUNCTIONAL": [],
+            "NEGATIVE_SECURITY": []
+        }
+        self._max_hof_size = 20  # Max 20 per category
 
         # Stats tracking for UI metrics
         self.stats = {
@@ -464,40 +477,75 @@ class TestSuiteOptimizer:
     def initialize_suite(self, seeds):
         self.test_suite = []
         self.generation = 0
-        self.hall_of_fame = []
+        self.hall_of_fame = {
+            "POSITIVE": [],
+            "BOUNDARY": [],
+            "NEGATIVE_FUNCTIONAL": [],
+            "NEGATIVE_SECURITY": []
+        }
         self._best_fitness_history = []
 
         # 1. Đưa các hạt giống thông minh ban đầu vào bộ dữ liệu
         domain_vocab = extract_domain_vocab(seeds, self.schema)
         self.domain_vocab = domain_vocab
+        
+        def classify_seed(seed):
+            c = [x.lower() for x in seed.get("categories", [])]
+            if "security" in c or "xss" in c or "sqli" in c: return "NEGATIVE_SECURITY"
+            if "negative" in c or "invalid" in c or "error" in c: return "NEGATIVE_FUNCTIONAL"
+            if "boundary" in c: return "BOUNDARY"
+            return "POSITIVE"
+
         for s in seeds:
             cleaned_tc = {}
             for field in self.schema:
                 name = field["name"]
                 cleaned_tc[name] = s["values"][name] if name in s["values"] else generate_random_field_value(field, "valid", domain_vocab)
+            
+            cat = classify_seed(s)
             self.test_suite.append({
                 "id": str(uuid.uuid4()),
                 "parent_id": None,
                 "values": cleaned_tc,
                 "fitness": 0.0,
                 "origin": "Seed",
-                "categories": s.get("categories", ["positive"])
+                "categories": [cat]
             })
 
-        # 2. Nhân bản ngẫu nhiên thêm các bộ test biên/lỗi để lấp đầy kích thước (PopSize)
-        modes = ["valid", "boundary", "invalid", "valid"]
-        while len(self.test_suite) < self.config["popSize"]:
-            record = {}
-            mode = modes[len(self.test_suite) % len(modes)]
-            for field in self.schema:
-                record[field["name"]] = generate_random_field_value(field, mode, domain_vocab)
-            self.test_suite.append({
-                "id": str(uuid.uuid4()),
-                "parent_id": None,
-                "values": record,
-                "fitness": 0.0,
-                "origin": f"Init_{mode.upper()}"
-            })
+        # 2. Nhân bản ngẫu nhiên thêm các bộ test biên/lỗi để lấp đầy kích thước (PopSize) theo tỷ lệ
+        pop_size = self.config.get("popSize", 50)
+        target_counts = {
+            "POSITIVE": int(pop_size * 0.50),
+            "BOUNDARY": int(pop_size * 0.25),
+            "NEGATIVE_FUNCTIONAL": int(pop_size * 0.15),
+            "NEGATIVE_SECURITY": pop_size - int(pop_size * 0.50) - int(pop_size * 0.25) - int(pop_size * 0.15)
+        }
+        
+        current_counts = {k: 0 for k in target_counts.keys()}
+        for tc in self.test_suite:
+            if tc["categories"][0] in current_counts:
+                current_counts[tc["categories"][0]] += 1
+            
+        for cat, target in target_counts.items():
+            mode_map = {
+                "POSITIVE": "valid",
+                "BOUNDARY": "boundary",
+                "NEGATIVE_FUNCTIONAL": "invalid",
+                "NEGATIVE_SECURITY": "security"
+            }
+            while current_counts[cat] < target:
+                record = {}
+                for field in self.schema:
+                    record[field["name"]] = generate_random_field_value(field, mode_map[cat], domain_vocab)
+                self.test_suite.append({
+                    "id": str(uuid.uuid4()),
+                    "parent_id": None,
+                    "values": record,
+                    "fitness": 0.0,
+                    "origin": f"Init_{cat}",
+                    "categories": [cat]
+                })
+                current_counts[cat] += 1
 
         self.evaluate_suite()
 
@@ -555,6 +603,7 @@ class TestSuiteOptimizer:
                     "id": ind.get("id"),
                     "parent_id": ind.get("parent_id"),
                     "values": ind["values"],
+                    "categories": ind.get("categories", ["POSITIVE"]),
                     "fitness": ind["fitness"],
                     "origin": ind["origin"]
                 }
@@ -569,133 +618,127 @@ class TestSuiteOptimizer:
     # ═══════════════════════════════════════════════════════════
 
     def assemble_optimized_dataset(self, original_seeds=None, target_size=None, max_size=None):
-        """
-        Lắp ráp bộ kết quả tối ưu CUỐI CÙNG một cách "chặt chẽ" thay vì trả về
-        nguyên quần thể thô (vốn đầy con lai/đột biến chất lượng thấp).
-
-        Quy trình:
-          1. Gom ứng viên = quần thể cuối + Hall of Fame (tốt nhất xuyên các thế hệ)
-             + seed F0 gốc (dùng làm SÀN chất lượng).
-          2. Khử trùng lặp theo dấu vân tay giá trị.
-          3. Sắp theo fitness giảm dần để khâu tinh gọn ưu tiên cá thể tốt.
-          4. Lấy LÕI coverage bằng minimize_testcases (giữ phủ biên/âm/dương).
-          5. BÙ thêm (top-up) các cá thể tốt nhất còn lại cho tới khi đạt target_size,
-             để bộ trả về không bị quá ít so với kích thước quần thể người dùng cấu hình.
-
-        Nhờ Hall of Fame lưu cả thế hệ 0 (chứa seed) nên cá thể tốt nhất trả về
-        LUÔN >= seed tốt nhất ban đầu => kết quả không bao giờ tệ hơn dữ liệu LLM.
-
-        Tham số:
-          - target_size: số bản ghi mong muốn (mặc định = popSize cấu hình). Bộ trả về
-            sẽ được bù lên xấp xỉ giá trị này nếu còn đủ cá thể duy nhất.
-          - max_size: trần cứng số bản ghi trả về (nếu cần giới hạn).
-
-        Trả về list dict {"values", "fitness", "origin"} sắp theo fitness giảm dần.
-        """
         if target_size is None:
-            target_size = self.config.get("popSize")
-        raw_values = [ind["values"] for ind in self.test_suite]
-
-        pool = []
+            target_size = self.config.get("popSize", 50)
+            
+        pool = {
+            "POSITIVE": [],
+            "BOUNDARY": [],
+            "NEGATIVE_FUNCTIONAL": [],
+            "NEGATIVE_SECURITY": []
+        }
         seen = set()
 
         def _fingerprint(values):
             return str(sorted((k, str(v)) for k, v in values.items()))
 
-        def _add(values, fitness, origin, id_val=None, parent_id_val=None):
-            fp = _fingerprint(values)
-            if fp in seen:
-                return
+        def _add(ind):
+            fp = _fingerprint(ind["values"])
+            if fp in seen: return
             seen.add(fp)
-            pool.append({"id": id_val or str(uuid.uuid4()), "parent_id": parent_id_val, "values": values, "fitness": fitness, "origin": origin})
+            cats = ind.get("categories", ["POSITIVE"])
+            cat = cats[0] if cats else "POSITIVE"
+            if cat not in pool: cat = "POSITIVE"
+            pool[cat].append({
+                "id": ind.get("id", str(uuid.uuid4())), 
+                "parent_id": ind.get("parent_id"), 
+                "values": ind["values"], 
+                "categories": ind.get("categories", ["POSITIVE"]),
+                "fitness": ind.get("fitness", 0.0), 
+                "origin": ind.get("origin", "Unknown")
+            })
 
-        # 1. Quần thể cuối cùng
-        for ind in self.test_suite:
-            _add(ind["values"], ind["fitness"], ind["origin"], ind.get("id"), ind.get("parent_id"))
+        for ind in self.test_suite: _add(ind)
+        
+        for cat, hof_list in getattr(self, "hall_of_fame", {}).items():
+            if isinstance(hof_list, list):
+                for hof in hof_list: _add(hof)
 
-        # 2. Hall of Fame
-        for hof in self.hall_of_fame:
-            _add(hof["values"], hof.get("fitness", 0.0), hof.get("origin", "HallOfFame"), hof.get("id"), hof.get("parent_id"))
-
-        # 3. Seed F0 gốc làm SÀN chất lượng
         if original_seeds:
+            def classify_seed(seed):
+                c = [x.lower() for x in seed.get("categories", [])]
+                if "security" in c or "xss" in c or "sqli" in c: return "NEGATIVE_SECURITY"
+                if "negative" in c or "invalid" in c or "error" in c: return "NEGATIVE_FUNCTIONAL"
+                if "boundary" in c: return "BOUNDARY"
+                return "POSITIVE"
+                
             domain_vocab = getattr(self, "domain_vocab", None)
             for s in original_seeds:
                 cleaned = {}
                 for field in self.schema:
                     name = field["name"]
-                    cleaned[name] = s[name] if name in s else generate_random_field_value(field, "valid", domain_vocab)
-                fit = self.evaluate_testcase_quality(cleaned, raw_values)
-                _add(cleaned, fit, "Seed_F0")
-
-        # Sắp theo fitness giảm dần (minimize ưu tiên cá thể đứng trước trong mỗi nhóm)
-        pool.sort(key=lambda x: x["fitness"], reverse=True)
-
-        # 4. Lấy LÕI coverage (giữ phủ biên/âm/dương, loại dư thừa)
-        values_list = [p["values"] for p in pool]
-        result = self.minimize_testcases(values_list)
-        minimized = result["minimized"]
-
-        # Gắn lại fitness/origin theo dấu vân tay
-        meta_map = {_fingerprint(p["values"]): p for p in pool}
-        enriched = []
-        selected_fps = set()
-        for tc in minimized:
-            fp = _fingerprint(tc)
-            selected_fps.add(fp)
-            meta = meta_map.get(fp, {"fitness": 0.0, "origin": "Optimized"})
-            enriched.append({
-                "id": meta.get("id", str(uuid.uuid4())),
-                "parent_id": meta.get("parent_id"),
-                "values": tc,
-                "fitness": meta["fitness"],
-                "origin": meta["origin"]
-            })
-
-        # 5. BÙ lên target_size từ các cá thể tốt nhất còn lại (pool đã sắp theo fitness,
-        #    đã khử trùng) -> tránh trả về quá ít bản ghi.
-        if target_size and len(enriched) < target_size:
-            for p in pool:
-                if len(enriched) >= target_size:
-                    break
-                fp = _fingerprint(p["values"])
-                if fp in selected_fps:
-                    continue
-                selected_fps.add(fp)
-                enriched.append({
-                    "id": p.get("id", str(uuid.uuid4())),
-                    "parent_id": p.get("parent_id"),
-                    "values": p["values"],
-                    "fitness": p["fitness"],
-                    "origin": p["origin"]
+                    cleaned[name] = s["values"][name] if "values" in s and name in s["values"] else generate_random_field_value(field, "valid", domain_vocab)
+                
+                cat = classify_seed(s)
+                _add({
+                    "values": cleaned,
+                    "categories": [cat],
+                    "fitness": 100.0,
+                    "origin": "Seed_F0"
                 })
 
-        enriched.sort(key=lambda x: x["fitness"], reverse=True)
-        if max_size:
-            enriched = enriched[:max_size]
+        for cat in pool:
+            pool[cat].sort(key=lambda x: x["fitness"], reverse=True)
 
+        target_counts = {
+            "POSITIVE": int(target_size * 0.50),
+            "BOUNDARY": int(target_size * 0.25),
+            "NEGATIVE_FUNCTIONAL": int(target_size * 0.15),
+            "NEGATIVE_SECURITY": target_size - int(target_size * 0.50) - int(target_size * 0.25) - int(target_size * 0.15)
+        }
+        
+        enriched = []
+        for cat, target in target_counts.items():
+            cat_list = pool.get(cat, [])
+            # Fill the rest randomly if not enough in this category
+            if len(cat_list) < target:
+                diff = target - len(cat_list)
+                for _ in range(diff):
+                    mode_map = {"POSITIVE": "valid", "BOUNDARY": "boundary", "NEGATIVE_FUNCTIONAL": "invalid", "NEGATIVE_SECURITY": "security"}
+                    record = {}
+                    domain_vocab = getattr(self, "domain_vocab", None)
+                    for field in self.schema:
+                        record[field["name"]] = generate_random_field_value(field, mode_map.get(cat, "valid"), domain_vocab)
+                    cat_list.append({
+                        "id": str(uuid.uuid4()),
+                        "values": record,
+                        "categories": [cat],
+                        "fitness": 0.0,
+                        "origin": f"Fallback_{cat}"
+                    })
+            enriched.extend(cat_list[:target])
+            
+        if max_size and len(enriched) > max_size:
+            enriched = enriched[:max_size]
+            
         return enriched
 
 
 
     def _update_hall_of_fame(self):
-        """Archive the best unique test cases found so far."""
-        for ind in self.test_suite[:5]:
-            # Check if this individual is unique compared to hall of fame
+        """Archive the best unique test cases found so far grouped by category."""
+        for ind in self.test_suite:
+            cats = ind.get("categories", ["POSITIVE"])
+            cat = cats[0] if cats else "POSITIVE"
+            if cat not in self.hall_of_fame:
+                self.hall_of_fame[cat] = []
+            
+            hof_list = self.hall_of_fame[cat]
             tc_str = str(sorted(ind["values"].items()))
-            if not any(str(sorted(hof["values"].items())) == tc_str for hof in self.hall_of_fame):
-                self.hall_of_fame.append({
+            if not any(str(sorted(hof["values"].items())) == tc_str for hof in hof_list):
+                hof_list.append({
                     "id": ind.get("id", str(uuid.uuid4())),
                     "parent_id": ind.get("parent_id"),
                     "values": {**ind["values"]},
+                    "categories": ind.get("categories", ["POSITIVE"]),
                     "fitness": ind["fitness"],
                     "origin": f"HoF_Gen{self.generation}"
                 })
-
-        # Keep only top N by fitness
-        self.hall_of_fame.sort(key=lambda x: x["fitness"], reverse=True)
-        if len(self.hall_of_fame) > self._max_hof_size:
-            self.hall_of_fame = self.hall_of_fame[:self._max_hof_size]
+        
+        for cat in self.hall_of_fame:
+            self.hall_of_fame[cat].sort(key=lambda x: x["fitness"], reverse=True)
+            if len(self.hall_of_fame[cat]) > self._max_hof_size:
+                self.hall_of_fame[cat] = self.hall_of_fame[cat][:self._max_hof_size]
 
     # ═══════════════════════════════════════════════════════════
     # SELECTION (with Niche Density Distance tiebreaker)
@@ -793,7 +836,24 @@ class TestSuiteOptimizer:
             else:
                 child1[name] = p1.get(name)
                 child2[name] = p2.get(name)
-        return child1, child2
+        def reclassify_child(child_values):
+            from .fitness_engine.quality_classifier import classify_quality, InvalidType
+            has_security = False
+            has_invalid = False
+            for field in self.schema:
+                val = child_values.get(field["name"])
+                val_str = str(val) if val is not None else ""
+                status_res = classify_quality(val_str, field)
+                if status_res.status in [InvalidType.INVALID_FORMAT, InvalidType.INVALID_TYPE, InvalidType.INVALID_REQUIRED, InvalidType.INVALID_ENUM]:
+                    if any(x in val_str.lower() for x in ["<script", "1=1", "drop table", "or 1=", "prompt("]):
+                        has_security = True
+                    else:
+                        has_invalid = True
+            if has_security: return "NEGATIVE_SECURITY"
+            if has_invalid: return "NEGATIVE_FUNCTIONAL"
+            return "POSITIVE"
+            
+        return {"values": child1, "categories": [reclassify_child(child1)]}, {"values": child2, "categories": [reclassify_child(child2)]}
 
     # ═══════════════════════════════════════════════════════════
     # MUTATION (adaptive rate + Gaussian + enum-aware)
@@ -801,7 +861,7 @@ class TestSuiteOptimizer:
 
     def tweak_values(self, test_case):
         """
-        Đột biến giá trị (Mutation V3) với GuidedMutator.
+        Đột biến giá trị (Mutation V3) với Mutation Budget.
         """
         is_mutated = False
         rate = self.get_adaptive_mutation_rate()
@@ -809,25 +869,46 @@ class TestSuiteOptimizer:
         if random.random() > rate:
             return {**test_case}, False
             
-        from .mutation_planner import MutationExecutor
-        from .fitness_engine import FitnessEngine
+        cats = test_case.get("categories", ["POSITIVE"])
+        cat = cats[0] if cats else "POSITIVE"
         
-        # Đánh giá nhanh cá thể để lấy weak_points
-        raw_values = [ind["values"] for ind in self.test_suite]
-        fitness_res = None
-        try:
-            fitness_res = FitnessEngine.evaluate(test_case, self.schema)
-        except:
-            pass
-            
-        llm_provider = self.config.get("llm_provider", "gemini")
-        api_key_override = self.config.get("api_key_override", None)
-        mutated_tc = MutationExecutor.execute(test_case, self.schema, fitness_res, llm_provider=llm_provider, api_key_override=api_key_override)
+        mutated_tc = {**test_case}
+        mutated_tc["values"] = {**test_case["values"]}
+        values = mutated_tc["values"]
         
-        # Đảm bảo không return dict giống hệt memory
-        if mutated_tc != test_case:
-            is_mutated = True
+        # Mutation Budget
+        if cat in ["POSITIVE", "BOUNDARY"]:
+            max_violations = 0
+            mode_pool = ["boundary", "ep_valid"]
+        elif cat == "NEGATIVE_FUNCTIONAL":
+            max_violations = random.randint(1, 2)
+            mode_pool = ["invalid", "ep_invalid"]
+        elif cat == "NEGATIVE_SECURITY":
+            max_violations = random.randint(1, 2)
+            mode_pool = ["security"]
+        else:
+            max_violations = 0
+            mode_pool = ["boundary"]
             
+        k_val = random.randint(1, len(self.schema)) if self.schema else 0
+        fields_to_mutate = random.sample(self.schema, k=k_val)
+        violations_applied = 0
+        
+        for field in fields_to_mutate:
+            name = field["name"]
+            
+            if violations_applied >= max_violations and cat in ["NEGATIVE_FUNCTIONAL", "NEGATIVE_SECURITY"]:
+                current_mode = random.choice(["boundary", "ep_valid"])
+            else:
+                current_mode = random.choice(mode_pool)
+                if current_mode in ["invalid", "ep_invalid", "security"]:
+                    violations_applied += 1
+                    
+            new_val = generate_random_field_value(field, current_mode, self.domain_vocab)
+            if new_val != values.get(name):
+                values[name] = new_val
+                is_mutated = True
+                
         return mutated_tc, is_mutated
 
     # ═══════════════════════════════════════════════════════════
@@ -917,100 +998,53 @@ class TestSuiteOptimizer:
         crossover_count = 0
         mutation_count = 0
 
-        # 2. Sinh các Test Cases con thông qua Crossover
-        offspring_to_mutate = []
-        
+        # 2. Sinh các Test Cases con thông qua Crossover và Mutation
         while len(next_suite) < self.config["popSize"]:
             p1_ind = self.select_parent()
             p2_ind = self.select_parent()
 
+            # c1, c2 lúc này có dạng {"values": {...}, "categories": [...]}
             c1, c2 = self.mix_testcases(p1_ind["values"], p2_ind["values"])
-            rate = self.get_adaptive_mutation_rate()
-
-            # Offspring 1
-            idx1 = len(next_suite)
-            next_suite.append({
+            
+            # Khởi tạo full cấu trúc cho offspring
+            offspring1 = {
                 "id": str(uuid.uuid4()),
                 "parent_id": p1_ind.get("id"),
-                "values": c1,
+                "values": c1["values"],
+                "categories": c1["categories"],
                 "fitness": 0.0,
                 "origin": "Crossover",
-                "lineage": {
-                    "parents": [p1_ind.get("id"), p2_ind.get("id")],
-                    "operations": ["crossover"]
-                }
-            })
+                "lineage": {"parents": [p1_ind.get("id"), p2_ind.get("id")], "operations": ["crossover"]}
+            }
+            
+            offspring1, is_mutated1 = self.tweak_values(offspring1)
+            if is_mutated1:
+                offspring1["origin"] = "Crossover + Mutation"
+                offspring1["lineage"]["operations"].append("mutation")
+                mutation_count += 1
+            
+            next_suite.append(offspring1)
             crossover_count += 1
             
-            if random.random() <= rate:
-                from .fitness_engine import FitnessEngine
-                fitness_res = None
-                try: fitness_res = FitnessEngine.evaluate(c1, self.schema)
-                except: pass
-                offspring_to_mutate.append({
-                    "index": idx1,
-                    "values": c1,
-                    "fitness_res": fitness_res
-                })
-
-            # Offspring 2
             if len(next_suite) < self.config["popSize"]:
-                idx2 = len(next_suite)
-                next_suite.append({
+                offspring2 = {
                     "id": str(uuid.uuid4()),
                     "parent_id": p2_ind.get("id"),
-                    "values": c2,
+                    "values": c2["values"],
+                    "categories": c2["categories"],
                     "fitness": 0.0,
                     "origin": "Crossover",
-                    "lineage": {
-                        "parents": [p1_ind.get("id"), p2_ind.get("id")],
-                        "operations": ["crossover"]
-                    }
-                })
-                crossover_count += 1
+                    "lineage": {"parents": [p1_ind.get("id"), p2_ind.get("id")], "operations": ["crossover"]}
+                }
                 
-                if random.random() <= rate:
-                    from .fitness_engine import FitnessEngine
-                    fitness_res = None
-                    try: fitness_res = FitnessEngine.evaluate(c2, self.schema)
-                    except: pass
-                    offspring_to_mutate.append({
-                        "index": idx2,
-                        "values": c2,
-                        "fitness_res": fitness_res
-                    })
-
-        # 2b. Thực thi Mutation theo Batch
-        if offspring_to_mutate:
-            llm_provider = self.config.get("llm_provider", "gemini")
-            api_key_override = self.config.get("api_key_override", None)
-            from .mutation_planner import MutationExecutor
-            
-            mutated_results = MutationExecutor.batch_execute(
-                offspring_to_mutate, 
-                self.schema, 
-                llm_provider=llm_provider, 
-                api_key_override=api_key_override,
-                batch_size=20
-            )
-            
-            for i, item in enumerate(offspring_to_mutate):
-                idx = item["index"]
-                mutated_tc = mutated_results[i]
-                old_values = next_suite[idx]["values"]
-                next_suite[idx]["values"] = mutated_tc
-                if mutated_tc != old_values:
-                    next_suite[idx]["origin"] = "Crossover + Mutation"
-                    next_suite[idx]["lineage"]["operations"].append("mutation")
-                    
-                    # Optional: Track exactly what changed for Explainable AI
-                    changes = {}
-                    for k, v in mutated_tc.items():
-                        if old_values.get(k) != v:
-                            changes[k] = {"from": old_values.get(k), "to": v}
-                    next_suite[idx]["lineage"]["changes"] = changes
-                mutation_count += 1
-                crossover_count -= 1
+                offspring2, is_mutated2 = self.tweak_values(offspring2)
+                if is_mutated2:
+                    offspring2["origin"] = "Crossover + Mutation"
+                    offspring2["lineage"]["operations"].append("mutation")
+                    mutation_count += 1
+                
+                next_suite.append(offspring2)
+                crossover_count += 1
 
         # 3. Thay đổi bộ dữ liệu test và tái chấm điểm
         # 3a. Enum Constraint Repair: đảm bảo các trường Enum không bị biến dạng

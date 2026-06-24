@@ -16,6 +16,7 @@ import {
   Sparkles,
   TrendingUp,
   X,
+  XCircle,
 } from 'lucide-react';
 import React, { useState } from 'react';
 import {
@@ -842,6 +843,14 @@ export const GeneticOptimize: React.FC = () => {
               accent='var(--color-emerald)'
             />
             <Metric
+              icon={<CheckCircle2 size={18} />}
+              label='Success Rate'
+              vnLabel='Tỉ lệ thành công'
+              infoText='Tỉ lệ các ca kiểm thử đạt kết quả thành công (Success / Hợp lệ).'
+              value={ma.finalResultData?.length ? `${(ma.finalResultData.filter((d: any) => d.expectedResult === 'Success' || d.expectedResult === 'Hợp lệ' || String(d.expectedResult).includes('HTTP 200')).length / ma.finalResultData.length * 100).toFixed(1)}%` : '0%'}
+              accent='var(--color-emerald)'
+            />
+            <Metric
               icon={<Layers size={18} />}
               label='Business Rule Coverage'
               vnLabel='Độ phủ Nghiệp vụ'
@@ -1280,10 +1289,40 @@ export const GeneticOptimize: React.FC = () => {
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
                         <div style={{ maxWidth: 200, wordBreak: 'break-word' }}>
                           {getExpectedResultShort(tc.expectedResult) === 'Error' ? (
-                            <span style={{ color: 'var(--error)', fontWeight: 500 }}>Error</span>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                color: 'var(--error)',
+                                padding: '4px 10px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                border: '1px solid rgba(239, 68, 68, 0.2)',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              <XCircle size={14} /> Error
+                            </span>
                           ) : (
-                            <span style={{ color: 'var(--color-emerald)', fontWeight: 500 }}>
-                              Success
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                color: 'var(--color-emerald)',
+                                padding: '4px 10px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                border: '1px solid rgba(16, 185, 129, 0.2)',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              <CheckCircle2 size={14} /> Success
                             </span>
                           )}
                         </div>

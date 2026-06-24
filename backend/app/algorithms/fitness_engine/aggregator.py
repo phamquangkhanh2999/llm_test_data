@@ -18,14 +18,19 @@ class FitnessEngine:
         # Diversity score Placeholder
         diversity_score = 100.0 
         
-        # Calculate scores for negative tests / error paths instead of penalizing
         error_path_score = 0.0
         business_rule_score = 100.0 # Base score if no violations
         penalty = 0.0
         invalid_reasons = []
-        is_negative = "negative" in [c.lower() for c in categories]
+        
+        # Determine categories
+        categories_upper = [c.upper() for c in categories]
+        is_negative = any(c in ["NEGATIVE_FUNCTIONAL", "NEGATIVE_SECURITY", "NEGATIVE"] for c in categories_upper)
+        is_positive = any(c in ["POSITIVE", "BOUNDARY"] for c in categories_upper) or not is_negative
+        
         semantic_sum = 0.0
         total_fields = len(schema) or 1
+        violation_count = 0
         
         for field in schema:
             val_str = str(values.get(field["name"])) if values.get(field["name"]) is not None else ""
@@ -33,21 +38,10 @@ class FitnessEngine:
             status = status_res.status
             semantic_sum += status_res.quality.semantic_score
             
-            if status == InvalidType.INVALID_TYPE:
+            if status != InvalidType.VALID:
+                violation_count += 1
                 error_path_score += 25.0
-                invalid_reasons.append(f"{field['name']} has invalid type")
-            elif status == InvalidType.INVALID_REQUIRED:
-                error_path_score += 25.0
-                invalid_reasons.append(f"{field['name']} is required but missing")
-            elif status == InvalidType.INVALID_FORMAT:
-                error_path_score += 25.0
-                invalid_reasons.append(f"{field['name']} has invalid format/semantic")
-            elif status == InvalidType.INVALID_ENUM:
-                error_path_score += 25.0
-                invalid_reasons.append(f"{field['name']} has invalid enum")
-            elif status == InvalidType.INVALID_BOUNDARY:
-                error_path_score += 25.0
-                invalid_reasons.append(f"{field['name']} breaks boundary constraint")
+                invalid_reasons.append(f"{field['name']} -> {status.name}")
                     
             if status_res.quality.semantic_score < 1.0 and status != InvalidType.INVALID_FORMAT:
                 # Slight penalty for semantic failure if not intentional negative format
@@ -57,16 +51,29 @@ class FitnessEngine:
         semantic_score = (semantic_sum / total_fields) * 100.0
 
         # Adjust weights to support Coverage-Driven Optimization
-        # Schema 15%, Coverage 25%, Boundary 25%, Error Path 20%, Semantic 15%
-        # If it's a negative test case, we heavily rely on error path score
-        raw_fitness = (
-            schema_score * 0.15 +
-            coverage_score * 0.25 +
-            boundary_score * 0.25 +
-            min(error_path_score, 100.0) * 0.20 +
-            semantic_score * 0.15
-        )
-        
+        if is_negative:
+            # If it's a negative test case, we heavily rely on error path score
+            raw_fitness = (
+                schema_score * 0.15 +
+                coverage_score * 0.25 +
+                boundary_score * 0.25 +
+                min(error_path_score, 100.0) * 0.20 +
+                semantic_score * 0.15
+            )
+            # Noise Penalty for Negative
+            if violation_count > 2:
+                penalty += (violation_count - 2) * 20.0
+        else:
+            # For positive test cases, error paths are strictly penalized
+            raw_fitness = (
+                schema_score * 0.40 +
+                coverage_score * 0.10 +
+                boundary_score * 0.30 +
+                semantic_score * 0.20
+            )
+            if violation_count > 0:
+                penalty += 1000.0  # Force fitness to 0 for invalid positive tests
+                
         # Diversity impact can be applied later via population scaling
         final_fitness = max(0.0, raw_fitness - penalty)
         

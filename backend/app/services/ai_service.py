@@ -72,6 +72,13 @@ def derive_expected_result(record: dict, fields: list) -> dict:
 
         val_str = str(val)
 
+        # ── Priority Security: XSS / SQLi payload ────────────────────────────────
+        if "<script>" in val_str.lower() or "or 1=1" in val_str.lower() or "drop table" in val_str.lower():
+            errors_400.append(f"'{name}' chứa mã độc bảo mật")
+            violated_fields.append(name)
+            violated_fields_desc.append(f"'{name}' chứa mã độc")
+            continue
+
         # ── Priority 2: Enum invalid ────────────────────────────────────────────
         allowed = f.get("allowedValues")
         if allowed:
