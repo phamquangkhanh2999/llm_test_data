@@ -1,5 +1,6 @@
-import { ArrowRight, CheckCircle2, GitCompare, Play, RefreshCw, Settings2, Sparkles, Terminal, XCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, GitCompare, Play, RefreshCw, Settings2, Sparkles, Terminal, XCircle, Download } from 'lucide-react';
 import React, { useState } from 'react';
+import * as XLSX from 'xlsx';
 import { config } from '../config';
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
@@ -147,6 +148,39 @@ export const HillClimbingOptimize: React.FC = () => {
     }
   };
 
+  const handleExport = (type: 'json' | 'excel') => {
+    if (!hcData || hcData.length === 0) {
+      toast.warning('Không có dữ liệu để xuất.');
+      return;
+    }
+
+    const exportData = hcData.map((tc: any, i: number) => {
+      const row: any = { TC_ID: `TC-HC-${String(i + 1).padStart(3, '0')}` };
+      schema.forEach((f: any) => {
+        row[f.name] = tc[f.name];
+      });
+      row['Expected Result'] = tc.expectedResult?.statusText || tc.expectedResult || '';
+      row['Error Description'] = tc.expectedResult?.errorDescription || tc.errorDescription || '';
+      row['Fitness'] = tc.fitness;
+      return row;
+    });
+
+    if (type === 'json') {
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `hc_results.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (type === 'excel') {
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "HC_Results");
+      XLSX.writeFile(workbook, `hc_results.xlsx`);
+    }
+  };
+
   return (
     <div className='fade-in-up'>
       <div className='glass-card' style={{ marginBottom: 16 }}>
@@ -242,8 +276,11 @@ export const HillClimbingOptimize: React.FC = () => {
                     cleanResult.includes('HTTP 400') || cleanResult.includes('HTTP 422') || cleanResult.includes('HTTP 500');
                   const hasOk = cleanResult.startsWith('HỢP LỆ') || cleanResult.startsWith('SUCCESS') || cleanResult.startsWith('THÀNH CÔNG') ||
                     cleanResult.includes('HTTP 200') || cleanResult.includes('HTTP 201');
-                  const isSuccess = hasOk && !hasErr;
+                   const isSuccess = hasOk && !hasErr;
                   const isError = !isSuccess;
+                  const originalGaTc = gaResult && gaResult[i] ? gaResult[i] : null;
+                  const fitnessImproved = originalGaTc && tc.fitness > (originalGaTc.fitness || 0);
+
                   return (
                     <tr
                       key={i}
@@ -277,10 +314,24 @@ export const HillClimbingOptimize: React.FC = () => {
                       </td>
                       {schema.map((f: any) => {
                         const val = tc[f.name];
+                        const originalVal = originalGaTc ? originalGaTc[f.name] : undefined;
+                        const isChanged = originalVal !== undefined && String(val) !== String(originalVal);
                         const empty = val === undefined || val === null || String(val) === '';
                         return (
-                          <td key={f.name} style={{ padding: '10px 16px', verticalAlign: 'top', fontFamily: 'var(--font-mono)', fontSize: 12, maxWidth: 240, wordBreak: 'break-word', color: 'var(--text-primary)' }}>
+                          <td key={f.name} style={{ 
+                            padding: '10px 16px', 
+                            verticalAlign: 'top', 
+                            fontFamily: 'var(--font-mono)', 
+                            fontSize: 12, 
+                            maxWidth: 240, 
+                            wordBreak: 'break-word', 
+                            color: 'var(--text-primary)',
+                            backgroundColor: isChanged ? 'rgba(16, 185, 129, 0.08)' : 'transparent',
+                            borderLeft: isChanged ? '2px solid var(--color-emerald)' : 'none'
+                          }}>
+                            {isChanged && <div style={{ fontSize: 9, color: 'var(--color-emerald)', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>✨ Đã tối ưu ép biên</div>}
                             {empty ? <span style={{ color: 'var(--text-muted)' }}>—</span> : String(val)}
+                            {isChanged && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, textDecoration: 'line-through' }}>Gốc: {String(originalVal)}</div>}
                           </td>
                         );
                       })}
@@ -317,9 +368,16 @@ export const HillClimbingOptimize: React.FC = () => {
                         </div>
                       </td>
                       <td style={{ padding: '10px 16px', textAlign: 'right', verticalAlign: 'top' }}>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {tc.fitness.toFixed(3)}
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: fitnessImproved ? 'var(--color-emerald)' : 'var(--text-primary)' }}>
+                            {tc.fitness.toFixed(3)}
+                          </span>
+                          {fitnessImproved && (
+                            <span style={{ fontSize: 10, color: 'var(--color-emerald)', fontWeight: 600, background: 'rgba(16, 185, 129, 0.1)', padding: '2px 6px', borderRadius: 4 }}>
+                              +{ (tc.fitness - (originalGaTc.fitness || 0)).toFixed(2) } đ
+                            </span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -330,9 +388,23 @@ export const HillClimbingOptimize: React.FC = () => {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Hiển thị tối đa 50 ca kiểm thử. Đã sẵn sàng chuyển sang bước tiếp theo.</span>
-            <button className='btn btn-primary' onClick={() => setActiveScreen('export')}>
-              Lịch sử & Xuất kết quả <ArrowRight size={15} />
-            </button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button 
+                onClick={() => handleExport('json')} 
+                style={{ padding: '8px 14px', fontSize: 13, borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--surface-subtle)', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <Download size={14} /> Xuất JSON
+              </button>
+              <button 
+                onClick={() => handleExport('excel')} 
+                style={{ padding: '8px 14px', fontSize: 13, borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--surface-subtle)', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <Download size={14} /> Xuất Excel
+              </button>
+              <button className='btn btn-primary' onClick={() => setActiveScreen('export')}>
+                Lịch sử & Xuất kết quả <ArrowRight size={15} />
+              </button>
+            </div>
           </div>
         </div>
       )}

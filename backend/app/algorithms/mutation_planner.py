@@ -205,13 +205,15 @@ class MutationExecutor:
             fitness_res = req.get("fitness_res")
             hc_step = req.get("hc_step")
             
-            weak_points = getattr(fitness_res, "weak_points", []) if fitness_res else []
-            
-            if not weak_points:
-                GuidedMutator._blind_mutate(results[idx], schema)
-                continue
-                
-            target_wp = random.choice(weak_points)
+            target_wp = req.get("target_wp")
+            if not target_wp:
+                weak_points = getattr(fitness_res, "weak_points", []) if fitness_res else []
+                if not weak_points:
+                    from .mutation_engine.guided_mutator import GuidedMutator
+                    GuidedMutator._blind_mutate(results[idx], schema)
+                    continue
+                import random
+                target_wp = random.choice(weak_points)
             field_name = target_wp.get("field")
             if not field_name:
                 continue

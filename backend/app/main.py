@@ -535,12 +535,16 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
             field_names = {f["name"] for f in schema_rules}
             return {k: v for k, v in seed.items() if k in field_names}
 
-        def calculate_v2_scores(values, categories):
+        def calculate_v2_scores(values, categories, current_pop=None):
             from .services.ai_service import derive_expected_result
             from .algorithms.fitness_engine.aggregator import FitnessEngine
             
-            # Evaluate with the new FitnessEngine pipeline
+            # Evaluate with the new FitnessEngine pipeline to get breakdown details
             engine_result = FitnessEngine.evaluate(values, schema_rules, categories)
+            
+            # Sử dụng chung một công thức fitness thống nhất (Lỗi 2 fix)
+            # Truyền current_pop nếu có để tính điểm đa dạng (Diversity)
+            final_fitness, _ = optimizer.evaluate_testcase_quality(values, current_pop, categories)
             
             # Keep Oracle validation for validationScore and negativeScore
             oracle = derive_expected_result(values, schema_rules)
@@ -557,7 +561,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                 "validationScore": validation_score,
                 "boundaryScore": engine_result.breakdown.boundary,
                 "negativeScore": negative_score,
-                "fitness": engine_result.fitness,
+                "fitness": final_fitness,
                 "breakdown": engine_result.breakdown.dict(),
                 "weak_points": engine_result.weak_points,
                 "missing_rules": engine_result.missing_rules,
@@ -649,19 +653,19 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                 
                 ga_values = best_ga_candidate["values"]
                 ga_cats = reclassify_categories(ga_values, llm_tc["categories"])
-                scores_ga = calculate_v2_scores(ga_values, ga_cats)
+                scores_ga = calculate_v2_scores(ga_values, ga_cats, raw_suite_values)
                 
                 if algo in ["ga_hc", "hc"]:
                     # Chạy HC trên GA candidate
                     fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)[0]
                     hc_values, hc_stats = optimize_testcase_boundaries(ga_values, schema_rules, fitness_evaluator, max_iterations=10, global_coverage_set=global_coverage_set, llm_provider=req.llm_provider, api_key_override=req.api_key_override, categories=ga_cats)
                     hc_cats = reclassify_categories(hc_values, ga_cats)
-                    scores_hc = calculate_v2_scores(hc_values, hc_cats)
+                    scores_hc = calculate_v2_scores(hc_values, hc_cats, raw_suite_values)
                     
-                    if scores_hc["fitness"] > scores_ga["fitness"]:
+                    if scores_hc["fitness"] >= scores_ga["fitness"]:
                         candidate_values = hc_values
                         candidate_origin = "HC"
-                        candidate_reason = "Thuật toán leo đồi HC tối ưu tốt hơn GA"
+                        candidate_reason = "Thuật toán leo đồi HC tối ưu tốt hơn hoặc bằng GA"
                     else:
                         candidate_values = ga_values
                         candidate_origin = "GA"
@@ -691,7 +695,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                 # Tính điểm thực tế sau gộp và polish
                 _clean_for_score = {k: v for k, v in final_values.items() if not k.startswith("_")}
                 final_cats = reclassify_categories(_clean_for_score, llm_tc["categories"])
-                scores_final = calculate_v2_scores(_clean_for_score, final_cats)
+                scores_final = calculate_v2_scores(_clean_for_score, final_cats, raw_suite_values)
 
                 # So sánh điểm thực tế cuối cùng với điểm hạt giống LLM
                 if scores_final["fitness"] >= llm_tc["llmFitness"]:
@@ -729,13 +733,20 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                     fname = field["name"]
                     old_v = llm_tc["values"].get(fname)
                     new_v = final_values.get(fname)
+                    
+                    # Xác định thực sự ai đã đổi (GA đổi hay HC đổi thêm)
+                    actual_changed_by = origin
+                    if algo in ["ga_hc", "hc"]:
+                        if str(ga_values.get(fname)) != str(hc_values.get(fname)):
+                            actual_changed_by = "HC"
+                            
                     if str(old_v) != str(new_v):
                         is_changed = True
                         changes.append({
                             "field": fname,
                             "oldValue": old_v,
                             "newValue": new_v,
-                            "changedBy": origin,
+                            "changedBy": actual_changed_by,
                             "reason": f"Tinh chỉnh giá trị biên/phân vùng để tối ưu hóa fitness cho trường '{fname}'"
                         })
                         
@@ -839,10 +850,12 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                     "gaFitness": scores_ga["fitness"],
                     "hcFitness": scores_hc["fitness"],
                     "finalFitness": final_fit,
-                    "origin": origin,
+                    "origin": "GA+HC" if (algo in ["ga_hc", "hc"] and hc_values != ga_values) else origin,
                     "changes": changes,
                     "covers": final_tags,
-                    "llm_values": llm_tc["values"]
+                    "llm_values": llm_tc["values"],
+                    "ga_values": ga_values,
+                    "hc_values": hc_values
                 }
                 
                 ga_result_mapped.append(ga_tc)
@@ -933,8 +946,15 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                     break
                     
             # Bù thêm tc cho đủ target nếu cần (ở đây cứ xuất minimal_suite + một số tc top fitness)
-            # Tạm thời thay thế final_result_mapped bằng minimal_suite
-            
+            target_size = len(final_result_mapped)
+            if len(minimal_suite) < target_size:
+                minimal_ids = {tc.get("tcId") for tc in minimal_suite}
+                remaining_tcs = [tc for tc in final_result_mapped if tc.get("tcId") not in minimal_ids]
+                # Sắp xếp theo fitness giảm dần
+                remaining_tcs.sort(key=lambda x: x.get("finalFitness", 0), reverse=True)
+                
+                needed = target_size - len(minimal_suite)
+                minimal_suite.extend(remaining_tcs[:needed])
             # --- BATCH SEMANTIC POLISH (Post-Processing) ---
             from .services.ai_service import batch_semantic_polish
             try:

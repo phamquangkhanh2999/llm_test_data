@@ -738,4 +738,16 @@ class V4TestSuiteOptimizer:
                 lst.append({"id": str(uuid.uuid4()), "values": rec, "category": cat, "fitness": 0.0, "origin": f"Fill_{cat}"})
             enriched.extend(lst[:q])
 
+        # Bù thêm nếu thuật toán deduplication (loại bỏ trùng lặp) làm hụt số lượng so với target
+        if len(enriched) < target:
+            needed = target - len(enriched)
+            pad_pool = [item for cat_name in self.CATEGORIES for item in pool[cat_name]]
+            pad_pool.sort(key=lambda x: x.get("fitness", 0.0), reverse=True)
+            for i in range(needed):
+                if pad_pool:
+                    clone = {**pad_pool[i % len(pad_pool)]}
+                    clone["id"] = str(uuid.uuid4())
+                    clone["origin"] = clone.get("origin", "") + "_Padding"
+                    enriched.append(clone)
+
         return enriched[:target]

@@ -22,7 +22,7 @@ def get_parse_spec_combined_prompt(raw_text: str) -> tuple[str, str]:
         f"Raw Specification:\n{raw_text}\n\n"
         
         "# HARD RULES\n"
-        "1. VÉT CẠN QUY TẮC: BẮT BUỘC trích xuất tất cả các trường dữ liệu và 100% các quy tắc (Business Rules) xuất hiện trong đặc tả. Tuyệt đối không được tự ý gom nhóm, tóm tắt hoặc bỏ bớt bất kỳ quy tắc nào dù là nhỏ nhất.\n"
+        "1. VÉT CẠN QUY TẮC (BUSINESS RULES): BẮT BUỘC trích xuất 100% các quy tắc nghiệp vụ xuất hiện trong đặc tả. Mỗi quy tắc phải RÕ RÀNG, ĐẦY ĐỦ, và ĐỘC LẬP. Phân rã chi tiết các quy tắc thành các loại: Ràng buộc bắt buộc (presence), Ràng buộc độ dài (length), Ràng buộc miền giá trị (value), Ràng buộc định dạng (format/regex), và Tập giá trị cho phép (domain/enum). Tuyệt đối không được tự ý gom nhóm, tóm tắt hoặc bỏ bớt bất kỳ quy tắc nào dù là nhỏ nhất.\n"
         "2. VÉT CẠN LOGIC (CONSTRAINTS): Bất kỳ câu nào trong đặc tả có chứa logic điều kiện (ví dụ: 'Nếu... thì...', 'Chỉ khi...', 'Phụ thuộc vào...') BẮT BUỘC phải được trích xuất thành đối tượng trong mảng 'constraints'.\n"
         "3. EXPECTED RESULTS: Mỗi quy tắc (rule) BẮT BUỘC phải có 'errorMessage' (Kết quả mong đợi khi vi phạm quy tắc) thật cụ thể và khớp với nghiệp vụ bằng tiếng Việt.\n"
         "4. Không được suy diễn dữ liệu ngoài thông tin đặc tả đã cung cấp.\n"
@@ -33,13 +33,14 @@ def get_parse_spec_combined_prompt(raw_text: str) -> tuple[str, str]:
         "9. LƯU Ý QUAN TRỌNG VỀ REGEX: Nếu trường dữ liệu (ví dụ: họ tên, địa chỉ) cho phép tiếng Việt có dấu, "
         "regex BẮT BUỘC phải hỗ trợ ký tự Unicode (sử dụng \\p{L} thay vì chỉ a-zA-Z). Ví dụ: '^[\\p{L}0-9\\s]+$' thay vì '^[a-zA-Z0-9\\s]+$'. "
         "Đảm bảo regex không xung đột và phải bao phủ được toàn bộ các ký tự có trong 'successValues'.\n"
-        "10. LOGIC KIỂM TRA ĐỘC LẬP: Các Business Rules phải thể hiện sự độc lập của từng trường dữ liệu. KHÔNG ĐƯỢC sinh ra chuỗi logic phụ thuộc kiểu 'A hợp lệ thì mới kiểm tra B' cho việc validate format cơ bản. Mỗi trường đều phải được kiểm tra (required, datatype, length, regex) một cách độc lập.\n\n"
+        "10. LOGIC KIỂM TRA ĐỘC LẬP: Các Business Rules phải thể hiện sự độc lập của từng trường dữ liệu. KHÔNG ĐƯỢC sinh ra chuỗi logic phụ thuộc kiểu 'A hợp lệ thì mới kiểm tra B' cho việc validate format cơ bản. Mỗi trường đều phải được kiểm tra (required, datatype, length, regex) một cách độc lập.\n"
+        "11. TÍNH RÕ RÀNG CỦA BUSINESS RULES: Mỗi Business Rule phải được mô tả (description) thật chi tiết, đầy đủ và không gây hiểu lầm. Bắt buộc làm rõ điều kiện đúng/sai. Ví dụ: thay vì 'Mật khẩu phải mạnh', hãy viết 'Mật khẩu phải dài tối thiểu 8 ký tự, chứa ít nhất 1 chữ hoa, 1 chữ thường, và 1 số'. Cấm sử dụng các từ ngữ chung chung.\n\n"
         
         "# EXECUTION PROCESS\n"
         "Thực hiện theo đúng thứ tự sau:\n"
         "Bước 1: Đọc và phân tích kỹ tài liệu đặc tả nghiệp vụ.\n"
         "Bước 2: Liệt kê tất cả các trường dữ liệu đầu vào, xác định kiểu dữ liệu, kiểu nhập liệu và các ràng buộc độ dài/giá trị.\n"
-        "Bước 3: Trích xuất các quy tắc xác thực (Business Rules) riêng lẻ cho từng trường.\n"
+        "Bước 3: Trích xuất các quy tắc xác thực (Business Rules) rõ ràng, chi tiết và không mơ hồ cho từng trường.\n"
         "Bước 4: Trích xuất các ràng buộc logic chéo giữa các trường (Constraints).\n"
         "Bước 5: Tự kiểm tra định dạng dữ liệu đầu ra và cấu trúc JSON.\n\n"
         

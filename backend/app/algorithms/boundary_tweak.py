@@ -61,11 +61,17 @@ def optimize_testcase_boundaries(test_case: dict, schema: list, fitness_evaluato
             break
             
         if not weak_points:
-            details.append(f"Không còn weak points. Dừng HC.")
-            break
+            # Fallback: Nếu không có weak point rõ ràng, chọn ngẫu nhiên một trường để thăm dò (Exploration)
+            field_names = [f["name"] for f in schema if f.get("type") != "boolean"]
+            if not field_names:
+                details.append(f"Không còn trường hợp lệ. Dừng HC.")
+                break
+            random_field = random.choice(field_names)
+            target_wp = {"field": random_field, "issue": "exploration"}
+        else:
+            # Chọn 1 weak point để HC nhắm tới
+            target_wp = random.choice(weak_points)
             
-        # Chọn 1 weak point để HC nhắm tới
-        target_wp = random.choice(weak_points)
         field_name = target_wp.get("field")
         if not field_name:
             continue
@@ -92,7 +98,8 @@ def optimize_testcase_boundaries(test_case: dict, schema: list, fitness_evaluato
                 "index": len(offspring_to_mutate),
                 "values": optimized,
                 "fitness_res": fitness_res,
-                "hc_step": step
+                "hc_step": step,
+                "target_wp": target_wp
             })
             
         mutated_results = MutationExecutor.batch_execute(
@@ -110,6 +117,11 @@ def optimize_testcase_boundaries(test_case: dict, schema: list, fitness_evaluato
         )
         field_names = [f["name"] for f in schema]
 
+        best_in_batch = None
+        best_in_batch_fitness = -1
+        best_step = None
+        
+        # Lọc ra các neighbor hợp lệ theo Rule
         for i, neighbor in enumerate(mutated_results):
             # Chỉ giữ các trường thuộc schema (không để rò key meta ra ngoài)
             neighbor = {k: neighbor.get(k) for k in field_names}
@@ -128,10 +140,13 @@ def optimize_testcase_boundaries(test_case: dict, schema: list, fitness_evaluato
             except Exception:
                 n_fitness = -1
 
-            if n_fitness > best_neighbor_fitness:
-                best_neighbor_fitness = n_fitness
-                best_neighbor = neighbor
+            if n_fitness >= best_in_batch_fitness:
+                best_in_batch_fitness = n_fitness
+                best_in_batch = neighbor
                 best_step = offspring_to_mutate[i]["hc_step"]
+                
+        best_neighbor = best_in_batch
+        best_neighbor_fitness = best_in_batch_fitness
                 
         import math
         
