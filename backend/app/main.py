@@ -87,6 +87,7 @@ class OptimizeRequest(BaseModel):
     llm_provider: Optional[str] = "gemini"
     api_key_override: Optional[str] = None
     job_id: Optional[str] = None
+    max_iterations: Optional[int] = 30
 
 class SeedGenerationRequest(BaseModel):
     """
@@ -658,7 +659,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                 if algo in ["ga_hc", "hc"]:
                     # Chạy HC trên GA candidate
                     fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, raw_suite_values)[0]
-                    hc_values, hc_stats = optimize_testcase_boundaries(ga_values, schema_rules, fitness_evaluator, max_iterations=10, global_coverage_set=global_coverage_set, llm_provider=req.llm_provider, api_key_override=req.api_key_override, categories=ga_cats)
+                    hc_values, hc_stats = optimize_testcase_boundaries(ga_values, schema_rules, fitness_evaluator, max_iterations=req.max_iterations, global_coverage_set=global_coverage_set, llm_provider=req.llm_provider, api_key_override=req.api_key_override, categories=ga_cats)
                     hc_cats = reclassify_categories(hc_values, ga_cats)
                     scores_hc = calculate_v2_scores(hc_values, hc_cats, raw_suite_values)
                     
@@ -1229,6 +1230,7 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
         # Đón cấu hình giải thuật chạy qua WebSockets
         algorithm = req_data.get("algorithm", "hybrid")
         traditional_method = req_data.get("traditional_method", "bva")
+        max_iterations = int(req_data.get("max_iterations", 30))
         
         # 2. Truy vấn JSON Schema quy tắc trường từ cơ sở dữ liệu SQLite
         db_spec = db.query(models.Specification).filter(models.Specification.id == specification_id).first()
@@ -1406,7 +1408,7 @@ async def websocket_optimize_testcase_dataset(websocket: WebSocket, specificatio
             
             from .algorithms.local_pareto_optimizer import LocalParetoOptimizer
             fitness_evaluator = lambda tc: optimizer.evaluate_testcase_quality(tc, [p["values"] for p in optimizer.test_suite])
-            hc_optimizer = LocalParetoOptimizer(schema_rules, fitness_evaluator, max_iterations=10)
+            hc_optimizer = LocalParetoOptimizer(schema_rules, fitness_evaluator, max_iterations=max_iterations)
             
             raw_population = [p["values"] for p in optimizer.test_suite]
             optimized_values_list, hc_tweak_stats = hc_optimizer.optimize(raw_population)

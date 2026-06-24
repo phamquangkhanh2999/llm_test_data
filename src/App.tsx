@@ -10,6 +10,7 @@ import {
     X,
     Zap,
     GitBranch,
+    BarChart2,
 } from 'lucide-react';
 import React from 'react';
 import { AILogsViewer } from './components/AILogsViewer';
@@ -18,6 +19,7 @@ import { EvaluateData } from './components/EvaluateData';
 import ExportReportCenter from './components/ExportReportCenter';
 import { GeneticOptimize } from './components/GeneticOptimize';
 import { HillClimbingOptimize } from './components/HillClimbingOptimize';
+import { AlgorithmCharts } from './components/AlgorithmCharts';
 import { InputRequirement } from './components/InputRequirement';
 import { LoadingOverlay } from './components/LoadingOverlay';
 import { PageLayout } from './components/PageLayout';
@@ -220,6 +222,7 @@ function App() {
           {nav('evaluate', 'Đánh giá dữ liệu', <Gauge size={17} />)}
           {nav('ga', 'Tối ưu GA', <Zap size={17} />)}
           {nav('hc', 'Tối ưu HC', <GitCompare size={17} />)}
+          {nav('charts', 'Biểu đồ (GA/HC)', <BarChart2 size={17} />)}
           {nav('export', 'Lịch sử & Xuất kết quả', <HistoryIcon size={17} />)}
         </nav>
       </aside>
@@ -503,6 +506,19 @@ function App() {
               ]}
             >
               <HillClimbingOptimize />
+            </PageLayout>
+          </div>
+
+          {/* ── BIỂU ĐỒ ── */}
+          <div style={{ display: activeScreen === 'charts' ? 'block' : 'none' }}>
+            <PageLayout
+              stepId='charts'
+              title='Sơ đồ Thuật Toán GA/HC'
+              icon={<BarChart2 size={24} />}
+              description='Sơ đồ luồng thuật toán chi tiết.'
+              prerequisites={[{ met: true, warningText: '' }]}
+            >
+              <AlgorithmCharts />
             </PageLayout>
           </div>
 
