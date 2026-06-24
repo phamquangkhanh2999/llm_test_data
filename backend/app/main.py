@@ -784,6 +784,16 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                     "gaFitness": scores_ga["fitness"]
                 }
                 
+                # Tạo rationale cho HC
+                hc_rationale_parts = []
+                for field in schema_rules:
+                    fname = field["name"]
+                    old_v = ga_values.get(fname)
+                    new_v = hc_values.get(fname)
+                    if str(old_v) != str(new_v):
+                        hc_rationale_parts.append(f"Điều chỉnh {fname} từ {old_v} sang {new_v} để tối ưu biên/ràng buộc.")
+                hc_rationale = " | ".join(hc_rationale_parts) if hc_rationale_parts else llm_tc["rationale"]
+
                 hc_tc = {
                     "tcId": tc_id,
                     "scenario": llm_tc["scenario"],
@@ -791,7 +801,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                     "values": hc_values,
                     "expectedResult": hc_expected,
                     "errorDescription": hc_err_desc,
-                    "rationale": llm_tc["rationale"],
+                    "rationale": hc_rationale,
                     "validationScore": scores_hc["validationScore"],
                     "boundaryScore": scores_hc["boundaryScore"],
                     "negativeScore": scores_hc["negativeScore"],

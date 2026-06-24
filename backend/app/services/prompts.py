@@ -275,7 +275,7 @@ def get_seed_generation_instructions(target_count: int, distribution_str: str, p
         "- **ĐA DẠNG & KHÔNG TRÙNG LẶP:** Dữ liệu của các test case không được trùng lặp. Các giá trị trong `values` phải được biến đổi đa dạng.\n"
         "- **DỮ LIỆU THỰC TẾ:** Sinh dữ liệu kiểm thử THỰC TẾ và có NGỮ CẢNH NGHIỆP VỤ rõ ràng.\n"
         "- 'scenario' phải mô tả chi tiết kịch bản bằng Tiếng Việt.\n"
-        "- 'expectedResult' PHẢI nhất quán với scenario (VD: 'Thành công' hoặc 'Thất bại: lý do').\n\n"
+        "- **HARD RULE VỀ EXPECTED RESULT:** NGUYÊN TẮC TỐI THƯỢNG: Nếu dữ liệu (`values`) chứa BẤT KỲ payload bảo mật nào (SQLi, XSS) hoặc cố tình nhập sai định dạng, vượt quá độ dài, `expectedResult` BẮT BUỘC phải là HTTP 400 hoặc HTTP 422 và mô tả LỖI (Ví dụ: 'HTTP 400 - Phát hiện mã độc trong address' hoặc 'HTTP 422 - Email sai định dạng'). TUYỆT ĐỐI KHÔNG ĐƯỢC ghi chú là 'Thành công' hoặc 'HTTP 200' cho một testcase vi phạm!\n\n"
         "**ĐỊNH DẠNG ĐẦU RA (OUTPUT FORMAT):**\n"
         "Trả về ĐÚNG cấu trúc JSON sau, không bọc bằng markdown (không có ```json):\n"
         "{\n"

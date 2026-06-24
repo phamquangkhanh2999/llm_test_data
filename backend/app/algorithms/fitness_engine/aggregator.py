@@ -51,25 +51,29 @@ class FitnessEngine:
         semantic_score = (semantic_sum / total_fields) * 100.0
 
         # Adjust weights to support Coverage-Driven Optimization
+        is_security = "NEGATIVE_SECURITY" in categories_upper
+
+        expected_result_coverage = min(error_path_score, 100.0)
+
         if is_negative:
             # If it's a negative test case, we heavily rely on error path score
             raw_fitness = (
-                schema_score * 0.15 +
-                coverage_score * 0.25 +
+                schema_score * 0.25 +
+                coverage_score * 0.10 +
                 boundary_score * 0.25 +
-                min(error_path_score, 100.0) * 0.20 +
+                expected_result_coverage * 0.25 +
                 semantic_score * 0.15
             )
-            # Noise Penalty for Negative
-            if violation_count > 2:
-                penalty += (violation_count - 2) * 20.0
+            # Noise Penalty for Negative (Remove for Security cases)
+            if not is_security and violation_count > 3:
+                penalty += (violation_count - 3) * 10.0
         else:
             # For positive test cases, error paths are strictly penalized
             raw_fitness = (
-                schema_score * 0.40 +
-                coverage_score * 0.10 +
-                boundary_score * 0.30 +
-                semantic_score * 0.20
+                schema_score * 0.25 +
+                coverage_score * 0.25 +
+                boundary_score * 0.25 +
+                semantic_score * 0.25
             )
             if violation_count > 0:
                 penalty += 1000.0  # Force fitness to 0 for invalid positive tests

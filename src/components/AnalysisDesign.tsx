@@ -428,7 +428,7 @@ export const AnalysisDesign: React.FC = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                               {/* Success values */}
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>CÁC GIÁ TRỊ ENUM HỢP LỆ (SUCCESS VALUES)</span>
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>CÁC GIÁ TRỊ MẪU HỢP LỆ (SUCCESS VALUES)</span>
                                 <input 
                                   type="text"
                                   value={f.successValues?.join(', ') ?? ''}
@@ -447,7 +447,7 @@ export const AnalysisDesign: React.FC = () => {
 
                               {/* Failure values (JSON Edit) */}
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>CÁC GIÁ TRỊ ENUM LỖI KÈM LÝ DO (FAILURE VALUES - JSON)</span>
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>CÁC GIÁ TRỊ MẪU LỖI KÈM LÝ DO (FAILURE VALUES - JSON)</span>
                                 <input 
                                   type="text"
                                   value={f.failureValues ? JSON.stringify(f.failureValues) : ''}
@@ -523,19 +523,24 @@ export const AnalysisDesign: React.FC = () => {
                     <div style={{ marginTop: 16 }}>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: 8 }}>Luật nghiệp vụ (Business Rules)</div>
                       <div style={{ background: 'rgba(59, 130, 246, 0.05)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px dashed rgba(59, 130, 246, 0.2)', fontSize: 13, color: 'var(--text-secondary)' }}>
-                        {parsedBusinessRules.map((br, idx) => (
-                          <div key={`br-${idx}`} style={{ marginBottom: 6 }}>
-                            <strong style={{ color: 'var(--brand-primary)' }}>ĐK: {br.condition}</strong>
-                            {br.expectedAction && <span> → <span style={{color: br.expectedAction === 'allow' ? 'var(--color-emerald)' : 'var(--color-rose)'}}>{br.expectedAction.toUpperCase()}</span></span>}
-                            {br.errorMessage && <span> (Lỗi: {br.errorMessage})</span>}
-                          </div>
-                        ))}
-                        {parsedConstraints.map((c, idx) => {
-                          const fieldName = c.field || (c.when && c.when.field) || c.constraint_id || 'Unknown';
+                        {parsedBusinessRules.map((br, idx) => {
+                          const fieldName = br.field || 'General';
+                          const ruleDesc = br.description || br.rule_id || JSON.stringify(br);
+                          const errMsg = br.errorMessage || '';
+                          return (
+                            <div key={`br-${idx}`} style={{ marginBottom: 6 }}>
+                              <strong style={{ color: 'var(--brand-primary)' }}>Quy tắc ({fieldName}):</strong> {ruleDesc}
+                              {errMsg && <span style={{ color: 'var(--color-rose)', marginLeft: 4 }}>(Lỗi: {errMsg})</span>}
+                            </div>
+                          );
+                        })}
+                        {Array.from(new Map(parsedConstraints.map(c => [c.rule || c.description || JSON.stringify(c), c])).values()).map((c: any, idx) => {
                           const ruleDesc = c.rule || c.description || JSON.stringify(c);
+                          let label = c.constraint_id || 'Logic';
+                          if (label.startsWith('C_')) label = label.substring(2);
                           return (
                             <div key={`c-${idx}`} style={{ marginBottom: 6 }}>
-                              <strong style={{ color: 'var(--color-violet)' }}>Ràng buộc ({fieldName}):</strong> {ruleDesc}
+                              <strong style={{ color: 'var(--color-violet)' }}>Ràng buộc chéo ({label}):</strong> {ruleDesc}
                             </div>
                           );
                         })}

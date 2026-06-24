@@ -234,8 +234,10 @@ export const HillClimbingOptimize: React.FC = () => {
                 {hcData.slice(0, 50).map((tc: any, i: number) => {
                   const isSeed = String(tc.origin || '').toLowerCase().includes('seed');
                   const originStr = isSeed ? 'LLM (Seed)' : (tc.origin || 'HC');
-                  const isError = tc.expectedResult?.status === 'Error' || String(tc.expectedResult).toLowerCase().includes('error');
-                  
+                  const resultStr = String(tc.expectedResult || tc.expected_result || '');
+                  const cleanResult = resultStr.toUpperCase();
+                  const isSuccess = cleanResult.startsWith('THÀNH CÔNG') || cleanResult.startsWith('SUCCESS') || cleanResult.includes('HTTP 200') || cleanResult.includes('HTTP 201');
+                  const isError = !isSuccess;
                   return (
                     <tr
                       key={i}
