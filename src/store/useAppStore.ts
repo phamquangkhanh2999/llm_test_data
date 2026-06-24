@@ -144,6 +144,7 @@ interface AppState {
   fetchGenerationDetail: (historyId: string) => Promise<any | null>;
   saveGenerationSnapshot: (payload: any) => Promise<void>;
   deleteGenerationHistory: (historyId: string) => Promise<void>;
+  restoreSessionFromHistory: (snapshot: any) => void;
   handleHistorySelect: (historyItem: any) => void;
   // ── Setters bổ sung ──
   setProjectMeta: (
@@ -231,7 +232,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
     selectedPresetId: '',
     selectedMethods: ['random'],
-    boundaryCount: 3,
+    boundaryCount: 4,
     partitionCount: 3,
     selectedSuiteName: '',
 
@@ -784,11 +785,27 @@ export const useAppStore = create<AppState>((set, get) => {
             (h: any) => h.id !== historyId,
           ),
         }));
-        toast.info('Đã xóa bản ghi lịch sử báo cáo.');
+        toast.success('Đã xóa báo cáo lịch sử.');
       } catch (error) {
         console.error('Lỗi khi xóa lịch sử báo cáo:', error);
-        toast.error('Không thể xóa bản ghi này.');
+        toast.error('Không thể xóa báo cáo lúc này.');
       }
+    },
+
+    restoreSessionFromHistory: (snapshot: any) => {
+      set({
+        rawText: snapshot.step1_raw_text || '',
+        parsedSchema: snapshot.step2_schema?.fields || [],
+        parsedBusinessRules: snapshot.step2_schema?.business_rules || [],
+        parsedConstraints: snapshot.step2_schema?.constraints || [],
+        initialSeeds: snapshot.step3_seeds?.seeds || [],
+        evaluationResult: snapshot.step3_seeds?.evaluation || null,
+        evaluationMetrics: snapshot.step3_seeds?.metrics || null,
+        hcResult: snapshot.step4_optimized_data || [],
+        schemaName: snapshot.spec_name || 'Restored Session',
+        activeScreen: 'evaluate',
+      });
+      toast.success('Đã khôi phục phiên làm việc từ lịch sử!');
     },
 
     handleHistorySelect: (historyItem) => {
@@ -830,7 +847,7 @@ export const useAppStore = create<AppState>((set, get) => {
         llmProvider: 'openai',
         selectedPresetId: '',
         selectedMethods: ['random'],
-        boundaryCount: 3,
+        boundaryCount: 4,
         partitionCount: 3,
         methodSeeds: {
           random: [],

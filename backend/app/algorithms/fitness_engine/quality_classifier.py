@@ -34,7 +34,8 @@ def classify_quality(val_str: str, field: dict) -> FieldQualityStatus:
     regex = field.get("regex")
     if regex:
         try:
-            if not re.search(regex, val_str):
+            patched_regex = regex.replace(r"\p{L}", r"a-zA-ZÀ-ỹđĐ")
+            if not re.search(patched_regex, val_str):
                 quality.format_score = 0.0
                 return FieldQualityStatus(status=InvalidType.INVALID_FORMAT, quality=quality)
         except re.error:

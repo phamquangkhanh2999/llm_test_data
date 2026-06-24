@@ -847,7 +847,7 @@ export const GeneticOptimize: React.FC = () => {
               label='Success Rate'
               vnLabel='Tỉ lệ thành công'
               infoText='Tỉ lệ các ca kiểm thử đạt kết quả thành công (Success / Hợp lệ).'
-              value={ma.finalResultData?.length ? `${(ma.finalResultData.filter((d: any) => d.expectedResult === 'Success' || d.expectedResult === 'Hợp lệ' || String(d.expectedResult).includes('HTTP 200')).length / ma.finalResultData.length * 100).toFixed(1)}%` : '0%'}
+              value={ma.finalResultData?.length ? `${(ma.finalResultData.filter((d: any) => getExpectedResultShort(d.expectedResult) === 'Success').length / ma.finalResultData.length * 100).toFixed(1)}%` : '0%'}
               accent='var(--color-emerald)'
             />
             <Metric
@@ -2026,10 +2026,22 @@ const Metric: React.FC<{
   </div>
 );
 
+// Verdict nhị phân, KHÔNG còn phụ thuộc mã HTTP. Ưu tiên dấu hiệu lỗi trước
+// (tránh chuỗi lý do có chữ "hợp lệ" bị đọc nhầm). Vẫn nhận data cũ ("HTTP …"/"VALIDATION_ERROR").
 const getExpectedResultShort = (expectedResult: string): string => {
   if (!expectedResult) return 'Success';
-  const clean = expectedResult.toUpperCase();
-  if (clean.startsWith('THÀNH CÔNG') || clean.startsWith('SUCCESS') || clean.includes('HTTP 200') || clean.includes('HTTP 201')) {
+  const clean = String(expectedResult).trim().toUpperCase();
+  if (
+    clean.startsWith('LỖI') || clean.startsWith('ERROR') || clean.startsWith('THẤT BẠI') ||
+    clean.includes('VALIDATION_ERROR') ||
+    clean.includes('HTTP 400') || clean.includes('HTTP 422') || clean.includes('HTTP 500')
+  ) {
+    return 'Error';
+  }
+  if (
+    clean.startsWith('HỢP LỆ') || clean.startsWith('SUCCESS') || clean.startsWith('THÀNH CÔNG') ||
+    clean.includes('HTTP 200') || clean.includes('HTTP 201')
+  ) {
     return 'Success';
   }
   return 'Error';
@@ -2037,21 +2049,23 @@ const getExpectedResultShort = (expectedResult: string): string => {
 
 const getExpectedError = (expectedResult: string): string => {
   if (!expectedResult) return 'Không có';
-  const clean = expectedResult.trim();
+  const clean = String(expectedResult).trim();
   if (getExpectedResultShort(clean) === 'Success') return 'Không có';
-  
-  if (clean.toUpperCase().includes('HTTP 400') || clean.toUpperCase().includes('HTTP 422') || clean.toUpperCase().includes('HTTP 500')) {
+  const upper = clean.toUpperCase();
+
+  // Format mới: "Lỗi: <lý do>"
+  if (upper.startsWith('LỖI')) {
+    return clean.replace(/^lỗi\s*:?\s*/i, '').trim() || clean;
+  }
+  // Format cũ: "HTTP 4xx - <lý do>"
+  if (upper.includes('HTTP 400') || upper.includes('HTTP 422') || upper.includes('HTTP 500')) {
     const parts = clean.split('-');
     if (parts.length > 1) {
       return parts.slice(1).join('-').trim();
     }
   }
 
-  if (
-    clean.toUpperCase().includes('THẤT BẠI') ||
-    clean.toUpperCase().includes('ERROR') ||
-    clean.toUpperCase().includes('FAIL')
-  ) {
+  if (upper.includes('THẤT BẠI') || upper.includes('ERROR') || upper.includes('FAIL')) {
     let errorPart = clean;
     const splitIndex = clean.indexOf(' Kỳ vọng');
     if (splitIndex !== -1) {

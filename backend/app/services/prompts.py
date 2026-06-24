@@ -12,28 +12,28 @@ def get_parse_spec_combined_prompt(raw_text: str) -> tuple[str, str]:
         
         "# MISSION\n"
         "Nhiệm vụ chính:\n"
-        "Phân tích đặc tả yêu cầu nghiệp vụ để trích xuất danh sách các Trường dữ liệu (Fields Schema), Quy tắc nghiệp vụ (Business Rules), và Ràng buộc (Constraints).\n"
+        "Phân tích đặc tả yêu cầu nghiệp vụ để trích xuất danh sách các Trường dữ liệu (Fields Schema), Quy tắc nghiệp vụ (Business Rules), và Ràng buộc logic chéo (Constraints).\n"
         "Mục tiêu:\n"
-        "- Trích xuất chính xác 100% các trường dữ liệu và ràng buộc kiểu dữ liệu đầu vào.\n"
+        "- TRÍCH XUẤT VÉT CẠN 100%: Tuyệt đối không được bỏ sót bất kỳ trường dữ liệu, quy tắc, ràng buộc biên, hay logic chéo (If-Then) nào có trong tài liệu.\n"
         "- BẮT BUỘC xác định đầy đủ các giới hạn và miền giá trị (minLength, maxLength, minValue, maxValue) cho từng trường.\n"
-        "Không tối ưu số lượng. Chỉ tối ưu chất lượng.\n\n"
+        "- Mỗi quy tắc phải đi kèm với Kết quả mong đợi/Thông báo lỗi (Expected Results) cực kỳ chi tiết.\n\n"
         
         "# CONTEXT\n"
         f"Raw Specification:\n{raw_text}\n\n"
         
         "# HARD RULES\n"
-        "1. BẮT BUỘC trích xuất tất cả các trường dữ liệu xuất hiện trong đặc tả. Không được tự ý tạo thêm hoặc bỏ bớt trường.\n"
-        "2. Không được suy diễn dữ liệu ngoài thông tin đặc tả đã cung cấp. Không sử dụng ví dụ mặc định ngoài đặc tả.\n"
-        "3. Mỗi quy tắc nghiệp vụ phải có thông báo lỗi tương ứng bằng tiếng Việt ('errorMessage').\n"
-        "4. Bắt buộc điền đúng loại dữ liệu 'type' của trường từ danh sách: ['string', 'number', 'email', 'card', 'phone', 'date', 'boolean']. Không dùng các loại khác.\n"
-        "5. Xác định đúng kiểu nhập liệu 'inputType' của trường (ví dụ: 'textbox', 'dropdown', 'datepicker', 'checkbox').\n"
-        "6. Định dạng đầu ra phải là chuỗi JSON thuần khiết, không có thẻ markdown wrapped (ví dụ: không có ```json).\n"
-        "7. Mỗi trường BẮT BUỘC có 'successValues' (2-3 ví dụ HỢP LỆ, thực tế, thỏa MỌI ràng buộc) và "
-        "'failureValues' (1-3 ví dụ vi phạm, mỗi cái kèm 'reason' nêu rõ vi phạm ràng buộc nào). "
-        "Đây là dữ liệu mẫu để sinh test case bám đúng yêu cầu — KHÔNG bịa giá trị vô nghĩa.\n"
-        "8. LƯU Ý QUAN TRỌNG VỀ REGEX: Nếu trường dữ liệu (ví dụ: họ tên, địa chỉ) cho phép tiếng Việt có dấu, "
+        "1. VÉT CẠN QUY TẮC: BẮT BUỘC trích xuất tất cả các trường dữ liệu và 100% các quy tắc (Business Rules) xuất hiện trong đặc tả. Tuyệt đối không được tự ý gom nhóm, tóm tắt hoặc bỏ bớt bất kỳ quy tắc nào dù là nhỏ nhất.\n"
+        "2. VÉT CẠN LOGIC (CONSTRAINTS): Bất kỳ câu nào trong đặc tả có chứa logic điều kiện (ví dụ: 'Nếu... thì...', 'Chỉ khi...', 'Phụ thuộc vào...') BẮT BUỘC phải được trích xuất thành đối tượng trong mảng 'constraints'.\n"
+        "3. EXPECTED RESULTS: Mỗi quy tắc (rule) BẮT BUỘC phải có 'errorMessage' (Kết quả mong đợi khi vi phạm quy tắc) thật cụ thể và khớp với nghiệp vụ bằng tiếng Việt.\n"
+        "4. Không được suy diễn dữ liệu ngoài thông tin đặc tả đã cung cấp.\n"
+        "5. Bắt buộc điền đúng loại dữ liệu 'type' của trường từ danh sách: ['string', 'number', 'email', 'card', 'phone', 'date', 'boolean'].\n"
+        "6. Xác định đúng kiểu nhập liệu 'inputType' của trường (ví dụ: 'textbox', 'dropdown', 'datepicker', 'checkbox').\n"
+        "7. Định dạng đầu ra phải là chuỗi JSON thuần khiết, không có thẻ markdown wrapped (ví dụ: không có ```json).\n"
+        "8. LƯU Ý VỀ DỮ LIỆU MẪU: Mỗi trường BẮT BUỘC có 'successValues' (2-3 ví dụ HỢP LỆ) và 'failureValues' (1-3 ví dụ vi phạm kèm 'reason').\n"
+        "9. LƯU Ý QUAN TRỌNG VỀ REGEX: Nếu trường dữ liệu (ví dụ: họ tên, địa chỉ) cho phép tiếng Việt có dấu, "
         "regex BẮT BUỘC phải hỗ trợ ký tự Unicode (sử dụng \\p{L} thay vì chỉ a-zA-Z). Ví dụ: '^[\\p{L}0-9\\s]+$' thay vì '^[a-zA-Z0-9\\s]+$'. "
-        "Đảm bảo regex không xung đột và phải bao phủ được toàn bộ các ký tự có trong 'successValues'.\n\n"
+        "Đảm bảo regex không xung đột và phải bao phủ được toàn bộ các ký tự có trong 'successValues'.\n"
+        "10. LOGIC KIỂM TRA ĐỘC LẬP: Các Business Rules phải thể hiện sự độc lập của từng trường dữ liệu. KHÔNG ĐƯỢC sinh ra chuỗi logic phụ thuộc kiểu 'A hợp lệ thì mới kiểm tra B' cho việc validate format cơ bản. Mỗi trường đều phải được kiểm tra (required, datatype, length, regex) một cách độc lập.\n\n"
         
         "# EXECUTION PROCESS\n"
         "Thực hiện theo đúng thứ tự sau:\n"
@@ -246,15 +246,22 @@ def get_benchmark_analysis_prompt(results: dict) -> tuple[str, str]:
     user_prompt = f"Phân tích dữ liệu benchmark sau và trả về đánh giá JSON:\n{json.dumps(results, ensure_ascii=False)}"
     return system_instruction, user_prompt
 
-def get_seed_generation_instructions(target_count: int, distribution_str: str, previous_context: str = "", test_methods: list = None) -> tuple[str, str]:
+def get_seed_generation_instructions(target_count: int, distribution_str: str, previous_context: str = "", test_methods: list = None, boundary_count: int = 4) -> tuple[str, str]:
     """
     Hàm sinh prompt cho LLM để sinh toàn bộ dữ liệu F0 theo phân phối (distribution) yêu cầu trong 1 lần gọi.
     """
     techniques_str = ""
     if test_methods:
+        if boundary_count <= 2:
+            bva_points = "(min, max)"
+        elif boundary_count == 4:
+            bva_points = "(min-1, min, max, max+1)"
+        else:
+            bva_points = "(min-1, min, min+1, max-1, max, max+1)"
+            
         method_names = {
             "ep": "Phân vùng tương đương (Equivalence Partitioning - EP)",
-            "bva": "Phân tích giá trị biên (Boundary Value Analysis - BVA)",
+            "bva": f"Phân tích giá trị biên (Boundary Value Analysis - BVA): Phân tích chi tiết {boundary_count} giá trị biên {bva_points}",
             "random": "Chọn ngẫu nhiên (Random Testing)"
         }
         applied = [method_names.get(m, m) for m in test_methods]
@@ -267,15 +274,21 @@ def get_seed_generation_instructions(target_count: int, distribution_str: str, p
         "**YÊU CẦU PHÂN PHỐI DỮ LIỆU (DISTRIBUTION REQUIREMENTS):**\n"
         f"Bạn PHẢI sinh ĐÚNG tổng cộng {target_count} test cases, với phân phối chính xác như sau:\n{distribution_str}\n\n"
         "- 'valid': Các kịch bản HỢP LỆ (Happy Path, normal cases).\n"
-        "- 'boundary': Các kịch bản KIỂM THỬ BIÊN (Boundary Value Analysis).\n"
+        "- 'boundary': Các kịch bản KIỂM THỬ BIÊN (Boundary Value Analysis - tập trung vào các giá trị cận biên như min-1, min, min+1, max-1, max, max+1).\n"
         "- 'invalid': Các kịch bản LỖI (Negative cases) - cố tình vi phạm định dạng, khoảng giá trị.\n\n"
         "**RÀNG BUỘC (CONSTRAINTS) QUAN TRỌNG:**\n"
-        f"- **MANDATORY OUTPUT CONSTRAINT:** You MUST return EXACTLY {target_count} test cases. Never return fewer than requested.\n"
+        "- **MANDATORY OUTPUT CONSTRAINT:** You MUST return EXACTLY {target_count} test cases. Never return fewer than requested.\n"
         "- **KHÔNG BỎ TRỐNG CÁC TRƯỜNG:** Với mỗi test case, đối tượng `values` PHẢI chứa đầy đủ tất cả các trường dữ liệu được định nghĩa trong schema (trừ khi cố tình test trường hợp thiếu dữ liệu).\n"
         "- **ĐA DẠNG & KHÔNG TRÙNG LẶP:** Dữ liệu của các test case không được trùng lặp. Các giá trị trong `values` phải được biến đổi đa dạng.\n"
         "- **DỮ LIỆU THỰC TẾ:** Sinh dữ liệu kiểm thử THỰC TẾ và có NGỮ CẢNH NGHIỆP VỤ rõ ràng.\n"
         "- 'scenario' phải mô tả chi tiết kịch bản bằng Tiếng Việt.\n"
-        "- **HARD RULE VỀ EXPECTED RESULT:** NGUYÊN TẮC TỐI THƯỢNG: Nếu dữ liệu (`values`) chứa BẤT KỲ payload bảo mật nào (SQLi, XSS) hoặc cố tình nhập sai định dạng, vượt quá độ dài, `expectedResult` BẮT BUỘC phải là HTTP 400 hoặc HTTP 422 và mô tả LỖI (Ví dụ: 'HTTP 400 - Phát hiện mã độc trong address' hoặc 'HTTP 422 - Email sai định dạng'). TUYỆT ĐỐI KHÔNG ĐƯỢC ghi chú là 'Thành công' hoặc 'HTTP 200' cho một testcase vi phạm!\n\n"
+        "- **BẮT BUỘC KIỂM TRA ĐỘC LẬP TỪNG TRƯỜNG DỮ LIỆU:** Mỗi trường (field) phải được xác thực hoàn toàn độc lập với nhau (về kiểu dữ liệu, bắt buộc, độ dài, định dạng, v.v.).\n"
+        "- **EXPECTED RESULT LOGIC MỚI BẮT BUỘC:**\n"
+        "   + Nếu TẤT CẢ các trường đều đúng chuẩn/hợp lệ -> `expectedResult` là 'SUCCESS'.\n"
+        "   + Nếu có ÍT NHẤT MỘT trường vi phạm -> `expectedResult` là 'VALIDATION_ERROR' (kèm tên trường lỗi ưu tiên nhất).\n"
+        "   + TUYỆT ĐỐI KHÔNG dùng logic chuỗi (VD: tên đúng thì mới báo lỗi email). Lỗi trường nào báo lỗi trường đó!\n"
+        "   + Nếu có lỗi, `categories` PHẢI chứa 'negative_functional' hoặc 'negative_security'!\n"
+        "- Chỉ những testcase hoàn toàn đúng chuẩn, không vi phạm bất kỳ ràng buộc nào, mới được phép có `expectedResult` là 'SUCCESS' và category là 'positive'.\n\n"
         "**ĐỊNH DẠNG ĐẦU RA (OUTPUT FORMAT):**\n"
         "Trả về ĐÚNG cấu trúc JSON sau, không bọc bằng markdown (không có ```json):\n"
         "{\n"

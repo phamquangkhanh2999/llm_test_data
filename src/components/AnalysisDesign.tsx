@@ -90,6 +90,7 @@ export const AnalysisDesign: React.FC = () => {
     rawText, parsedSchema, parsedBusinessRules, parsedConstraints, setParsedSchema, handleParseSpec, isParsing,
     schemaName, setActiveScreen, markScreenCompleted, setSelectedMethods,
     handleGenerateTestSuite, handleEvaluateSeeds,
+    boundaryCount, setBoundaryCount,
   } = useAppStore();
 
   const [techniques, setTechniques] = useState<string[]>(['ep', 'bva']);
@@ -98,7 +99,7 @@ export const AnalysisDesign: React.FC = () => {
 
   const hasSchema = parsedSchema.length > 0;
   const constraintCount = parsedSchema.filter(f => f.minValue != null || f.maxValue != null || f.minLength != null || f.maxLength != null || f.regex || f.allowedValues?.length).length;
-  const estimated = Math.max(parsedSchema.length, parsedSchema.length * Math.max(1, techniques.length) * 2 + 4);
+  const estimated = Math.min(60, (techniques.length || 1) * 12 + Math.max(0, parsedSchema.length - 3) * 4);
 
   const updateField = (i: number, patch: Partial<FieldConstraint>) => {
     setParsedSchema((prev) => prev.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
@@ -592,6 +593,23 @@ export const AnalysisDesign: React.FC = () => {
                   </div>
                 );
               })}
+
+              {techniques.includes('bva') && (
+                <div style={{ marginTop: 4, padding: '12px', background: 'var(--brand-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-primary)', marginBottom: 8 }}>
+                    Cấu hình Cận biên (BVA)
+                  </div>
+                  <select 
+                    value={boundaryCount}
+                    onChange={(e) => setBoundaryCount(Number(e.target.value))}
+                    style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid var(--border-subtle)', background: 'var(--bg-card)', fontSize: 12.5, outline: 'none', color: 'var(--text-primary)' }}
+                  >
+                    <option value={2}>2 Biên (min, max) - Nhanh chóng</option>
+                    <option value={4}>4 Biên (min-1, min, max, max+1) - Khuyên dùng</option>
+                    <option value={6}>6 Biên (min-1, min, min+1, max-1, max, max+1) - Dò quét sâu</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 12 }}>

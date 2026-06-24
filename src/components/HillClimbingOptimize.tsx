@@ -236,7 +236,13 @@ export const HillClimbingOptimize: React.FC = () => {
                   const originStr = isSeed ? 'LLM (Seed)' : (tc.origin || 'HC');
                   const resultStr = String(tc.expectedResult || tc.expected_result || '');
                   const cleanResult = resultStr.toUpperCase();
-                  const isSuccess = cleanResult.startsWith('THÀNH CÔNG') || cleanResult.startsWith('SUCCESS') || cleanResult.includes('HTTP 200') || cleanResult.includes('HTTP 201');
+                  // Cùng logic verdict với getExpectedResultShort: ưu tiên dấu hiệu lỗi, không dùng mã HTTP.
+                  const hasErr = cleanResult.startsWith('LỖI') || cleanResult.startsWith('ERROR') || cleanResult.startsWith('THẤT BẠI') ||
+                    cleanResult.includes('VALIDATION_ERROR') ||
+                    cleanResult.includes('HTTP 400') || cleanResult.includes('HTTP 422') || cleanResult.includes('HTTP 500');
+                  const hasOk = cleanResult.startsWith('HỢP LỆ') || cleanResult.startsWith('SUCCESS') || cleanResult.startsWith('THÀNH CÔNG') ||
+                    cleanResult.includes('HTTP 200') || cleanResult.includes('HTTP 201');
+                  const isSuccess = hasOk && !hasErr;
                   const isError = !isSuccess;
                   return (
                     <tr

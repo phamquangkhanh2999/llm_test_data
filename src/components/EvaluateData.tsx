@@ -212,6 +212,8 @@ export const EvaluateData: React.FC = () => {
     handleEvaluateSeeds,
     evaluationResult,
     setEvaluationMetrics,
+    boundaryCount,
+    setBoundaryCount,
   } = useAppStore();
 
   const [selectedTC, setSelectedTC] = React.useState<any | null>(null);
@@ -512,6 +514,23 @@ export const EvaluateData: React.FC = () => {
             );
           })}
         </div>
+
+        {selectedMethods.includes('bva') && (
+          <div style={{ marginBottom: 16, padding: '12px', background: 'var(--brand-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-primary)', marginBottom: 8 }}>
+              Cấu hình Cận biên (BVA)
+            </div>
+            <select 
+              value={boundaryCount}
+              onChange={(e) => setBoundaryCount(Number(e.target.value))}
+              style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid var(--border-subtle)', background: 'var(--bg-card)', fontSize: 12.5, outline: 'none', color: 'var(--text-primary)' }}
+            >
+              <option value={2}>2 Biên (min, max) - Nhanh chóng</option>
+              <option value={4}>4 Biên (min-1, min, max, max+1) - Khuyên dùng</option>
+              <option value={6}>6 Biên (min-1, min, min+1, max-1, max, max+1) - Dò quét sâu</option>
+            </select>
+          </div>
+        )}
 
         <button
           onClick={handleGenerate}
@@ -956,7 +975,6 @@ export const EvaluateData: React.FC = () => {
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: 4,
-                      background: 'var(--brand-primary)',
                     }}
                   >
                     <FileJson size={13} />
@@ -1478,10 +1496,22 @@ const ColHeader: React.FC<{
     </div>
   </th>
 );
+// Verdict nhị phân, KHÔNG còn phụ thuộc mã HTTP. Ưu tiên dấu hiệu lỗi trước
+// (tránh chuỗi lý do có chữ "hợp lệ" bị đọc nhầm). Vẫn nhận data cũ ("HTTP …"/"VALIDATION_ERROR").
 const getExpectedResultShort = (expectedResult: string): string => {
   if (!expectedResult) return 'Success';
-  const clean = expectedResult.toUpperCase();
-  if (clean.startsWith('THÀNH CÔNG') || clean.startsWith('SUCCESS') || clean.includes('HTTP 200') || clean.includes('HTTP 201')) {
+  const clean = String(expectedResult).trim().toUpperCase();
+  if (
+    clean.startsWith('LỖI') || clean.startsWith('ERROR') || clean.startsWith('THẤT BẠI') ||
+    clean.includes('VALIDATION_ERROR') ||
+    clean.includes('HTTP 400') || clean.includes('HTTP 422') || clean.includes('HTTP 500')
+  ) {
+    return 'Error';
+  }
+  if (
+    clean.startsWith('HỢP LỆ') || clean.startsWith('SUCCESS') || clean.startsWith('THÀNH CÔNG') ||
+    clean.includes('HTTP 200') || clean.includes('HTTP 201')
+  ) {
     return 'Success';
   }
   return 'Error';
@@ -1489,21 +1519,23 @@ const getExpectedResultShort = (expectedResult: string): string => {
 
 const getExpectedError = (expectedResult: string): string => {
   if (!expectedResult) return 'Không có';
-  const clean = expectedResult.trim();
+  const clean = String(expectedResult).trim();
   if (getExpectedResultShort(clean) === 'Success') return 'Không có';
-  
-  if (clean.toUpperCase().includes('HTTP 400') || clean.toUpperCase().includes('HTTP 422') || clean.toUpperCase().includes('HTTP 500')) {
+  const upper = clean.toUpperCase();
+
+  // Format mới: "Lỗi: <lý do>"
+  if (upper.startsWith('LỖI')) {
+    return clean.replace(/^lỗi\s*:?\s*/i, '').trim() || clean;
+  }
+  // Format cũ: "HTTP 4xx - <lý do>"
+  if (upper.includes('HTTP 400') || upper.includes('HTTP 422') || upper.includes('HTTP 500')) {
     const parts = clean.split('-');
     if (parts.length > 1) {
       return parts.slice(1).join('-').trim();
     }
   }
 
-  if (
-    clean.toUpperCase().includes('THẤT BẠI') ||
-    clean.toUpperCase().includes('ERROR') ||
-    clean.toUpperCase().includes('FAIL')
-  ) {
+  if (upper.includes('THẤT BẠI') || upper.includes('ERROR') || upper.includes('FAIL')) {
     let errorPart = clean;
     const splitIndex = clean.indexOf(' Kỳ vọng');
     if (splitIndex !== -1) {

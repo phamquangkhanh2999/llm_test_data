@@ -45,7 +45,7 @@ const STEPS = [
 export const ExportReportCenter: React.FC = () => {
   const {
     generationHistory, isFetchingGenHistory,
-    fetchGenerationHistory, fetchGenerationDetail, deleteGenerationHistory,
+    fetchGenerationHistory, fetchGenerationDetail, deleteGenerationHistory, restoreSessionFromHistory,
     hcResult, schemaName
   } = useAppStore();
 
@@ -111,7 +111,7 @@ export const ExportReportCenter: React.FC = () => {
     const report = buildReport();
     if (report.test_suite.length === 0) return;
     downloadBlob(JSON.stringify(report, null, 2), 'application/json', 'json');
-    toast.success('Đã xuất file JSON (Dữ liệu MA).');
+    toast.success('Đã xuất file JSON.');
   };
 
   const handleExportCSV = () => {
@@ -204,14 +204,14 @@ export const ExportReportCenter: React.FC = () => {
               <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>
                 <Database size={32} style={{ marginBottom: 12, opacity: 0.25 }} />
                 <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Chưa có phiên chạy nào được lưu</div>
-                <div style={{ fontSize: 13, marginTop: 4 }}>Hãy hoàn tất bước "MA Cải Tiến" để hệ thống tự lưu báo cáo tại đây.</div>
+                <div style={{ fontSize: 13, marginTop: 4 }}>Hãy hoàn tất bước "Tối ưu (GA/HC)" để hệ thống tự lưu báo cáo tại đây.</div>
               </div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
                   <tr>
                     <th style={{ padding: '12px 20px', textAlign: 'left' }}>Tên bộ test</th>
-                    <th style={{ padding: '12px 20px', textAlign: 'left' }}>Độ phủ (MA)</th>
+                    <th style={{ padding: '12px 20px', textAlign: 'left' }}>Độ phủ</th>
                     <th style={{ padding: '12px 20px', textAlign: 'left' }}>Ngày chạy</th>
                     <th style={{ padding: '12px 20px', textAlign: 'right' }}>Thao tác</th>
                   </tr>
@@ -258,8 +258,15 @@ export const ExportReportCenter: React.FC = () => {
           <ArrowLeft size={15} /> Quay lại danh sách
         </button>
         {snapshot && (
-          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            Đang xem lại: <b style={{ color: 'var(--text-primary)' }}>{snapshot.spec_name}</b> · {fmtDate(snapshot.created_at)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              Đang xem lại: <b style={{ color: 'var(--text-primary)' }}>{snapshot.spec_name}</b> · {fmtDate(snapshot.created_at)}
+            </div>
+            <button onClick={() => {
+              restoreSessionFromHistory(snapshot);
+            }} className="btn btn-primary" style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <RefreshCw size={15} /> Khôi phục phiên này
+            </button>
           </div>
         )}
       </div>
@@ -307,9 +314,17 @@ export const ExportReportCenter: React.FC = () => {
         </div>
       ) : (
         <div className="glass-card" style={{ padding: 20 }}>
-          {activeStep === 1 && <StepInputView data={snapshot.step1_input_snapshot} />}
-          {activeStep === 2 && <StepAnalysisView data={snapshot.step2_analysis_snapshot} />}
-          {activeStep === 3 && <StepEvaluationView data={snapshot.step3_evaluation_snapshot} />}
+          {activeStep === 1 && <StepInputView data={{ raw_text: snapshot.step1_raw_text }} />}
+          {activeStep === 2 && <StepAnalysisView data={{
+            fields: snapshot.step2_schema?.fields,
+            initial_seeds: snapshot.step3_seeds?.seeds,
+            constraints: snapshot.step2_schema?.constraints,
+            businessRules: snapshot.step2_schema?.business_rules
+          }} />}
+          {activeStep === 3 && <StepEvaluationView data={{
+            evaluation: snapshot.step3_seeds?.evaluation,
+            metrics: snapshot.step3_seeds?.metrics
+          }} />}
           {activeStep === 4 && (
             <StepOptimizedView
               rows={snapshot.step4_optimized_data || []}

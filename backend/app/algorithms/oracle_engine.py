@@ -28,7 +28,8 @@ class OracleEngine:
                     if field.get("maxLength") is not None and len(str_val) > field["maxLength"]: return False
                     if field.get("pattern"):
                         try:
-                            if not re.search(field["pattern"], str_val): return False
+                            patched_pattern = field["pattern"].replace(r"\p{L}", r"a-zA-ZÀ-ỹđĐ")
+                            if not re.search(patched_pattern, str_val): return False
                         except: pass
                         
         return True

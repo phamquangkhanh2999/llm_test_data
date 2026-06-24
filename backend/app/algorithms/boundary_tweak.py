@@ -114,10 +114,10 @@ def optimize_testcase_boundaries(test_case: dict, schema: list, fitness_evaluato
             # Chỉ giữ các trường thuộc schema (không để rò key meta ra ngoài)
             neighbor = {k: neighbor.get(k) for k in field_names}
 
-            # Với POSITIVE: loại ngay neighbor làm dữ liệu sai rule (oracle != 200)
+            # Với POSITIVE: loại ngay neighbor làm dữ liệu sai rule (oracle = invalid)
             if is_positive:
                 from ..services.ai_service import derive_expected_result
-                if derive_expected_result(neighbor, schema).get("http_status") != 200:
+                if not derive_expected_result(neighbor, schema).get("is_valid"):
                     continue
 
             try:

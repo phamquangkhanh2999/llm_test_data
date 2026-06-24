@@ -210,3 +210,21 @@ class Lineage(Base):
 
     child_version = relationship("TestCaseVersion", foreign_keys=[child_id])
     parent_version = relationship("TestCaseVersion", foreign_keys=[parent_id])
+
+class GenerationHistory(Base):
+    """
+    Bảng GENERATION_HISTORY: Lưu trữ các bản snapshot của một lần tối ưu hóa.
+    Lưu dưới dạng JSON text để dễ dàng khôi phục lại (Restore Session).
+    """
+    __tablename__ = "generation_history"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    spec_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    coverage_rate = Column(Float, default=0.0)
+    total_cases = Column(Integer, default=0)
+    
+    step1_raw_text = Column(Text, nullable=True)
+    step2_schema = Column(Text, nullable=True)
+    step3_seeds = Column(Text, nullable=True)
+    step4_optimized_data = Column(Text, nullable=True)

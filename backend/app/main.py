@@ -21,7 +21,7 @@ from . import models
 from .services.strategy_runner import run_all_strategies
 from .engines.fitness_engine import calculate_dataset_fitness, calculateRubricScores
 from .services.prompts import get_benchmark_analysis_prompt
-from .services.ai_service import parse_spec_with_ai, generate_seeds_with_ai, evaluate_test_quality_with_ai, evaluate_optimized_dataset_with_ai
+from .services.ai_service import parse_spec_with_ai, generate_seeds_with_ai, evaluate_test_quality_with_ai, evaluate_optimized_dataset_with_ai, audit_schema_completeness
 # Nạp các bộ thuật toán tối ưu hóa chạy trên Server
 from .algorithms.optimizer_engine import generate_random_field_value
 from .algorithms.v4_optimizer import V4TestSuiteOptimizer
@@ -189,6 +189,7 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
             "fields": fields,
             "initialPopulation": initial_seeds,
             "coverageSummary": coverage_summary,
+            "schemaWarnings": audit_schema_completeness(fields),
             "cached": True
         }
 
@@ -220,6 +221,7 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
             "fields": ai_result.get("fields", []),
             "initialPopulation": ai_result.get("initialPopulation", []),
             "coverageSummary": ai_result.get("coverageSummary", {}),
+            "schemaWarnings": audit_schema_completeness(ai_result.get("fields", [])),
             "is_mock": ai_result.get("is_mock", False),
             "engine": ai_result.get("engine", ""),
             "reanalyzed": True
@@ -257,6 +259,7 @@ def api_parse_specification(req: SpecRequest, db: Session = Depends(get_db)):
         "fields": ai_result.get("fields", []),
         "initialPopulation": ai_result.get("initialPopulation", []),
         "coverageSummary": ai_result.get("coverageSummary", {}),
+        "schemaWarnings": audit_schema_completeness(ai_result.get("fields", [])),
         "is_mock": ai_result.get("is_mock", False),
         "engine": ai_result.get("engine", "")
     }
@@ -541,13 +544,14 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
             
             # Keep Oracle validation for validationScore and negativeScore
             oracle = derive_expected_result(values, schema_rules)
-            validation_score = 100 if oracle["http_status"] == 200 else (50 if oracle["http_status"] == 422 else 0)
+            # Pass/Fail nhị phân: hợp lệ = 100, bị từ chối = 0 (không còn nửa điểm cho 422).
+            validation_score = 100 if oracle.get("is_valid") else 0
             
             is_negative = "negative" in [c.lower() for c in categories]
             if is_negative:
-                negative_score = 100 if oracle["http_status"] != 200 else 20
+                negative_score = 100 if not oracle.get("is_valid") else 20
             else:
-                negative_score = 100 if oracle["http_status"] == 200 else 30
+                negative_score = 100 if oracle.get("is_valid") else 30
 
             return {
                 "validationScore": validation_score,
@@ -813,7 +817,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                 # V6.0 Enterprise Semantic Drift Correction
                 # Rebuild scenario based on the final expected result
                 scenario_original = llm_tc["scenario"]
-                if final_expected == "Hợp lệ" or final_expected == "Success":
+                if oracle_final["is_valid"]:
                     scenario_normalized = "Kiểm thử luồng hợp lệ (Success)"
                 else:
                     scenario_normalized = f"Kiểm thử lỗi: {final_err_desc}"
@@ -892,11 +896,11 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
                     "status": evo_status,
                     "optimization_gap": round(abs(hc_fit_val - ga_fit_val), 4),
                     "boundary_hits": boundary_hits,
-                    "http_status": {
-                        "llm": 200 if llm_tc.get("validationScore", 0) == 100 else 400,
-                        "ga": oracle_ga["http_status"],
-                        "hc": oracle_hc["http_status"],
-                        "final": oracle_final["http_status"]
+                    "verdict": {
+                        "llm": "Success" if llm_tc.get("validationScore", 0) == 100 else "Error",
+                        "ga": oracle_ga["verdict"],
+                        "hc": oracle_hc["verdict"],
+                        "final": oracle_final["verdict"]
                     }
                 })
 
@@ -1594,18 +1598,87 @@ def api_get_generation_history(db: Session = Depends(get_db)):
     """
     ENDPOINT: Lấy danh sách lịch sử báo cáo.
     """
-    return []
+    try:
+        histories = db.query(models.GenerationHistory).order_by(models.GenerationHistory.created_at.desc()).all()
+        return [
+            {
+                "id": h.id,
+                "spec_name": h.spec_name,
+                "created_at": h.created_at.isoformat() if h.created_at else None,
+                "coverage_rate": h.coverage_rate,
+                "total_cases": h.total_cases
+            } for h in histories
+        ]
+    except Exception as e:
+        print("Error get history:", str(e))
+        return []
+
+@app.get("/api/generation-history/{history_id}")
+def api_get_generation_detail(history_id: str, db: Session = Depends(get_db)):
+    """
+    ENDPOINT: Lấy chi tiết lịch sử báo cáo.
+    """
+    try:
+        h = db.query(models.GenerationHistory).filter(models.GenerationHistory.id == history_id).first()
+        if not h:
+            raise HTTPException(status_code=404, detail="Not found")
+        return {
+            "id": h.id,
+            "spec_name": h.spec_name,
+            "created_at": h.created_at.isoformat() if h.created_at else None,
+            "coverage_rate": h.coverage_rate,
+            "total_cases": h.total_cases,
+            "step1_raw_text": h.step1_raw_text,
+            "step2_schema": json.loads(h.step2_schema) if h.step2_schema else None,
+            "step3_seeds": json.loads(h.step3_seeds) if h.step3_seeds else None,
+            "step4_optimized_data": json.loads(h.step4_optimized_data) if h.step4_optimized_data else None
+        }
+    except Exception as e:
+        print("Error get history detail:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generation-history")
 def api_save_generation_history(payload: dict, db: Session = Depends(get_db)):
     """
     ENDPOINT: Lưu bản ghi báo cáo.
     """
-    return {"status": "success"}
+    try:
+        new_h = models.GenerationHistory(
+            spec_name=payload.get("spec_name", "Unknown Session"),
+            coverage_rate=payload.get("coverage_rate", 0.0),
+            total_cases=len(payload.get("step4_optimized_data", [])),
+            step1_raw_text=payload.get("rawText", ""),
+            step2_schema=json.dumps({
+                "fields": payload.get("schema", []),
+                "business_rules": payload.get("businessRules", []),
+                "constraints": payload.get("constraints", [])
+            }),
+            step3_seeds=json.dumps({
+                "seeds": payload.get("initialPopulation", []),
+                "evaluation": payload.get("step2_eval_result", None),
+                "metrics": payload.get("step3_metrics", None)
+            }),
+            step4_optimized_data=json.dumps(payload.get("step4_optimized_data", []))
+        )
+        db.add(new_h)
+        db.commit()
+        return {"status": "success", "id": new_h.id}
+    except Exception as e:
+        db.rollback()
+        print("Error save history:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/generation-history/{history_id}")
 def api_delete_generation_history(history_id: str, db: Session = Depends(get_db)):
     """
     ENDPOINT: Xóa bản ghi báo cáo.
     """
-    return {"status": "success"}
+    try:
+        h = db.query(models.GenerationHistory).filter(models.GenerationHistory.id == history_id).first()
+        if h:
+            db.delete(h)
+            db.commit()
+        return {"status": "success"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))

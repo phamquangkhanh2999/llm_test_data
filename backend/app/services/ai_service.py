@@ -20,32 +20,28 @@ def check_record_expected_result(record, fields):
     Sử dụng nội bộ hàm derive_expected_result.
     """
     oracle = derive_expected_result(record, fields)
-    if oracle["http_status"] == 200:
+    if oracle["is_valid"]:
         return "Hợp lệ"
     return "Lỗi: " + ", ".join(oracle["violated_fields_desc"])
 
 
 def derive_expected_result(record: dict, fields: list) -> dict:
     """
-    Expected Result Oracle: suy diễn HTTP status code và thông báo lỗi
-    tự động từ schema logic — KHÔNG hard-code.
+    Expected Result Oracle (GENERIC): suy diễn dữ liệu HỢP LỆ hay BỊ TỪ CHỐI
+    hoàn toàn từ ràng buộc trong schema — KHÔNG hard-code, KHÔNG đoán locale.
 
-    Phân tầng ưu tiên:
-      1. Required field missing    → HTTP 400 Bad Request
-      2. Enum value invalid        → HTTP 400 Bad Request
-      3. Number range violation    → HTTP 400 Bad Request
-      4. String length violation   → HTTP 400 Bad Request
-      5. Format invalid (structural) → HTTP 422 Unprocessable Entity
-      6. All valid                 → HTTP 200 OK
+    Verdict nhị phân (Pass/Fail) + lý do vi phạm. Mọi loại vi phạm (thiếu
+    required, sai enum, ngoài range số, sai độ dài, sai charset/định dạng, mã độc)
+    đều dẫn tới cùng một trạng thái "Error". KHÔNG còn mã HTTP (200/400/422) ở
+    bất kỳ đâu — mã HTTP thật do hệ thống đích quyết định, đoán cứng làm test fail oan.
 
     Returns:
         {
-            "http_status": int,          # 200 | 400 | 422
-            "status_text": str,          # "OK" | "Bad Request" | "Unprocessable Entity"
-            "message": str,              # Human-readable mô tả
+            "is_valid": bool,            # hợp đồng CHÍNH: True = chấp nhận
+            "verdict": str,              # "Success" | "Error"
+            "message": str,              # mô tả người đọc được: "Hợp lệ" | "Lỗi: <lý do>"
             "violated_fields": list,     # ["field_name", ...]
             "violated_fields_desc": list # ["'field' sai định dạng email", ...]
-            "is_valid": bool
         }
     """
     import re as _re
@@ -108,100 +104,155 @@ def derive_expected_result(record: dict, fields: list) -> dict:
                 violated_fields_desc.append(f"'{name}' không phải số")
             continue
 
-        # ── Priority 4: String length violation ────────────────────────────────
-        if ftype not in ("email", "card", "phone", "date"):
-            min_l = f.get("minLength")
-            max_l = f.get("maxLength")
-            field_regex = f.get("regex")
-            if field_regex:
-                try:
-                    if not _re.search(field_regex, val_str):
-                        errors_422.append(f"'{name}' không khớp định dạng quy định")
-                        violated_fields.append(name)
-                        violated_fields_desc.append(f"'{name}' không khớp regex")
-                        continue
-                except _re.error:
-                    pass
-            else:
-                if min_l is not None and len(val_str) < int(min_l):
-                    errors_400.append(f"'{name}' ngắn hơn {min_l} ký tự")
-                    violated_fields.append(name)
-                    violated_fields_desc.append(f"'{name}' ngắn hơn {min_l} ký tự")
-                    continue
-                if max_l is not None and len(val_str) > int(max_l):
-                    errors_400.append(f"'{name}' vượt quá {max_l} ký tự")
-                    violated_fields.append(name)
-                    violated_fields_desc.append(f"'{name}' vượt quá {max_l} ký tự")
-                    continue
+        # ── Ràng buộc chuỗi (GENERIC): độ dài + charset + regex, áp dụng ĐỒNG NHẤT ──
+        # Khác bản cũ ở 3 điểm để generic cho mọi đề:
+        #   (a) KHÔNG loại email/phone/card/date ra khỏi việc kiểm độ dài.
+        #   (b) Độ dài được kiểm ĐỘC LẬP với regex (không loại trừ nhau).
+        #   (c) Mọi giới hạn cụ thể (độ dài, đầu số, số chữ số) đến từ SCHEMA,
+        #       code chỉ giữ kiểm cấu trúc tối thiểu theo type — KHÔNG hard-code locale.
+        min_l = f.get("minLength")
+        max_l = f.get("maxLength")
+        if min_l is not None and len(val_str) < int(min_l):
+            errors_400.append(f"'{name}' ngắn hơn {min_l} ký tự")
+            violated_fields.append(name)
+            violated_fields_desc.append(f"'{name}' ngắn hơn {min_l} ký tự")
+            continue
+        if max_l is not None and len(val_str) > int(max_l):
+            errors_400.append(f"'{name}' vượt quá {max_l} ký tự")
+            violated_fields.append(name)
+            violated_fields_desc.append(f"'{name}' vượt quá {max_l} ký tự")
             continue
 
-        # ── Priority 5: Format/structural validation → HTTP 422 ────────────────
-        format_ok = True
-        format_desc = ""
-        spec_regex = f.get("regex")
-        if spec_regex:
-            # Spec tự khai báo regex -> ƯU TIÊN TUYỆT ĐỐI (đúng cho mọi bài toán,
-            # không áp default cứng VN/16-số... lên các kiểu có sẵn).
+        # Charset policy generic (tùy chọn; thiếu key thì bỏ qua — không phá vỡ schema cũ).
+        # Nơi để spec khai báo "không được chứa..." / "chỉ cho phép..." mà không cần
+        # nhồi vào regex định dạng.
+        forbidden_pat = f.get("forbiddenPattern")
+        if forbidden_pat:
             try:
-                if not _re.search(spec_regex, val_str):
-                    format_ok = False
-                    format_desc = f"'{name}' không khớp định dạng quy định"
+                patched_forbidden = forbidden_pat.replace(r"\p{L}", r"a-zA-ZÀ-ỹđĐ")
+                if _re.search(patched_forbidden, val_str):
+                    errors_422.append(f"'{name}' chứa ký tự không cho phép")
+                    violated_fields.append(name)
+                    violated_fields_desc.append(f"'{name}' chứa ký tự bị cấm")
+                    continue
             except _re.error:
-                pass  # regex hỏng trong spec -> bỏ qua, dùng default theo type bên dưới
-                spec_regex = None
-        if format_ok and not spec_regex:
-            if ftype == "email":
-                if not _re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
-                    format_ok = False
-                    format_desc = f"'{name}' sai định dạng email"
-            elif ftype == "card":
-                if not _re.match(r"^\d{16}$", val_str):
-                    format_ok = False
-                    format_desc = f"'{name}' phải gồm đúng 16 chữ số"
-            elif ftype == "phone":
-                if not _re.match(r"^(03|05|07|08|09)\d{8}$", val_str):
-                    format_ok = False
-                    format_desc = f"'{name}' sai đầu số di động VN"
-            elif ftype == "date":
-                if not is_valid_iso_date(val_str):
-                    format_ok = False
-                    format_desc = f"'{name}' sai định dạng ngày ISO (YYYY-MM-DD)"
+                pass
+        allowed_pat = f.get("allowedPattern")
+        if allowed_pat:
+            try:
+                patched_allowed = allowed_pat.replace(r"\p{L}", r"a-zA-ZÀ-ỹđĐ")
+                if not _re.fullmatch(patched_allowed, val_str):
+                    errors_422.append(f"'{name}' không khớp tập ký tự cho phép")
+                    violated_fields.append(name)
+                    violated_fields_desc.append(f"'{name}' sai tập ký tự cho phép")
+                    continue
+            except _re.error:
+                pass
 
-        if not format_ok:
-            errors_422.append(format_desc)
-            violated_fields.append(name)
-            violated_fields_desc.append(format_desc)
+        # Regex định dạng do spec khai báo (độc lập với độ dài đã kiểm ở trên).
+        spec_regex = f.get("regex") or f.get("pattern")
+        if spec_regex:
+            try:
+                patched_regex = spec_regex.replace(r"\p{L}", r"a-zA-ZÀ-ỹđĐ")
+                if not _re.search(patched_regex, val_str):
+                    errors_422.append(f"'{name}' không khớp định dạng quy định")
+                    violated_fields.append(name)
+                    violated_fields_desc.append(f"'{name}' không khớp regex")
+                continue  # đã có regex của spec -> KHÔNG áp default theo type
+            except _re.error:
+                pass  # regex hỏng trong spec -> rơi xuống default cấu trúc theo type
 
-    # ── Xác định HTTP status và message ──────────────────────────────────────
-    if errors_400:
-        all_errors = errors_400 + errors_422
+        # Default theo type — CHỈ kiểm cấu trúc tối thiểu, KHÔNG locale.
+        if ftype == "email":
+            if not _re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", val_str):
+                errors_422.append(f"'{name}' sai định dạng email")
+                violated_fields.append(name)
+                violated_fields_desc.append(f"'{name}' sai định dạng email")
+        elif ftype in ("phone", "card"):
+            # Chỉ ràng buộc "toàn chữ số" — độ dài/đầu số do schema quyết định.
+            if not _re.fullmatch(r"[0-9]+", val_str):
+                errors_422.append(f"'{name}' chỉ được chứa chữ số")
+                violated_fields.append(name)
+                violated_fields_desc.append(f"'{name}' phải toàn chữ số")
+        elif ftype == "date":
+            if not is_valid_iso_date(val_str):
+                errors_422.append(f"'{name}' sai định dạng ngày ISO (YYYY-MM-DD)")
+                violated_fields.append(name)
+                violated_fields_desc.append(f"'{name}' sai định dạng ngày ISO (YYYY-MM-DD)")
+
+    # ── Kết luận: Pass/Fail nhị phân + lý do, KHÔNG mã HTTP ───────────────────
+    # Hợp đồng cho mọi caller là `is_valid` + `verdict` + lý do vi phạm.
+    # Mọi loại vi phạm gộp về một trạng thái "Error" (không 400/422), vì mã HTTP
+    # thật do hệ thống đích quyết định — đoán cứng sẽ làm test fail oan.
+    errors = errors_400 + errors_422
+    if errors:
         return {
-            "http_status": 400,
-            "status_text": "Bad Request",
-            "message": "HTTP 400 - " + "; ".join(all_errors),
+            "is_valid": False,
+            "verdict": "Error",
+            "message": "Lỗi: " + "; ".join(errors),
             "violated_fields": violated_fields,
             "violated_fields_desc": violated_fields_desc,
-            "is_valid": False
         }
-    elif errors_422:
-        return {
-            "http_status": 422,
-            "status_text": "Unprocessable Entity",
-            "message": "HTTP 422 - " + "; ".join(errors_422),
-            "violated_fields": violated_fields,
-            "violated_fields_desc": violated_fields_desc,
-            "is_valid": False
-        }
-    else:
-        return {
-            "http_status": 200,
-            "status_text": "OK",
-            "message": "HTTP 200 - Xử lý thành công, dữ liệu hợp lệ",
-            "violated_fields": [],
-            "violated_fields_desc": [],
-            "is_valid": True
-        }
+    return {
+        "is_valid": True,
+        "verdict": "Success",
+        "message": "Hợp lệ - tất cả trường đúng định dạng, độ dài và ràng buộc; hệ thống chấp nhận và tạo tài khoản.",
+        "violated_fields": [],
+        "violated_fields_desc": [],
+    }
 
+
+
+def audit_schema_completeness(fields: list) -> list:
+    """
+    Audit ĐỘ ĐẦY ĐỦ của schema trích xuất (deterministic, không phụ thuộc đề bài).
+
+    Vì oracle (`derive_expected_result`) chỉ mạnh đúng bằng các ràng buộc có trong
+    schema, một schema bị extractor đánh rơi maxLength/regex/charset sẽ khiến oracle
+    "mù" và gán Success cho dữ liệu thực ra sai. Hàm này bắt sớm các lỗ hổng đó cho
+    MỌI spec, trả về danh sách cảnh báo để pipeline/UI surface lại cho người dùng.
+
+    Trả về: list[ {field, severity, code, message} ]
+    """
+    import re as _re
+    warnings = []
+    STRING_FAMILY = ("string", "text", "email", "phone", "card", "url", "password")
+
+    for f in fields or []:
+        if not isinstance(f, dict) or not f.get("name"):
+            continue
+        name = f["name"]
+        ftype = (f.get("type") or f.get("semantic_type") or f.get("data_type") or "string")
+        has_len = f.get("minLength") is not None or f.get("maxLength") is not None
+        has_regex = bool(f.get("regex") or f.get("pattern"))
+
+        # 1. Regex/charset không compile được -> oracle sẽ bỏ qua âm thầm.
+        for key in ("regex", "pattern", "allowedPattern", "forbiddenPattern"):
+            pat = f.get(key)
+            if pat:
+                try:
+                    _re.compile(pat)
+                except _re.error as e:
+                    warnings.append({
+                        "field": name, "severity": "error", "code": "BAD_REGEX",
+                        "message": f"'{name}': {key} không hợp lệ ({e}) — oracle sẽ bỏ qua ràng buộc này.",
+                    })
+
+        # 2. Chuỗi nhưng thiếu cả biên độ dài lẫn định dạng -> không chặn được giá trị quá dài.
+        if ftype in STRING_FAMILY and not has_len and not has_regex and ftype != "email":
+            warnings.append({
+                "field": name, "severity": "warning", "code": "NO_LENGTH_BOUND",
+                "message": f"'{name}' (type={ftype}) thiếu maxLength/regex — oracle không chặn được giá trị quá dài.",
+            })
+
+        # 3. phone/card thiếu maxLength và regex -> chỉ kiểm 'toàn chữ số', không chặn số quá dài.
+        if ftype in ("phone", "card") and f.get("maxLength") is None and not has_regex:
+            warnings.append({
+                "field": name, "severity": "warning", "code": "NO_FORMAT_LENGTH",
+                "message": f"'{name}' (type={ftype}) chỉ kiểm 'toàn chữ số' — thiếu maxLength/regex nên không chặn được độ dài.",
+            })
+
+    return warnings
 
 
 def build_coverage_matrix_contract(fields: list):
@@ -579,11 +630,14 @@ def validate_and_fix_seeds(seeds, fields):
             if name not in data:
                 data[name] = ""
                 
-        # Repair Category based on actual rule validation
-        check_msg = check_record_expected_result(data, fields)
-        is_valid = (check_msg == "Hợp lệ")
+        # Oracle là nguồn chân lý DUY NHẤT cho verdict + lý do. KHÔNG tin nhãn
+        # generic 'SUCCESS'/'VALIDATION_ERROR' của LLM vì chúng thiếu chi tiết
+        # (không nói rõ field nào / vì sao) — gây "hở" so với data GA/HC.
+        oracle = derive_expected_result(data, fields)
+        is_valid = oracle["is_valid"]
+        reason_detail = "; ".join(oracle["violated_fields_desc"]) or oracle["message"].replace("Lỗi: ", "")
         cats = seed.get("categories", [])
-        
+
         if is_valid and "negative" in cats:
             cats = [c for c in cats if c != "negative"]
             if not cats or "positive" not in cats:
@@ -592,7 +646,7 @@ def validate_and_fix_seeds(seeds, fields):
             cats.append("negative")
             cats = [c for c in cats if c != "positive"]
         seed["categories"] = list(set(cats))
-        
+
         # Repair Scenario
         scn = seed.get("scenario")
         scn = str(scn or "").strip()
@@ -600,30 +654,12 @@ def validate_and_fix_seeds(seeds, fields):
             cats_str = ", ".join(seed["categories"])
             active_fields = [f"{k}={v}" for k, v in data.items() if v != ""]
             seed["scenario"] = f"Kiểm thử kịch bản {cats_str} với dữ liệu: {', '.join(active_fields[:3])}"
-            
-        # Repair Expected Result
-        exp = seed.get("expectedResult")
-        exp = str(exp or "").strip()
-        if not exp or len(exp) < 10 or exp.lower() in ["thành công", "valid", "invalid", "lỗi"]:
-            if is_valid:
-                seed["expectedResult"] = "HTTP 200 - Xử lý thành công, dữ liệu hợp lệ và được cập nhật vào cơ sở dữ liệu"
-            else:
-                seed["expectedResult"] = f"HTTP 400 - {check_msg}. Dữ liệu bị chặn."
-                
-        # Repair errorDescription
-        err_desc = seed.get("errorDescription")
-        if err_desc is None:
-            err_desc = ""
-        else:
-            err_desc = str(err_desc).strip()
-            
-        if "negative" in seed["categories"]:
-            if not err_desc or err_desc.lower() in ["lỗi", "error", "invalid", "none", "null", "không có", "không", "n/a", "-"]:
-                seed["errorDescription"] = check_msg.replace("Lỗi: ", "")
-            else:
-                seed["errorDescription"] = err_desc
-        else:
-            seed["errorDescription"] = "Không có"
+
+        # Expected Result & Error: LUÔN suy từ Oracle (cùng message với GA/HC/final)
+        # để MỌI ca (kể cả F0 của LLM) đều có nội dung rõ ràng — Success nói rõ vì sao
+        # hợp lệ, Error nói rõ field nào sai. Đồng nhất toàn hệ thống.
+        seed["expectedResult"] = oracle["message"]
+        seed["errorDescription"] = "Không có" if is_valid else reason_detail
             
         # Repair rationale
         rat = seed.get("rationale")
@@ -956,6 +992,110 @@ def calculate_cache_key(fields: list, raw_text: str, method: str, provider: str)
     raw_key = f"{serialized_fields}:{raw_text}:{method}:{provider}:{PROMPT_VERSION}:{SEED_ENGINE_VERSION}"
     return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
+def _bva_value_of_length(field: dict, length: int) -> str:
+    """
+    Sinh giá trị có ĐỘ DÀI đúng = length, cố giữ hợp lệ theo type/charset của field.
+    Generic cho mọi đề: không hard-code tên trường, tự né charset cấm của chính field.
+    """
+    import re as _re
+    if length <= 0:
+        return ""
+    ftype = (field.get("type") or field.get("semantic_type") or field.get("data_type") or "string")
+    if ftype == "email":
+        suffix = "@ex.com"
+        if length > len(suffix):
+            return "a" * (length - len(suffix)) + suffix
+        return "a" * length  # quá ngắn cho email -> Oracle sẽ phản ánh sai định dạng
+    if ftype in ("phone", "card"):
+        return "0" * length
+    # string/text/password/url...: mẫu đủ lớp ký tự, nếu charset của field cấm thì lùi về chữ cái
+    candidate = ("Aa1!" * (length // 4 + 1))[:length]
+    fp = field.get("forbiddenPattern")
+    if fp:
+        try:
+            if _re.search(fp, candidate):
+                candidate = ("Abcde" * (length // 5 + 1))[:length]
+        except _re.error:
+            pass
+    return candidate
+
+
+def _bva_baseline(fields: list) -> dict:
+    """Một record HỢP LỆ làm nền, để mỗi seed biên chỉ phá đúng 1 trường (cô lập biên)."""
+    rec = {}
+    for f in fields:
+        name = f["name"]
+        ftype = (f.get("type") or f.get("semantic_type") or f.get("data_type") or "string")
+        if ftype == "number":
+            mn, mx = f.get("minValue"), f.get("maxValue")
+            rec[name] = mn if mn is not None else (mx if mx is not None else 0)
+        else:
+            min_l = int(f.get("minLength") or 1)
+            max_l = int(f.get("maxLength") or max(min_l, 8))
+            rec[name] = _bva_value_of_length(f, max(min_l, min(max_l, 8)))
+    return rec
+
+
+def synthesize_boundary_seeds(fields: list) -> list:
+    """
+    Sinh seed BIÊN xác định (deterministic) từ schema — bù phần LLM hay bỏ sót.
+    Với mỗi trường có ràng buộc độ dài: tạo các ca tại-biên (min, max) và vượt-biên
+    (min-1, max+1). Với trường số: min±1, max±1. Nhãn Success/Error + lý do do Oracle
+    quyết định nên luôn trung thực. Các trường khác giữ giá trị nền hợp lệ.
+    """
+    baseline = _bva_baseline(fields)
+    out = []
+
+    def mk(field_name, value, kind):
+        vals = dict(baseline)
+        vals[field_name] = value
+        oc = derive_expected_result(vals, fields)
+        cats = ["boundary"] if oc["is_valid"] else ["boundary", "negative"]
+        return {
+            "values": vals,
+            "categories": cats,
+            "method": "bva",
+            "origin": "BVA-SYNTH",
+            "scenario": f"Biên trường '{field_name}' ({kind})",
+            "expectedResult": oc["message"],
+            "errorDescription": "Không có" if oc["is_valid"] else ("; ".join(oc["violated_fields_desc"]) or oc["message"]),
+            "rationale": f"Kiểm thử giá trị biên của '{field_name}': {kind}.",
+        }
+
+    for f in fields:
+        name = f["name"]
+        ftype = (f.get("type") or f.get("semantic_type") or f.get("data_type") or "string")
+        min_l, max_l = f.get("minLength"), f.get("maxLength")
+
+        if ftype != "number":
+            if min_l is not None:
+                m = int(min_l)
+                if m - 1 >= 0:
+                    out.append(mk(name, _bva_value_of_length(f, m - 1), f"dưới minLength={m}"))
+                out.append(mk(name, _bva_value_of_length(f, m), f"tại minLength={m}"))
+            if max_l is not None:
+                M = int(max_l)
+                out.append(mk(name, _bva_value_of_length(f, M), f"tại maxLength={M}"))
+                out.append(mk(name, _bva_value_of_length(f, M + 1), f"vượt maxLength={M}"))
+        else:
+            mn, mx = f.get("minValue"), f.get("maxValue")
+            if mn is not None:
+                try:
+                    base = float(mn); base = int(base) if base.is_integer() else base
+                    out += [mk(name, base - 1, f"dưới minValue={mn}"),
+                            mk(name, base, f"tại minValue={mn}")]
+                except (ValueError, TypeError):
+                    pass
+            if mx is not None:
+                try:
+                    base = float(mx); base = int(base) if base.is_integer() else base
+                    out += [mk(name, base, f"tại maxValue={mx}"),
+                            mk(name, base + 1, f"vượt maxValue={mx}")]
+                except (ValueError, TypeError):
+                    pass
+    return out
+
+
 def generate_seeds_with_ai(
     fields: list,
     business_rules: list = None,
@@ -1016,7 +1156,13 @@ def generate_seeds_with_ai(
         if len(all_seeds) > 0:
             context_str = json.dumps([s["values"] for s in all_seeds[-5:]], ensure_ascii=False)
             
-        sys_prompt, usr_prompt = get_seed_generation_instructions(batch_size, distribution_str, previous_context=context_str, test_methods=test_methods)
+        sys_prompt, usr_prompt = get_seed_generation_instructions(
+            target_count=batch_size, 
+            distribution_str=distribution_str, 
+            previous_context=context_str, 
+            test_methods=test_methods,
+            boundary_count=boundary_count
+        )
         usr_prompt_full = f"{usr_prompt}\n\nFields Schema:\n{json.dumps(fields, ensure_ascii=False)}"
         
         if business_rules:
@@ -1055,6 +1201,12 @@ def generate_seeds_with_ai(
                     
                 seen_hashes.add(val_hash)
                 s["tcId"] = f"TC-{len(all_seeds)+1:04d}"
+                
+                # Áp dụng Oracle để ghi đè Expected Result và Error Description từ LLM
+                oracle = derive_expected_result(s["values"], fields)
+                s["expectedResult"] = oracle["message"]
+                s["errorDescription"] = "Không có" if oracle["is_valid"] else ("; ".join(oracle["violated_fields_desc"]) or oracle["message"].replace("Lỗi: ", ""))
+                
                 all_seeds.append(s)
                 
                 # Guess distribution based on valid/boundary/invalid since we requested it combined
@@ -1072,6 +1224,22 @@ def generate_seeds_with_ai(
             _time.sleep(1.0)
             
         retry_count += 1
+
+    # ── Tiêm seed BIÊN xác định từ schema (bù phần LLM hay bỏ sót giá trị biên) ──
+    if any("bva" in str(m).lower() for m in (test_methods or [])):
+        try:
+            for bs in synthesize_boundary_seeds(fields):
+                vh = hashlib.sha256(json.dumps(bs["values"], sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+                if vh in seen_hashes:
+                    continue
+                seen_hashes.add(vh)
+                bs["tcId"] = f"TC-{len(all_seeds)+1:04d}"
+                all_seeds.append(bs)
+                stats["distribution"]["boundary"] += 1
+                stats["accepted"] = stats.get("accepted", 0) + 1
+            print(f">>> [BVA-SYNTH] Đã tiêm seed biên xác định | tổng {len(all_seeds)} seeds", flush=True)
+        except Exception as e:
+            print(f">>> [BVA-SYNTH] bỏ qua do lỗi: {e}", flush=True)
 
     summary = generate_coverage_summary(all_seeds, fields)
     
