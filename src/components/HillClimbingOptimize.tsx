@@ -401,9 +401,6 @@ export const HillClimbingOptimize: React.FC = () => {
               >
                 <Download size={14} /> Xuất Excel
               </button>
-              <button className='btn btn-primary' onClick={() => setActiveScreen('export')}>
-                Lịch sử & Xuất kết quả <ArrowRight size={15} />
-              </button>
             </div>
           </div>
         </div>

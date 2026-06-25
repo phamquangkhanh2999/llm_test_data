@@ -1187,13 +1187,6 @@ export const EvaluateData: React.FC = () => {
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 Hiển thị 1–{preview.length} / {filteredSeeds.length} (Tổng {metrics.total})
               </span>
-              <button
-                className='btn btn-primary'
-                style={{ fontSize: 12.5 }}
-                onClick={() => setActiveScreen('ga')}
-              >
-                Tiếp: Tối ưu GA
-              </button>
             </div>
           </div>
         </>

@@ -26,6 +26,8 @@
   /* ── Accents (kept names for cascade) ── */
   --color-teal: #0F766E;        /* Darker teal for accessibility */
   --color-teal-glow: rgba(15, 118, 110, 0.18);
+  --color-blue: #1D4ED8;        /* Darker blue for accessibility */
+  --color-blue-glow: rgba(29, 78, 216, 0.15);
   --color-violet: #6D28D9;      /* Darker violet */
   --color-violet-glow: rgba(109, 40, 217, 0.18);
   --color-rose: #BE123C;        /* Darker rose */

@@ -1145,19 +1145,6 @@ export const GeneticOptimize: React.FC = () => {
                 <FileJson size={14} />
                 Xuất JSON
               </button>
-              <button 
-                className='btn btn-primary' 
-                onClick={() => setActiveScreen('hc')}
-                style={{
-                  padding: '6px 12px',
-                  fontSize: 12,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                }}
-              >
-                Chuyển sang HC Tối Ưu <ArrowRight size={14} />
-              </button>
             </div>
           </div>
           <div style={{ overflowX: 'auto', maxHeight: 800 }}>

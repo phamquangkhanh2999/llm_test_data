@@ -427,6 +427,8 @@ function App() {
               title='Nhập Yêu Cầu Đầu Vào'
               icon={<FileInput size={24} />}
               description='Nhập đặc tả nghiệp vụ / yêu cầu kỹ thuật. Hệ thống sẽ phân tích để sinh ràng buộc và bộ ca kiểm thử tối ưu.'
+              nextScreen='analyze'
+              nextLabel='Phân Tích Dữ Liệu'
             >
               <InputRequirement />
             </PageLayout>
@@ -439,8 +441,8 @@ function App() {
               title='Phân Tích & Thiết Kế Testcase'
               icon={<Database size={24} />}
               description='Bạn có thể CHỈNH SỬA trực tiếp trường, ràng buộc và dữ liệu phân tích trước khi đưa vào LLM.'
-              // hints={['AI phân tích đặc tả', 'Chỉnh sửa ràng buộc', 'Chuẩn bị cho Memetic']}
-              // accentColor="#0891B2"
+              nextScreen='evaluate'
+              nextLabel='Đánh Giá Dữ Liệu'
               prerequisites={[{ met: true, warningText: '' }]}
             >
               <AnalysisDesign />
@@ -454,8 +456,8 @@ function App() {
               title='Đánh Giá Dữ Liệu Kiểm Thử'
               icon={<Gauge size={24} />}
               description='Phân tích chuyên sâu chất lượng tập F0 do LLM sinh: độ phủ, tính hợp lệ, tỉ lệ trùng lặp — trước khi đưa vào thuật toán Memetic cải tiến.'
-              // hints={['Coverage gauge', 'Fitness score', 'Tỉ lệ trùng lặp', 'Test Case Preview']}
-              // accentColor="#0891B2"
+              nextScreen='ga'
+              nextLabel='Tối Ưu GA'
               prerequisites={[
                 {
                   met: hasSchema,
@@ -476,6 +478,8 @@ function App() {
               title='Bước 4: GA Cải Tiến Dữ Liệu'
               icon={<Zap size={24} />}
               description='Chạy thuật toán Genetic Algorithm. Theo dõi đồ thị tiến hóa và các chỉ số chất lượng.'
+              nextScreen='hc'
+              nextLabel='Tối Ưu HC'
               prerequisites={[
                 {
                   met: hasInputData,
@@ -496,6 +500,8 @@ function App() {
               title='Bước 5: HC Cải Tiến Dữ Liệu'
               icon={<GitCompare size={24} />}
               description='Nhận dữ liệu từ GA và chạy thuật toán Hill Climbing để tinh chỉnh cục bộ cuối cùng.'
+              nextScreen='charts'
+              nextLabel='Xem Biểu Đồ'
               prerequisites={[
                 {
                   met: !!gaResult,
@@ -516,7 +522,16 @@ function App() {
               title='Sơ đồ Thuật Toán GA/HC'
               icon={<BarChart2 size={24} />}
               description='Sơ đồ luồng thuật toán chi tiết.'
-              prerequisites={[{ met: true, warningText: '' }]}
+              nextScreen='export'
+              nextLabel='Lịch Sử & Xuất'
+              prerequisites={[
+                {
+                  met: hasHistory || !!hcResult,
+                  warningText: 'Chưa có kết quả tối ưu HC. Vui lòng hoàn thành bước Tối ưu HC trước khi xem biểu đồ.',
+                  goBackScreen: 'hc',
+                  goBackLabel: 'Đến: HC Tối Ưu',
+                },
+              ]}
             >
               <AlgorithmCharts />
             </PageLayout>
@@ -529,14 +544,12 @@ function App() {
               title='Lịch Sử & Xuất Kết Quả'
               icon={<HistoryIcon size={24} />}
               description='Tra cứu lại các phiên chạy đã lưu theo từng yêu cầu, xem lại 4 bước và xuất bộ test ra nhiều định dạng (CSV / JSON / PDF).'
-              // hints={['Tối giản bộ test', 'Xuất CSV / JSON / SQL', 'Playwright / Cypress', 'Mô phỏng API']}
-              // accentColor="#10B981"
               prerequisites={[
                 {
-                  met: hasHistory || !!hcResult,
-                  warningText: 'Chưa có kết quả. Hãy chạy HC ít nhất 1 lần.',
-                  goBackScreen: 'hc',
-                  goBackLabel: 'Đến: HC Tối Ưu',
+                  met: completedScreens.includes('charts'),
+                  warningText: 'Chưa xem biểu đồ phân tích. Vui lòng xem biểu đồ trước khi xuất kết quả.',
+                  goBackScreen: 'charts',
+                  goBackLabel: 'Đến: Biểu đồ (GA/HC)',
                 },
               ]}
             >

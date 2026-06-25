@@ -18,6 +18,7 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
   { id: 'evaluate', label: 'Đánh giá', shortLabel: 'Đánh giá', color: '#0891B2' },
   { id: 'ga', label: 'Tối ưu GA', shortLabel: 'GA', color: '#4F46E5' },
   { id: 'hc', label: 'Tối ưu HC', shortLabel: 'HC', color: '#4F46E5' },
+  { id: 'charts', label: 'Biểu đồ', shortLabel: 'Biểu đồ', color: '#4F46E5' },
   { id: 'export', label: 'Lịch sử & Xuất', shortLabel: 'Xuất', color: '#10B981' },
 ];
 
