@@ -427,8 +427,6 @@ function App() {
               title='Nhập Yêu Cầu Đầu Vào'
               icon={<FileInput size={24} />}
               description='Nhập đặc tả nghiệp vụ / yêu cầu kỹ thuật. Hệ thống sẽ phân tích để sinh ràng buộc và bộ ca kiểm thử tối ưu.'
-              nextScreen='analyze'
-              nextLabel='Phân Tích Dữ Liệu'
             >
               <InputRequirement />
             </PageLayout>
@@ -441,8 +439,6 @@ function App() {
               title='Phân Tích & Thiết Kế Testcase'
               icon={<Database size={24} />}
               description='Bạn có thể CHỈNH SỬA trực tiếp trường, ràng buộc và dữ liệu phân tích trước khi đưa vào LLM.'
-              nextScreen='evaluate'
-              nextLabel='Đánh Giá Dữ Liệu'
               prerequisites={[{ met: true, warningText: '' }]}
             >
               <AnalysisDesign />

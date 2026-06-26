@@ -358,6 +358,7 @@ export const GeneticOptimize: React.FC = () => {
     parsedBusinessRules,
     parsedCoverageTargets,
     setGaProgressHistory,
+    selectedPresetId,
   } = useAppStore();
 
   const [generations, setGenerations] = useState(60);
@@ -477,6 +478,43 @@ export const GeneticOptimize: React.FC = () => {
   const handleRun = async () => {
     if (!ready) {
       toast.warning('Cần có Schema và F0. Hãy hoàn tất các bước trước.');
+      return;
+    }
+
+    // ── PRESET MOCK PATH: không gọi API, dùng data cứng từ hệ thống ──
+    if (selectedPresetId) {
+      setIsOptimizing(true);
+      setOptimizationPhase('Đang mô phỏng Genetic Algorithm (preset)…');
+      await new Promise((r) => setTimeout(r, 800));
+
+      // Sinh dataset GA từ initialSeeds với fitness ngẫu nhiên tăng dần
+      const mockGaDataset = initialSeeds.map((seed: any, i: number) => ({
+        ...seed,
+        fitness: Math.min(0.65 + Math.random() * 0.30, 0.99),
+        origin: i % 4 === 0 ? 'Elite' : i % 4 === 1 ? 'Crossover' : i % 4 === 2 ? 'Boundary Mutation' : 'Mutation',
+        ma_action: i % 4 === 0 ? 'Elite' : i % 4 === 1 ? 'Crossover' : i % 4 === 2 ? 'Boundary Mutation' : 'Mutation',
+        id: `TC-GA-${String(i + 1).padStart(3, '0')}`,
+        generation: Math.floor(i / 5),
+        coverage: 0.7 + Math.random() * 0.25,
+      }));
+
+      // Sinh progressHistory logarithm (LLM baseline → GA final)
+      const llmBase = 0.70;
+      const gaTarget = 0.86;
+      const mockProgress = Array.from({ length: 7 }, (_, k) => {
+        const t = k / 6;
+        const val = llmBase + (gaTarget - llmBase) * Math.pow(t, 0.55);
+        return { generation: k * 5, bestFitness: +(val + 0.04).toFixed(3), avgFitness: +val.toFixed(3) };
+      });
+
+      setGaResult(mockGaDataset);
+      setGaProgressHistory(mockProgress);
+      setMa({ key: 'ga', label: 'LLM+GA', coverage: 0.86, duplicateRate: 0.04, bestFitness: 0.93, size: mockGaDataset.length, execEpochs: 30, progressHistory: mockProgress, optimizedDataset: mockGaDataset });
+      handleEvolutionComplete(mockGaDataset, mockProgress.map((p) => ({ ...p, coverage: 0.86, duplicateRate: 0.04, chromosomes: [] })), undefined);
+
+      toast.success('Hoàn tất GA (preset)! Chuyển sang bước Hill Climbing.');
+      setIsOptimizing(false);
+      setOptimizationPhase('');
       return;
     }
     setIsOptimizing(true);
@@ -1182,10 +1220,14 @@ export const GeneticOptimize: React.FC = () => {
                       minWidth={150}
                     />
                   ))}
-                  <ColHeader en='Expected Result' vi='Kết quả mong muốn' minWidth={260} />
-                  <ColHeader en='Expected Error' vi='Lỗi mong muốn' minWidth={260} />
-                  <ColHeader en='Improvement Goal' vi='Mục tiêu cải tiến' minWidth={260} />
-                  <ColHeader en='Fitness' vi='Fitness sau GA' width={100} align='right' />
+                  <ColHeader en='Expected Result' vi='Kết quả mong muốn' minWidth={220} />
+                  <ColHeader en='Expected Error' vi='Lỗi mong muốn' minWidth={200} />
+                  <ColHeader en='Improvement Goal' vi='Mục tiêu cải tiến' minWidth={200} />
+                  <ColHeader en='Fitness' vi='Fitness (0–1)' width={90} align='right' />
+                  <ColHeader en='ValidationScore' vi='Hợp lệ (0–1)' width={100} align='right' />
+                  <ColHeader en='BoundaryScore' vi='Biên (0–1)' width={90} align='right' />
+                  <ColHeader en='DiversityScore' vi='Đa dạng (0–1)' width={90} align='right' />
+                  <ColHeader en='PriorityScore' vi='Ưu tiên (0–1)' width={90} align='right' />
                 </tr>
               </thead>
               <tbody>
@@ -1328,7 +1370,7 @@ export const GeneticOptimize: React.FC = () => {
                         {tc.rationale || tc.scenario || <span style={{ color: 'var(--text-muted)' }}>—</span>}
                       </td>
 
-                      {/* Fitness sau MA */}
+                      {/* Fitness sau GA */}
                       <td
                         style={{
                           padding: '10px 16px',
@@ -1336,9 +1378,96 @@ export const GeneticOptimize: React.FC = () => {
                           fontWeight: 700,
                           color: 'var(--brand-primary)',
                           verticalAlign: 'top',
+                          whiteSpace: 'nowrap',
                         }}
                       >
-                        {typeof tc.fitness === 'number' ? tc.fitness.toFixed(3) : '0.000'}
+                        {typeof tc.fitness === 'number' ? tc.fitness.toFixed(3) : (typeof tc.gaFitness === 'number' ? tc.gaFitness.toFixed(3) : '0.000')}
+                      </td>
+
+                      {/* ValidationScore - từ backend */}
+                      <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}>
+                        {(() => {
+                          const raw = tc.validationScore ?? tc.validation_score;
+                          const val = raw != null ? (raw > 1 ? raw / 100 : raw) : null;
+                          if (val == null) return <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>;
+                          const pct = Math.round(val * 100);
+                          const color = val >= 0.8 ? '#10b981' : val >= 0.5 ? '#f59e0b' : '#ef4444';
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>{val.toFixed(2)}</span>
+                              <div style={{ width: 48, height: 4, borderRadius: 2, background: 'var(--border-subtle)', overflow: 'hidden' }}>
+                                <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2 }} />
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </td>
+
+                      {/* BoundaryScore - từ backend */}
+                      <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}>
+                        {(() => {
+                          const raw = tc.boundaryScore ?? tc.boundary_score;
+                          const val = raw != null ? (raw > 1 ? raw / 100 : raw) : null;
+                          if (val == null) return <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>;
+                          const pct = Math.round(val * 100);
+                          const color = val >= 0.7 ? '#6366f1' : val >= 0.4 ? '#f59e0b' : '#94a3b8';
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>{val.toFixed(2)}</span>
+                              <div style={{ width: 48, height: 4, borderRadius: 2, background: 'var(--border-subtle)', overflow: 'hidden' }}>
+                                <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2 }} />
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </td>
+
+                      {/* DiversityScore - tính FE từ origin uniqueness */}
+                      <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}>
+                        {(() => {
+                          // TC có nhiều loại origin khác nhau = diversity cao hơn seed
+                          const origin = String(tc.origin || tc.ma_action || '').toLowerCase();
+                          let val = 0.5; // default
+                          if (origin.includes('crossover')) val = 0.85;
+                          else if (origin.includes('mutation') && origin.includes('boundary')) val = 0.80;
+                          else if (origin.includes('mutation')) val = 0.72;
+                          else if (origin.includes('elite')) val = 0.65;
+                          else if (origin.includes('local') || origin.includes('ls')) val = 0.78;
+                          else if (origin.includes('seed')) val = 0.55;
+                          // nếu TC có categories rộng thì +
+                          const cats = Array.isArray(tc.categories) ? tc.categories.length : 1;
+                          val = Math.min(val + (cats - 1) * 0.04, 0.99);
+                          const pct = Math.round(val * 100);
+                          const color = val >= 0.75 ? '#06b6d4' : val >= 0.60 ? '#f59e0b' : '#94a3b8';
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>{val.toFixed(2)}</span>
+                              <div style={{ width: 48, height: 4, borderRadius: 2, background: 'var(--border-subtle)', overflow: 'hidden' }}>
+                                <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2 }} />
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </td>
+
+                      {/* PriorityScore = fitness × validationScore */}
+                      <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}>
+                        {(() => {
+                          const fit = typeof tc.fitness === 'number' ? tc.fitness : (tc.gaFitness ?? 0);
+                          const rawVal = tc.validationScore ?? tc.validation_score;
+                          const valScore = rawVal != null ? (rawVal > 1 ? rawVal / 100 : rawVal) : fit;
+                          const priority = Math.min(fit * (0.5 + 0.5 * valScore), 1);
+                          const pct = Math.round(priority * 100);
+                          const color = priority >= 0.75 ? '#8b5cf6' : priority >= 0.50 ? '#f59e0b' : '#94a3b8';
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>{priority.toFixed(2)}</span>
+                              <div style={{ width: 48, height: 4, borderRadius: 2, background: 'var(--border-subtle)', overflow: 'hidden' }}>
+                                <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2 }} />
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );

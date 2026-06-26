@@ -1,4 +1,11 @@
-import { ArrowRight, CheckCircle2, GitCompare, Play, RefreshCw, Settings2, Sparkles, Terminal, XCircle, Download } from 'lucide-react';
+import {
+  CheckCircle2,
+  Download,
+  GitCompare,
+  Play,
+  RefreshCw,
+  Settings2
+} from 'lucide-react';
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { config } from '../config';
@@ -55,7 +62,8 @@ export const HillClimbingOptimize: React.FC = () => {
     initialSeeds,
     evaluationResult,
     evaluationMetrics,
-    projectMeta
+    projectMeta,
+    selectedPresetId,
   } = useAppStore();
 
   const [iterations, setIterations] = useState(10);
@@ -66,7 +74,31 @@ export const HillClimbingOptimize: React.FC = () => {
       toast.warning('Cần có kết quả từ bước GA trước.');
       return;
     }
-    
+
+    // ── PRESET MOCK PATH ──
+    if (selectedPresetId) {
+      setIsOptimizing(true);
+      setOptimizationPhase('Đang mô phỏng Hill Climbing (preset)…');
+      await new Promise((r) => setTimeout(r, 600));
+
+      // Nâng fitness của gaResult lên ~8-15% (local search improvement)
+      const mockHcDataset = (gaResult || []).map((tc: any, i: number) => ({
+        ...tc,
+        fitness: Math.min((Number(tc.fitness) || 0.75) + 0.08 + Math.random() * 0.07, 0.99),
+        origin: 'HC',
+        id: `TC-HC-${String(i + 1).padStart(3, '0')}`,
+        local_search_applied: true,
+        improvement: +(0.08 + Math.random() * 0.07).toFixed(3),
+      }));
+
+      setHcData(mockHcDataset);
+      setHcResult(mockHcDataset);
+      toast.success('Hoàn tất HC (preset)! Chuyển sang xem Biểu đồ.');
+      setIsOptimizing(false);
+      setOptimizationPhase('');
+      return;
+    }
+
     setIsOptimizing(true);
     setOptimizationPhase('Đang thiết lập thuật toán Hill Climbing...');
     setHcData(null);
@@ -93,10 +125,10 @@ export const HillClimbingOptimize: React.FC = () => {
           llm_provider: llmProvider,
         }),
       });
-      
+
       if (!resp.ok) throw new Error('API HC thất bại');
       const res = await resp.json();
-      
+
       const mockResult = (res.finalResult || res.hcResult || []).map((tc: any) => ({
         ...(tc.values || tc),
         fitness: tc.finalFitness ?? tc.hcFitness ?? tc.fitness ?? 0,
@@ -105,7 +137,12 @@ export const HillClimbingOptimize: React.FC = () => {
         expectedResult: tc.expectedResult,
         errorDescription: tc.errorDescription,
         rationale: tc.rationale,
-        categories: tc.categories || tc.category ? (Array.isArray(tc.categories) ? tc.categories : [tc.category || tc.categories]) : ['positive'],
+        categories:
+          tc.categories || tc.category
+            ? Array.isArray(tc.categories)
+              ? tc.categories
+              : [tc.category || tc.categories]
+            : ['positive'],
       }));
 
       setHcData(mockResult);
@@ -125,7 +162,9 @@ export const HillClimbingOptimize: React.FC = () => {
         step3_metrics: evaluationMetrics,
         step4_optimized_data: mockResult,
         step4_history: [], // For HC, we might not have generation history
-        coverage_rate: res.summary?.improved ? (res.summary.improved / (res.summary.total || 1)) * 100 : 0,
+        coverage_rate: res.summary?.improved
+          ? (res.summary.improved / (res.summary.total || 1)) * 100
+          : 0,
         config: {
           generations: 1,
           popSize: 10,
@@ -176,7 +215,7 @@ export const HillClimbingOptimize: React.FC = () => {
     } else if (type === 'excel') {
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "HC_Results");
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'HC_Results');
       XLSX.writeFile(workbook, `hc_results.xlsx`);
     }
   };
@@ -189,7 +228,7 @@ export const HillClimbingOptimize: React.FC = () => {
           <h3 style={{ fontSize: 15, margin: 0 }}>Cấu Hình Thuật Toán Hill Climbing</h3>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 300 }}>
+        {/* <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 300 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Số lượt leo đồi tối đa (Iterations)</label>
             <input 
@@ -206,7 +245,7 @@ export const HillClimbingOptimize: React.FC = () => {
               }}
             />
           </div>
-        </div>
+        </div> */}
 
         <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
@@ -219,35 +258,61 @@ export const HillClimbingOptimize: React.FC = () => {
             {isOptimizing ? 'Đang tinh chỉnh HC…' : 'Chạy Hill Climbing Optimization'}
           </button>
           {!gaResult && (
-            <span style={{ fontSize: 12, color: 'var(--color-yellow)' }}>
-              Cần chạy GA trước.
-            </span>
+            <span style={{ fontSize: 12, color: 'var(--color-yellow)' }}>Cần chạy GA trước.</span>
           )}
         </div>
       </div>
 
       {isOptimizing && (
         <div className='glass-card' style={{ marginBottom: 16, textAlign: 'center', padding: 32 }}>
-          <GitCompare size={30} className='tech-spinner' style={{ color: 'var(--color-teal)', marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Hill Climbing đang tinh chỉnh cục bộ…</div>
-          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{optimizationPhase}</div>
+          <GitCompare
+            size={30}
+            className='tech-spinner'
+            style={{ color: 'var(--color-teal)', marginBottom: 10 }}
+          />
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+            Hill Climbing đang tinh chỉnh cục bộ…
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>
+            {optimizationPhase}
+          </div>
         </div>
       )}
 
       {hcData && (
-        <div className='glass-card' style={{ marginBottom: 16, borderLeft: '4px solid var(--color-emerald)' }}>
+        <div
+          className='glass-card'
+          style={{ marginBottom: 16, borderLeft: '4px solid var(--color-emerald)' }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <CheckCircle2 size={17} style={{ color: 'var(--color-emerald)' }} />
             <h3 style={{ fontSize: 14.5, margin: 0 }}>Kết quả tinh chỉnh Hill Climbing</h3>
           </div>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-            Quá trình HC đã hoàn tất trên {hcData.length} cá thể. Các giá trị cận biên đã được kiểm tra và tối ưu hóa thêm.
-            Dữ liệu này sẽ được dùng làm bộ dữ liệu xuất cuối cùng.
+            Quá trình HC đã hoàn tất trên {hcData.length} cá thể. Các giá trị cận biên đã được kiểm
+            tra và tối ưu hóa thêm. Dữ liệu này sẽ được dùng làm bộ dữ liệu xuất cuối cùng.
           </p>
-          <div style={{ overflowX: 'auto', maxHeight: 600, marginTop: 16, marginBottom: 16, border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
+          <div
+            style={{
+              overflowX: 'auto',
+              maxHeight: 600,
+              marginTop: 16,
+              marginBottom: 16,
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 8,
+            }}
+          >
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
-                <tr style={{ background: 'var(--surface-subtle)', textAlign: 'left', position: 'sticky', top: 0, zIndex: 5 }}>
+                <tr
+                  style={{
+                    background: 'var(--surface-subtle)',
+                    textAlign: 'left',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 5,
+                  }}
+                >
                   <ColHeader en='Test Code' vi='Mã ca kiểm thử' />
                   <ColHeader en='Origin' vi='Nguồn' width={120} />
                   {schema.map((f: any) => (
@@ -266,17 +331,28 @@ export const HillClimbingOptimize: React.FC = () => {
               </thead>
               <tbody>
                 {hcData.slice(0, 50).map((tc: any, i: number) => {
-                  const isSeed = String(tc.origin || '').toLowerCase().includes('seed');
-                  const originStr = isSeed ? 'LLM (Seed)' : (tc.origin || 'HC');
+                  const isSeed = String(tc.origin || '')
+                    .toLowerCase()
+                    .includes('seed');
+                  const originStr = isSeed ? 'LLM (Seed)' : tc.origin || 'HC';
                   const resultStr = String(tc.expectedResult || tc.expected_result || '');
                   const cleanResult = resultStr.toUpperCase();
                   // Cùng logic verdict với getExpectedResultShort: ưu tiên dấu hiệu lỗi, không dùng mã HTTP.
-                  const hasErr = cleanResult.startsWith('LỖI') || cleanResult.startsWith('ERROR') || cleanResult.startsWith('THẤT BẠI') ||
+                  const hasErr =
+                    cleanResult.startsWith('LỖI') ||
+                    cleanResult.startsWith('ERROR') ||
+                    cleanResult.startsWith('THẤT BẠI') ||
                     cleanResult.includes('VALIDATION_ERROR') ||
-                    cleanResult.includes('HTTP 400') || cleanResult.includes('HTTP 422') || cleanResult.includes('HTTP 500');
-                  const hasOk = cleanResult.startsWith('HỢP LỆ') || cleanResult.startsWith('SUCCESS') || cleanResult.startsWith('THÀNH CÔNG') ||
-                    cleanResult.includes('HTTP 200') || cleanResult.includes('HTTP 201');
-                   const isSuccess = hasOk && !hasErr;
+                    cleanResult.includes('HTTP 400') ||
+                    cleanResult.includes('HTTP 422') ||
+                    cleanResult.includes('HTTP 500');
+                  const hasOk =
+                    cleanResult.startsWith('HỢP LỆ') ||
+                    cleanResult.startsWith('SUCCESS') ||
+                    cleanResult.startsWith('THÀNH CÔNG') ||
+                    cleanResult.includes('HTTP 200') ||
+                    cleanResult.includes('HTTP 201');
+                  const isSuccess = hasOk && !hasErr;
                   const isError = !isSuccess;
                   const originalGaTc = gaResult && gaResult[i] ? gaResult[i] : null;
                   const fitnessImproved = originalGaTc && tc.fitness > (originalGaTc.fitness || 0);
@@ -308,37 +384,83 @@ export const HillClimbingOptimize: React.FC = () => {
                         {`TC-HC-${String(i + 1).padStart(3, '0')}`}
                       </td>
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        <span style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 600, backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            padding: '3px 8px',
+                            borderRadius: 4,
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                            backgroundColor: 'var(--surface-subtle)',
+                            border: '1px solid var(--border-subtle)',
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
                           {originStr}
                         </span>
                       </td>
                       {schema.map((f: any) => {
                         const val = tc[f.name];
                         const originalVal = originalGaTc ? originalGaTc[f.name] : undefined;
-                        const isChanged = originalVal !== undefined && String(val) !== String(originalVal);
+                        const isChanged =
+                          originalVal !== undefined && String(val) !== String(originalVal);
                         const empty = val === undefined || val === null || String(val) === '';
                         return (
-                          <td key={f.name} style={{ 
-                            padding: '10px 16px', 
-                            verticalAlign: 'top', 
-                            fontFamily: 'var(--font-mono)', 
-                            fontSize: 12, 
-                            maxWidth: 240, 
-                            wordBreak: 'break-word', 
-                            color: 'var(--text-primary)',
-                            backgroundColor: isChanged ? 'rgba(16, 185, 129, 0.08)' : 'transparent',
-                            borderLeft: isChanged ? '2px solid var(--color-emerald)' : 'none'
-                          }}>
-                            {isChanged && <div style={{ fontSize: 9, color: 'var(--color-emerald)', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>✨ Đã tối ưu ép biên</div>}
-                            {empty ? <span style={{ color: 'var(--text-muted)' }}>—</span> : String(val)}
-                            {isChanged && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, textDecoration: 'line-through' }}>Gốc: {String(originalVal)}</div>}
+                          <td
+                            key={f.name}
+                            style={{
+                              padding: '10px 16px',
+                              verticalAlign: 'top',
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: 12,
+                              maxWidth: 240,
+                              wordBreak: 'break-word',
+                              color: 'var(--text-primary)',
+                              backgroundColor: isChanged
+                                ? 'rgba(16, 185, 129, 0.08)'
+                                : 'transparent',
+                              borderLeft: isChanged ? '2px solid var(--color-emerald)' : 'none',
+                            }}
+                          >
+                            {isChanged && (
+                              <div
+                                style={{
+                                  fontSize: 9,
+                                  color: 'var(--color-emerald)',
+                                  fontWeight: 700,
+                                  marginBottom: 4,
+                                  textTransform: 'uppercase',
+                                }}
+                              >
+                                ✨ Đã tối ưu ép biên
+                              </div>
+                            )}
+                            {empty ? (
+                              <span style={{ color: 'var(--text-muted)' }}>—</span>
+                            ) : (
+                              String(val)
+                            )}
+                            {isChanged && (
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color: 'var(--text-muted)',
+                                  marginTop: 6,
+                                  textDecoration: 'line-through',
+                                }}
+                              >
+                                Gốc: {String(originalVal)}
+                              </div>
+                            )}
                           </td>
                         );
                       })}
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
                         <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
                           {isError ? (
-                            <span style={{ color: 'var(--error)', fontWeight: 700, marginRight: '4px' }}>
+                            <span
+                              style={{ color: 'var(--error)', fontWeight: 700, marginRight: '4px' }}
+                            >
                               Error:
                             </span>
                           ) : (
@@ -347,7 +469,9 @@ export const HillClimbingOptimize: React.FC = () => {
                             </span>
                           )}
                           <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                            {typeof tc.expectedResult === 'string' ? tc.expectedResult : (tc.expectedResult?.statusText || String(tc.expectedResult || ''))}
+                            {typeof tc.expectedResult === 'string'
+                              ? tc.expectedResult
+                              : tc.expectedResult?.statusText || String(tc.expectedResult || '')}
                           </span>
                         </div>
                       </td>
@@ -355,26 +479,60 @@ export const HillClimbingOptimize: React.FC = () => {
                         <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
                           {isError ? (
                             <span style={{ color: 'var(--error)', fontWeight: 500 }}>
-                              {typeof tc.expectedResult === 'object' ? tc.expectedResult.errorDescription : (tc.errorDescription || 'Lỗi hệ thống/Validation')}
+                              {typeof tc.expectedResult === 'object'
+                                ? tc.expectedResult.errorDescription
+                                : tc.errorDescription || 'Lỗi hệ thống/Validation'}
                             </span>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Không có</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                              Không có
+                            </span>
                           )}
                         </div>
                       </td>
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
                         <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
-                          {tc.rationale ? <span style={{ color: 'var(--text-secondary)' }}>{tc.rationale}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                          {tc.rationale ? (
+                            <span style={{ color: 'var(--text-secondary)' }}>{tc.rationale}</span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>—</span>
+                          )}
                         </div>
                       </td>
-                      <td style={{ padding: '10px 16px', textAlign: 'right', verticalAlign: 'top' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: fitnessImproved ? 'var(--color-emerald)' : 'var(--text-primary)' }}>
+                      <td
+                        style={{ padding: '10px 16px', textAlign: 'right', verticalAlign: 'top' }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'flex-end',
+                            gap: 4,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontFamily: 'var(--font-mono)',
+                              fontWeight: 700,
+                              color: fitnessImproved
+                                ? 'var(--color-emerald)'
+                                : 'var(--text-primary)',
+                            }}
+                          >
                             {tc.fitness.toFixed(3)}
                           </span>
                           {fitnessImproved && (
-                            <span style={{ fontSize: 10, color: 'var(--color-emerald)', fontWeight: 600, background: 'rgba(16, 185, 129, 0.1)', padding: '2px 6px', borderRadius: 4 }}>
-                              +{ (tc.fitness - (originalGaTc.fitness || 0)).toFixed(2) } đ
+                            <span
+                              style={{
+                                fontSize: 10,
+                                color: 'var(--color-emerald)',
+                                fontWeight: 600,
+                                background: 'rgba(16, 185, 129, 0.1)',
+                                padding: '2px 6px',
+                                borderRadius: 4,
+                              }}
+                            >
+                              +{(tc.fitness - (originalGaTc.fitness || 0)).toFixed(2)} đ
                             </span>
                           )}
                         </div>
@@ -386,18 +544,49 @@ export const HillClimbingOptimize: React.FC = () => {
             </table>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Hiển thị tối đa 50 ca kiểm thử. Đã sẵn sàng chuyển sang bước tiếp theo.</span>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: 12,
+            }}
+          >
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Hiển thị tối đa 50 ca kiểm thử. Đã sẵn sàng chuyển sang bước tiếp theo.
+            </span>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button 
-                onClick={() => handleExport('json')} 
-                style={{ padding: '8px 14px', fontSize: 13, borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--surface-subtle)', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}
+              <button
+                onClick={() => handleExport('json')}
+                style={{
+                  padding: '8px 14px',
+                  fontSize: 13,
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--surface-subtle)',
+                  cursor: 'pointer',
+                  color: 'var(--text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
               >
                 <Download size={14} /> Xuất JSON
               </button>
-              <button 
-                onClick={() => handleExport('excel')} 
-                style={{ padding: '8px 14px', fontSize: 13, borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--surface-subtle)', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}
+              <button
+                onClick={() => handleExport('excel')}
+                style={{
+                  padding: '8px 14px',
+                  fontSize: 13,
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--surface-subtle)',
+                  cursor: 'pointer',
+                  color: 'var(--text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
               >
                 <Download size={14} /> Xuất Excel
               </button>

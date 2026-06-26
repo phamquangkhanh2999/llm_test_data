@@ -169,11 +169,18 @@ def derive_expected_result(record: dict, fields: list) -> dict:
                 violated_fields.append(name)
                 violated_fields_desc.append(f"'{name}' sai định dạng email")
         elif ftype in ("phone", "card"):
-            # Chỉ ràng buộc "toàn chữ số" — độ dài/đầu số do schema quyết định.
-            if not _re.fullmatch(r"[0-9]+", val_str):
-                errors_422.append(f"'{name}' chỉ được chứa chữ số")
-                violated_fields.append(name)
-                violated_fields_desc.append(f"'{name}' phải toàn chữ số")
+            if ftype == "phone":
+                # Cho phép ký tự thường gặp trong SĐT: +, khoảng trắng, gạch ngang, ngoặc đơn
+                if not _re.fullmatch(r"^\+?[0-9\s\-\(\)]+$", val_str):
+                    errors_422.append(f"'{name}' sai định dạng số điện thoại")
+                    violated_fields.append(name)
+                    violated_fields_desc.append(f"'{name}' không hợp lệ")
+            else: # card
+                # Cho phép khoảng trắng giữa các cụm số của thẻ
+                if not _re.fullmatch(r"[0-9\s]+", val_str):
+                    errors_422.append(f"'{name}' chỉ được chứa chữ số và khoảng trắng")
+                    violated_fields.append(name)
+                    violated_fields_desc.append(f"'{name}' không hợp lệ")
         elif ftype == "date":
             if not is_valid_iso_date(val_str):
                 errors_422.append(f"'{name}' sai định dạng ngày ISO (YYYY-MM-DD)")
