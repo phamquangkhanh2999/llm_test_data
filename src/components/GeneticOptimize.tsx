@@ -357,6 +357,7 @@ export const GeneticOptimize: React.FC = () => {
     parsedConstraints,
     parsedBusinessRules,
     parsedCoverageTargets,
+    setGaProgressHistory,
   } = useAppStore();
 
   const [generations, setGenerations] = useState(60);
@@ -488,6 +489,17 @@ export const GeneticOptimize: React.FC = () => {
       const maRes = await callOptimize(specId, 'ga');
       setMa(maRes);
       setGaResult(maRes.optimizedDataset);
+
+      // Persist progressHistory to store so AlgorithmCharts can draw real trend
+      if (maRes.progressHistory && maRes.progressHistory.length > 0) {
+        setGaProgressHistory(
+          maRes.progressHistory.map((p: any) => ({
+            generation: p.generation ?? 0,
+            bestFitness: p.bestFitness ?? 0,
+            avgFitness: p.avgFitness ?? 0,
+          }))
+        );
+      }
 
       if (maRes?.optimizedDataset) {
         handleEvolutionComplete(

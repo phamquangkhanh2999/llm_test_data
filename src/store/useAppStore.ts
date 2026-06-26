@@ -43,6 +43,7 @@ interface AppState {
   isOptimizingHC: boolean;
   gaResult: any | null;
   hcResult: any | null;
+  gaProgressHistory: { generation: number; bestFitness: number; avgFitness: number }[];
   workflowStatus: {
     input: 'pending' | 'completed';
     analyze: 'pending' | 'completed';
@@ -109,6 +110,7 @@ interface AppState {
   setIsOptimizingHC: (val: boolean) => void;
   setGaResult: (res: any) => void;
   setHcResult: (res: any) => void;
+  setGaProgressHistory: (history: { generation: number; bestFitness: number; avgFitness: number }[]) => void;
   setWorkflowStatus: (step: 'input'|'analyze'|'evaluate'|'ga'|'hc', status: 'pending'|'running'|'completed') => void;
   setOptimizationPhase: (phase: string) => void;
   setSelectedPresetId: (id: string) => void;
@@ -198,6 +200,7 @@ export const useAppStore = create<AppState>((set, get) => {
     isOptimizingHC: false,
     gaResult: null,
     hcResult: null,
+    gaProgressHistory: [],
     workflowStatus: {
       input: 'pending',
       analyze: 'pending',
@@ -282,6 +285,7 @@ export const useAppStore = create<AppState>((set, get) => {
     setIsOptimizingHC: (val) => set({ isOptimizingHC: val }),
     setGaResult: (res) => set({ gaResult: res }),
     setHcResult: (res) => set({ hcResult: res }),
+    setGaProgressHistory: (history) => set({ gaProgressHistory: history }),
     setWorkflowStatus: (step, status) => set((state) => ({
       workflowStatus: { ...state.workflowStatus, [step]: status }
     })),

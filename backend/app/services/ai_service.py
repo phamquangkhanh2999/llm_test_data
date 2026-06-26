@@ -573,6 +573,29 @@ def calculate_single_testcase_scores(tc, fields, required_boundaries, required_c
         "diversityScore": 100
     }
 
+def normalize_keys(values: dict, fields: list) -> dict:
+    if not isinstance(values, dict):
+        return {}
+    normalized = {}
+    
+    # Map normalized field names to their original names
+    # e.g., 'username' -> 'username', 'user_name' -> 'username', etc.
+    field_map = {}
+    for f in fields:
+        name = f.get("name")
+        if name:
+            norm_name = str(name).lower().replace("_", "").replace("-", "").replace(" ", "")
+            field_map[norm_name] = name
+            
+    for k, v in values.items():
+        norm_key = str(k).lower().replace("_", "").replace("-", "").replace(" ", "")
+        if norm_key in field_map:
+            normalized[field_map[norm_key]] = v
+        else:
+            normalized[k] = v
+            
+    return normalized
+
 def validate_and_fix_seeds(seeds, fields):
     """
     TESTFORGE V4.1 Advanced Verification, Repair, Deduplication, and Scoring Engine.
@@ -592,6 +615,9 @@ def validate_and_fix_seeds(seeds, fields):
         data = seed.get("data", seed.get("values", seed))
         if "data" not in seed and "values" not in seed:
             data = {k: v for k, v in seed.items() if k not in ["tcId", "method", "scenario", "expectedResult", "errorDescription", "category", "categories", "origin", "fitness", "llmFitness", "gaFitness", "hcFitness", "coverageTags", "generatedFrom"]}
+        
+        # Apply normalization to match schema fields exactly
+        data = normalize_keys(data, fields)
         seed["values"] = data
         
         # Reject rules
@@ -1176,9 +1202,13 @@ def generate_seeds_with_ai(
             stats["generated"] += len(batch)
             
             for s in batch:
+                if not isinstance(s, dict):
+                    continue
                 if "values" not in s:
-                    val_keys = {f["name"] for f in fields}
-                    s["values"] = {k: v for k, v in s.items() if k in val_keys}
+                    metadata_keys = {"scenario", "rationale", "categories", "expectedResult", "errorDescription", "tcId"}
+                    s["values"] = {k: v for k, v in s.items() if k not in metadata_keys}
+                
+                s["values"] = normalize_keys(s["values"], fields)
                     
                 # Oracle Classification (Phase 1C)
                 from ..algorithms.fitness_engine.quality_classifier import classify_quality, InvalidType

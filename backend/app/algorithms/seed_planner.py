@@ -22,13 +22,15 @@ def create_seed_plan(test_methods: List[str], schema_rules: List[Dict[str, Any]]
     if not test_methods:
         test_methods = ["bva", "ep"]
         
-    base_per_method = 12
-    # Tăng số lượng dựa trên độ phức tạp của form (nhiều field thì cần nhiều case hơn)
-    field_bonus = max(0, len(schema_rules) - 3) * 4
+    base_per_method = 5
+    # Tối ưu hóa số lượng: vừa đủ để bao phủ các case, tránh sinh quá nhiều gây chậm hệ thống
+    field_bonus = int(max(0, len(schema_rules) - 3) * 1.5)
     total_requested = (len(test_methods) * base_per_method) + field_bonus
     
-    if total_requested > 60:
-        total_requested = 60 # Giới hạn tối đa để tránh quá tải API LLM/Timeout
+    if total_requested > 30:
+        total_requested = 30 # Giới hạn tối đa hợp lý hơn để tránh tốn thời gian và trùng lặp
+    if total_requested < 5:
+        total_requested = 5
         
     valid_weight = 0.0
     boundary_weight = 0.0
