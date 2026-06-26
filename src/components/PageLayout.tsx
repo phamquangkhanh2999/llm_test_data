@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, CheckCircle2, Info } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Info } from 'lucide-react';
 import React from 'react';
 import { useAppStore } from '../store/useAppStore';
 
@@ -355,37 +355,51 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
       </div>
 
       {/* ── NEXT STEP CTA ── */}
-      {/* {nextScreen && nextLabel && allPrereqsMet && (
-        <div style={{
-          display: 'flex', justifyContent: 'flex-end',
-          paddingTop: '8px', borderTop: '1px solid var(--border-subtle)',
-        }}>
+      {nextScreen && nextLabel && allPrereqsMet && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            paddingTop: '8px',
+            borderTop: '1px solid var(--border-subtle)',
+          }}
+        >
           <button
             onClick={handleNext}
             style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '12px 24px', borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '12px 24px',
+              borderRadius: '10px',
               background: `linear-gradient(135deg, ${accentColor}cc, ${accentColor}80)`,
-              border: `1px solid ${accentColor}55`, color: '#fff',
-              fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+              border: `1px solid ${accentColor}55`,
+              color: '#fff',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
               boxShadow: `0 4px 20px ${accentColor}30`,
               transition: 'all 0.2s ease',
             }}
-            onMouseOver={e => {
+            onMouseOver={(e) => {
               (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
-              (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 8px 28px ${accentColor}50`;
+              (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                `0 8px 28px ${accentColor}50`;
             }}
-            onMouseOut={e => {
+            onMouseOut={(e) => {
               (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
-              (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 4px 20px ${accentColor}30`;
+              (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                `0 4px 20px ${accentColor}30`;
             }}
-            onFocus={e => {
+            onFocus={(e) => {
               (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
-              (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 8px 28px ${accentColor}50`;
+              (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                `0 8px 28px ${accentColor}50`;
             }}
-            onBlur={e => {
+            onBlur={(e) => {
               (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
-              (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 4px 20px ${accentColor}30`;
+              (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                `0 4px 20px ${accentColor}30`;
             }}
           >
             {nextIcon && <span style={{ opacity: 0.9 }}>{nextIcon}</span>}
@@ -393,7 +407,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
             <ArrowRight size={16} />
           </button>
         </div>
-      )} */}
+      )}
     </div>
   );
 };

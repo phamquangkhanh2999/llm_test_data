@@ -104,7 +104,7 @@ export const SpecInput: React.FC = () => {
 
   const sanityRecords = React.useMemo(() => {
     return activeSeeds.map((seed, idx) => {
-const isInvalid = idx % 9 === 0;
+      const isInvalid = idx % 9 === 0;
       return {
         testId: `F0-${idx + 1}`,
         dataValue: seed,
@@ -114,24 +114,24 @@ const isInvalid = idx % 9 === 0;
         actionTaken: isInvalid ? 'Tự động chuẩn hóa bằng AI' : 'Bỏ qua',
       };
     });
-  }, [initialSeeds]);
+  }, [activeSeeds]);
 
   const fitnessRecords = React.useMemo(() => {
-    if (!parsedSchema || parsedSchema.length === 0 || !initialSeeds || initialSeeds.length === 0) {
+    if (!parsedSchema || parsedSchema.length === 0 || !activeSeeds || activeSeeds.length === 0) {
       return [];
     }
 
     try {
       const engine = new GeneticEngine(parsedSchema, {
         generations: 50,
-        popSize: initialSeeds.length,
+        popSize: activeSeeds.length,
         crossoverRate: 0.8,
         mutationRate: 0.15,
         weights: { validation: 0.4, boundary: 0.3, security: 0.1, diversity: 0.2 }
       });
 
-      const rawPop = initialSeeds.map(s => s.values ? s.values : (s.data ? s.data : s));
-      return initialSeeds.map((seed, idx) => {
+      const rawPop = activeSeeds.map(s => s.values ? s.values : (s.data ? s.data : s));
+      return activeSeeds.map((seed, idx) => {
         const testCaseData = seed.values ? seed.values : (seed.data ? seed.data : seed);
         const result = engine.computeFitness(testCaseData, rawPop);
         const { vScore, bScore, pScore, dScore } = result.scoreBreakdown;
@@ -156,7 +156,7 @@ const isInvalid = idx % 9 === 0;
       console.error("Lỗi tính toán fitness thực tế cho F0:", e);
       return [];
     }
-  }, [initialSeeds, parsedSchema]);
+  }, [activeSeeds, parsedSchema]);
 
   // --- CẢI TIẾN DRAG-AND-DROP ---
   const [isDragging, setIsDragging] = useState(false);
