@@ -420,14 +420,30 @@ export const useAppStore = create<AppState>((set, get) => {
         data: flattenedResults,
       };
 
-      const updatedHistoryRuns = [newRun, ...historyRuns];
-      try {
-        localStorage.setItem(
-          'testforge_history_runs',
-          JSON.stringify(updatedHistoryRuns),
-        );
-      } catch (e) {
-        console.error('Lỗi ghi dữ liệu lịch sử vào localStorage:', e);
+      let updatedHistoryRuns = [newRun, ...historyRuns];
+      
+      // Keep trying to save by removing the oldest run if quota is exceeded
+      let success = false;
+      while (!success && updatedHistoryRuns.length > 0) {
+        try {
+          // Limit to maximum 10 runs to be safe
+          if (updatedHistoryRuns.length > 10) {
+            updatedHistoryRuns = updatedHistoryRuns.slice(0, 10);
+          }
+          localStorage.setItem(
+            'testforge_history_runs',
+            JSON.stringify(updatedHistoryRuns),
+          );
+          success = true;
+        } catch (e: any) {
+          if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+            // Remove the oldest run and try again
+            updatedHistoryRuns.pop();
+          } else {
+            console.error('Lỗi ghi dữ liệu lịch sử vào localStorage:', e);
+            break; // Stop if it's a different error
+          }
+        }
       }
 
       set({

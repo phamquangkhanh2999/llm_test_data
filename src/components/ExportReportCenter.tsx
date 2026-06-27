@@ -36,6 +36,95 @@ const toCleanRow = (tc: any) => {
   return out;
 };
 
+const getOriginBadge = (origin: string) => {
+  const clean = (origin || 'GA').toLowerCase();
+  if (clean.includes('seed'))
+    return {
+      label: 'Seed / F0 gốc',
+      bg: 'rgba(59, 130, 246, 0.08)',
+      border: 'rgba(59, 130, 246, 0.2)',
+      color: '#3b82f6',
+    };
+  if (clean.includes('ls') || clean.includes('local') || clean.includes('memetic'))
+    return {
+      label: 'Cải tiến cục bộ (Local Improvement)',
+      bg: 'rgba(16, 185, 129, 0.08)',
+      border: 'rgba(16, 185, 129, 0.2)',
+      color: 'var(--color-emerald)',
+    };
+  if (clean.includes('elite'))
+    return {
+      label: 'Tinh hoa (Elite)',
+      bg: 'rgba(139, 92, 246, 0.08)',
+      border: 'rgba(139, 92, 246, 0.2)',
+      color: '#8b5cf6',
+    };
+  if (clean.includes('security') && clean.includes('mutation'))
+    return {
+      label: 'Đột biến bảo mật (Security Mutation)',
+      bg: 'rgba(186, 26, 26, 0.08)',
+      border: 'rgba(186, 26, 26, 0.2)',
+      color: 'var(--color-rose)',
+    };
+  if (clean.includes('boundary') && clean.includes('mutation'))
+    return {
+      label: 'Đột biến biên (Boundary Mutation)',
+      bg: 'rgba(245, 158, 11, 0.08)',
+      border: 'rgba(245, 158, 11, 0.2)',
+      color: '#f59e0b',
+    };
+  if (clean.includes('mutation'))
+    return {
+      label: 'Đột biến',
+      bg: 'rgba(245, 158, 11, 0.08)',
+      border: 'rgba(245, 158, 11, 0.2)',
+      color: '#f59e0b',
+    };
+  if (clean.includes('crossover'))
+    return {
+      label: 'Lai ghép (Crossover)',
+      bg: 'rgba(6, 182, 212, 0.08)',
+      border: 'rgba(6, 182, 212, 0.2)',
+      color: 'var(--color-teal)',
+    };
+  return {
+    label: origin,
+    bg: 'var(--surface-subtle)',
+    border: 'var(--border-subtle)',
+    color: 'var(--text-secondary)',
+  };
+};
+
+const ColHeader: React.FC<{
+  en: string;
+  vi: string;
+  width?: number;
+  minWidth?: number;
+  align?: 'left' | 'right' | 'center';
+}> = ({ en, vi, width, minWidth, align = 'left' }) => (
+  <th style={{ padding: '12px 16px', width, minWidth, textAlign: align, background: 'var(--surface-subtle)' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start',
+      }}
+    >
+      <span style={{ color: 'var(--text-secondary)' }}>{en}</span>
+      <span
+        style={{
+          fontSize: 9.5,
+          textTransform: 'none',
+          color: 'var(--text-muted)',
+          fontWeight: 400,
+        }}
+      >
+        {vi}
+      </span>
+    </div>
+  </th>
+);
+
 const STEPS = [
   { n: 1, label: 'Đầu vào', icon: <FileInput size={15} /> },
   { n: 2, label: 'Đánh giá F0', icon: <Gauge size={15} /> },
@@ -366,7 +455,7 @@ export const ExportReportCenter: React.FC = () => {
 
 // ─── BƯỚC 1: Đầu vào ────────────────────────────────────────────────────────
 const StepInputView: React.FC<{ data: any }> = ({ data }) => {
-  const text = data?.raw_text || data?.step1_raw_text || '';
+  const text = data?.raw_text || data?.step1_raw_text || data?.rawText || '';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <SectionTitle icon={<FileInput size={18} />} text="Đặc tả yêu cầu đầu vào (Bước 1)" />
@@ -384,10 +473,10 @@ const StepInputView: React.FC<{ data: any }> = ({ data }) => {
 
 // ─── BƯỚC 2: Phân tích (fields + F0) ────────────────────────────────────────
 const StepAnalysisView: React.FC<{ data: any }> = ({ data }) => {
-  const fields: any[] = data?.fields || [];
-  const seeds: any[] = data?.initial_seeds || [];
-  const constraints: any[] = data?.constraints || [];
-  const businessRules: any[] = data?.businessRules || [];
+  const fields: any[] = data?.fields || data?.step1_parsed_schema || data?.step2_schema?.fields || [];
+  const seeds: any[] = data?.initial_seeds || data?.initialPopulation || data?.step3_seeds?.seeds || [];
+  const constraints: any[] = data?.constraints || data?.step1_constraints || data?.step2_schema?.constraints || [];
+  const businessRules: any[] = data?.businessRules || data?.step1_business_rules || data?.step2_schema?.business_rules || [];
 
   const flattenSeed = (s: any) => ({ ...(s.values || {}), ...s });
   const flatSeeds = seeds.map(flattenSeed);
@@ -682,19 +771,6 @@ const StepOptimizedView: React.FC<{
     'Độ phủ': e.coverage != null ? +(e.coverage * 100).toFixed(1) : null,
   }));
 
-  const TabBtn = ({ value, label }: { value: 'ga' | 'hc'; label: string }) => (
-    <button
-      onClick={() => setTab(value)}
-      style={{
-        padding: '7px 20px', fontSize: 13, fontWeight: tab === value ? 700 : 500,
-        borderRadius: 6, border: 'none', cursor: 'pointer',
-        background: tab === value ? 'var(--brand-primary)' : 'var(--surface-subtle)',
-        color: tab === value ? '#fff' : 'var(--text-secondary)',
-        transition: 'all 0.2s',
-      }}
-    >{label} ({value === 'ga' ? gaRows.length : hcRows.length})</button>
-  );
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Header */}
@@ -719,8 +795,26 @@ const StepOptimizedView: React.FC<{
       {/* Tab switcher GA / HC (ẩn nếu forceTab) */}
       {!forceTab && (
         <div style={{ display: 'flex', gap: 8 }}>
-          <TabBtn value="ga" label="Tối ưu GA" />
-          <TabBtn value="hc" label="Tối ưu HC" />
+          <button
+            onClick={() => setTab('ga')}
+            style={{
+              padding: '7px 20px', fontSize: 13, fontWeight: tab === 'ga' ? 700 : 500,
+              borderRadius: 6, border: 'none', cursor: 'pointer',
+              background: tab === 'ga' ? 'var(--brand-primary)' : 'var(--surface-subtle)',
+              color: tab === 'ga' ? '#fff' : 'var(--text-secondary)',
+              transition: 'all 0.2s',
+            }}
+          >Tối ưu GA ({gaRows.length})</button>
+          <button
+            onClick={() => setTab('hc')}
+            style={{
+              padding: '7px 20px', fontSize: 13, fontWeight: tab === 'hc' ? 700 : 500,
+              borderRadius: 6, border: 'none', cursor: 'pointer',
+              background: tab === 'hc' ? 'var(--brand-primary)' : 'var(--surface-subtle)',
+              color: tab === 'hc' ? '#fff' : 'var(--text-secondary)',
+              transition: 'all 0.2s',
+            }}
+          >Tối ưu HC ({hcRows.length})</button>
         </div>
       )}
 
@@ -766,23 +860,24 @@ const StepOptimizedView: React.FC<{
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-subtle)', zIndex: 2 }}>
               <tr>
-                <th style={thS}>Mã ca kiểm thử</th>
-                <th style={thS}>Nguồn LLM</th>
-                <th style={thS}>Toán tử GA</th>
-                {dataKeys.map(k => <th key={k} style={thS}>{k}</th>)}
-                <th style={thS}>Kết quả mong muốn</th>
-                <th style={thS}>Lỗi mong muốn</th>
-                <th style={thS}>Mục tiêu cải tiến</th>
-                <th style={thS}>Fitness</th>
-                <th style={thS}>Hợp lệ</th>
-                <th style={thS}>Biên</th>
-                <th style={thS}>Đa dạng</th>
-                <th style={thS}>Ưu tiên</th>
+                <ColHeader en="Test Code" vi="Mã ca kiểm thử" />
+                <ColHeader en="LLM Source" vi="Nguồn LLM" width={120} />
+                <ColHeader en="GA Operator" vi="Toán tử GA" width={150} />
+                {dataKeys.map(k => <ColHeader key={k} en={k} vi="Trường dữ liệu" minWidth={150} />)}
+                <ColHeader en="Expected Result" vi="Kết quả mong muốn" minWidth={220} />
+                <ColHeader en="Expected Error" vi="Lỗi mong muốn" minWidth={200} />
+                <ColHeader en="Improvement Goal" vi="Mục tiêu cải tiến" minWidth={200} />
+                <ColHeader en="Fitness" vi="Fitness (0-1)" width={90} align="right" />
+                <ColHeader en="ValidationScore" vi="Hợp lệ (0-1)" width={100} align="right" />
+                <ColHeader en="BoundaryScore" vi="Biên (0-1)" width={90} align="right" />
+                <ColHeader en="DiversityScore" vi="Đa dạng (0-1)" width={90} align="right" />
+                <ColHeader en="PriorityScore" vi="Ưu tiên (0-1)" width={90} align="right" />
               </tr>
             </thead>
             <tbody>
               {activeRows.map((tc: any, i: number) => {
                 const isSeed = String(tc.origin || '').toLowerCase().includes('seed');
+                const badge = getOriginBadge(tc.ma_action || tc.origin || (tab === 'ga' ? 'GA' : 'HC'));
                 return (
                   <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)', background: i % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.01)' }}>
                     <td style={{ ...tdS, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
@@ -794,15 +889,19 @@ const StepOptimizedView: React.FC<{
                       </span>
                     </td>
                     <td style={{ ...tdS }}>
-                      <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 600, backgroundColor: 'rgba(6, 182, 212, 0.08)', border: '1px solid rgba(6, 182, 212, 0.2)', color: 'var(--color-teal)' }}>
-                        {tc.origin ?? tc.ma_action ?? (tab === 'ga' ? 'GA' : 'HC')}
+                      <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 600, backgroundColor: badge.bg, border: `1px solid ${badge.border}`, color: badge.color }}>
+                        {badge.label}
                       </span>
                     </td>
-                    {dataKeys.map(k => (
-                      <td key={k} style={{ ...tdS, verticalAlign: 'top', maxWidth: 220, wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                        {String(tc[k] ?? '')}
-                      </td>
-                    ))}
+                    {dataKeys.map(k => {
+                      const val = tc[k];
+                      const empty = val === undefined || val === null || String(val) === '';
+                      return (
+                        <td key={k} style={{ ...tdS, verticalAlign: 'top', maxWidth: 240, wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}>
+                          {empty ? <span style={{ color: 'var(--text-muted)' }}>—</span> : String(val)}
+                        </td>
+                      );
+                    })}
                     <td style={{ ...tdS, verticalAlign: 'top', maxWidth: 240, wordBreak: 'break-word' }}>
                       {typeof tc.expectedResult === 'string' ? tc.expectedResult : tc.expectedResult?.statusText || String(tc.expectedResult || '')}
                     </td>

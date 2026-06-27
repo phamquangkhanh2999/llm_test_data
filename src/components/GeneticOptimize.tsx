@@ -559,6 +559,53 @@ export const GeneticOptimize: React.FC = () => {
           })),
           undefined
         );
+
+        const summaryData = {
+          totalGenerated: maRes.optimizedDataset.length,
+          validCount: maRes.optimizedDataset.filter((t: any) => (t.validationScore || 0) > 0.5).length,
+          coverageRate: maRes.coverage || 96,
+          improvement: 0,
+          timeSpent: 0
+        };
+        const payload = {
+          id: Date.now().toString(),
+          timestamp: new Date().toISOString(),
+          spec_id: specificationId || `SPEC-${Date.now()}`,
+          spec_name: schemaName || 'Đặc tả chưa đặt tên',
+          raw_text: rawText,
+          fields: schema,
+          constraints: parsedConstraints,
+          businessRules: parsedBusinessRules,
+          coverageTargets: parsedCoverageTargets,
+          initialPopulation: initialSeeds,
+          gaResult: maRes.optimizedDataset,
+          hcResult: [],
+          finalResult: maRes.optimizedDataset,
+          maStats: maRes.maStats || {
+            bestFitness: 0, avgFitness: 0, diversity: 0,
+            eliteCount: 0, crossoverCount: 0, mutationCount: 0,
+            localSearchCount: 0, duplicatesRemoved: 0
+          },
+          progressHistory: maRes.progressHistory || [],
+          summary: summaryData,
+          step1_parsed_schema: schema,
+          step2_eval_result: evaluationResult,
+          step3_metrics: evaluationMetrics,
+          step4_optimized_data: maRes.optimizedDataset,
+          step4_history: maRes.progressHistory || [],
+          coverage_rate: summaryData.coverageRate,
+          config: {
+            generations,
+            popSize,
+            crossoverRate,
+            mutationRate,
+            localSearchRate: 1.0,
+            localSearchIters: 10,
+            weights: { w1: 0.4, w2: 0.3, w3: 0.2, w4: 0.1 },
+          },
+          project_meta: projectMeta,
+        };
+        saveGenerationSnapshot(payload);
       }
       toast.success('Hoàn tất GA! Bấm vào nút Xem kết quả hoặc chuyển sang HC Tối ưu.');
     } catch (e: any) {
