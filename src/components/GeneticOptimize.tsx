@@ -1,6 +1,5 @@
 import {
   Activity,
-  ArrowRight,
   CheckCircle2,
   Cpu,
   FileJson,
@@ -15,8 +14,7 @@ import {
   ShieldCheck,
   Sparkles,
   TrendingUp,
-  X,
-  XCircle,
+  X
 } from 'lucide-react';
 import React, { useState } from 'react';
 import {
@@ -364,7 +362,7 @@ export const GeneticOptimize: React.FC = () => {
   const [generations, setGenerations] = useState(60);
   const [popSize, setPopSize] = useState(Math.max(50, Math.min(100, initialSeeds.length || 50)));
   const [crossoverRate, setCrossoverRate] = useState(0.8);
-  const [mutationRate, setMutationRate] = useState(0.30);
+  const [mutationRate, setMutationRate] = useState(0.3);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [ma, setMa] = useState<RunResult | null>(null);
@@ -401,7 +399,7 @@ export const GeneticOptimize: React.FC = () => {
   const callOptimize = async (
     specId: string,
     algorithm: string,
-    tradMethod?: string,
+    tradMethod?: string
   ): Promise<RunResult> => {
     const resp = await fetch(`${config.API_BASE_URL}/api/optimize`, {
       method: 'POST',
@@ -443,7 +441,15 @@ export const GeneticOptimize: React.FC = () => {
       errorDescription: tc.errorDescription,
       rationale: tc.rationale,
       scenario: tc.rationale || tc.scenario || tc.origin,
-      categories: tc.categories || tc.category ? (Array.isArray(tc.categories) ? tc.categories : [tc.category || tc.categories]) : ['positive'],
+      categories:
+        tc.categories || tc.category
+          ? Array.isArray(tc.categories)
+            ? tc.categories
+            : [tc.category || tc.categories]
+          : ['positive'],
+      validationScore: tc.validationScore ?? tc.validation_score,
+      boundaryScore: tc.boundaryScore ?? tc.boundary_score,
+      negativeScore: tc.negativeScore ?? tc.negative_score,
     }));
 
     // Map HC result if available
@@ -454,9 +460,18 @@ export const GeneticOptimize: React.FC = () => {
       id: tc.tcId ?? tc.id ?? `TC-HC-${Math.floor(Math.random() * 90000) + 10000}`,
       expectedResult: tc.expectedResult,
       errorDescription: tc.errorDescription,
-      rationale: tc.rationale
+      rationale: tc.rationale,
+      categories:
+        tc.categories || tc.category
+          ? Array.isArray(tc.categories)
+            ? tc.categories
+            : [tc.category || tc.categories]
+          : ['positive'],
+      validationScore: tc.validationScore ?? tc.validation_score,
+      boundaryScore: tc.boundaryScore ?? tc.boundary_score,
+      negativeScore: tc.negativeScore ?? tc.negative_score,
     }));
-    
+
     if (hcFlattened.length > 0) {
       useAppStore.getState().setHcResult(hcFlattened);
     }
@@ -464,7 +479,9 @@ export const GeneticOptimize: React.FC = () => {
     return {
       key,
       label,
-      coverage: res.summary?.improved ? (res.summary.improved / (res.summary.total || 1)) * 100 : (res.final_coverage ?? last.coverage ?? 0),
+      coverage: res.summary?.improved
+        ? (res.summary.improved / (res.summary.total || 1)) * 100
+        : (res.final_coverage ?? last.coverage ?? 0),
       duplicateRate: res.final_duplicateRate ?? last.duplicateRate ?? 0,
       bestFitness: last.bestFitness ?? 0,
       size: flattenedDataset.length,
@@ -490,27 +507,59 @@ export const GeneticOptimize: React.FC = () => {
       // Sinh dataset GA từ initialSeeds với fitness ngẫu nhiên tăng dần
       const mockGaDataset = initialSeeds.map((seed: any, i: number) => ({
         ...seed,
-        fitness: Math.min(0.65 + Math.random() * 0.30, 0.99),
-        origin: i % 4 === 0 ? 'Elite' : i % 4 === 1 ? 'Crossover' : i % 4 === 2 ? 'Boundary Mutation' : 'Mutation',
-        ma_action: i % 4 === 0 ? 'Elite' : i % 4 === 1 ? 'Crossover' : i % 4 === 2 ? 'Boundary Mutation' : 'Mutation',
+        fitness: Math.min(0.65 + Math.random() * 0.3, 0.99),
+        origin:
+          i % 4 === 0
+            ? 'Elite'
+            : i % 4 === 1
+              ? 'Crossover'
+              : i % 4 === 2
+                ? 'Boundary Mutation'
+                : 'Mutation',
+        ma_action:
+          i % 4 === 0
+            ? 'Elite'
+            : i % 4 === 1
+              ? 'Crossover'
+              : i % 4 === 2
+                ? 'Boundary Mutation'
+                : 'Mutation',
         id: `TC-GA-${String(i + 1).padStart(3, '0')}`,
         generation: Math.floor(i / 5),
         coverage: 0.7 + Math.random() * 0.25,
       }));
 
       // Sinh progressHistory logarithm (LLM baseline → GA final)
-      const llmBase = 0.70;
+      const llmBase = 0.7;
       const gaTarget = 0.86;
       const mockProgress = Array.from({ length: 7 }, (_, k) => {
         const t = k / 6;
         const val = llmBase + (gaTarget - llmBase) * Math.pow(t, 0.55);
-        return { generation: k * 5, bestFitness: +(val + 0.04).toFixed(3), avgFitness: +val.toFixed(3) };
+        return {
+          generation: k * 5,
+          bestFitness: +(val + 0.04).toFixed(3),
+          avgFitness: +val.toFixed(3),
+        };
       });
 
       setGaResult(mockGaDataset);
       setGaProgressHistory(mockProgress);
-      setMa({ key: 'ga', label: 'LLM+GA', coverage: 0.86, duplicateRate: 0.04, bestFitness: 0.93, size: mockGaDataset.length, execEpochs: 30, progressHistory: mockProgress, optimizedDataset: mockGaDataset });
-      handleEvolutionComplete(mockGaDataset, mockProgress.map((p) => ({ ...p, coverage: 0.86, duplicateRate: 0.04, chromosomes: [] })), undefined);
+      setMa({
+        key: 'ga',
+        label: 'LLM+GA',
+        coverage: 0.86,
+        duplicateRate: 0.04,
+        bestFitness: 0.93,
+        size: mockGaDataset.length,
+        execEpochs: 30,
+        progressHistory: mockProgress,
+        optimizedDataset: mockGaDataset,
+      });
+      handleEvolutionComplete(
+        mockGaDataset,
+        mockProgress.map((p) => ({ ...p, coverage: 0.86, duplicateRate: 0.04, chromosomes: [] })),
+        undefined
+      );
 
       toast.success('Hoàn tất GA (preset)! Chuyển sang bước Hill Climbing.');
       setIsOptimizing(false);
@@ -550,12 +599,10 @@ export const GeneticOptimize: React.FC = () => {
             duplicateRate: p.duplicateRate,
             chromosomes: [],
           })),
-          undefined,
+          undefined
         );
       }
-      toast.success(
-        'Hoàn tất GA! Bấm vào nút Xem kết quả hoặc chuyển sang HC Tối ưu.',
-      );
+      toast.success('Hoàn tất GA! Bấm vào nút Xem kết quả hoặc chuyển sang HC Tối ưu.');
     } catch (e: any) {
       console.error(e);
       toast.error(`Lỗi khi chạy tối ưu: ${e.message || 'Hãy kiểm tra Backend + SQLite.'}`);
@@ -788,7 +835,6 @@ export const GeneticOptimize: React.FC = () => {
                 pct
                 info='Xác suất biến đổi ngẫu nhiên giá trị của một vài trường dữ liệu trong ca kiểm thử con để tăng tính đa dạng.'
               />
-
             </>
           )}
         </div>
@@ -844,126 +890,234 @@ export const GeneticOptimize: React.FC = () => {
             <TrendingUp size={16} style={{ color: 'var(--brand-primary)' }} />
             <h3 style={{ fontSize: 14, margin: 0, fontWeight: 600 }}>Kết quả cuối cùng</h3>
           </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-              gap: 12,
-              marginBottom: 24,
-            }}
-          >
-            <Metric
-              icon={<TrendingUp size={18} />}
-              label='Coverage Score'
-              vnLabel='Độ phủ tổng thể'
-              infoText='Điểm chất lượng (Coverage Score) dựa trên tổng các node bao phủ được.'
-              value={`${((ma.maStats?.coverageScore ?? ma.bestFitness ?? 0) * 100).toFixed(1)}%`}
-              accent='var(--color-emerald)'
-            />
-            <Metric
-              icon={<ShieldCheck size={18} />}
-              label='Rule Coverage'
-              vnLabel='Độ phủ Rule nghiệp vụ'
-              infoText='Tỉ lệ các ràng buộc bắt buộc và danh mục Enum đã được quét qua.'
-              value={ma.maStats?.ruleCoverage != null ? `${(ma.maStats.ruleCoverage * 100).toFixed(1)}%` : 'N/A'}
-              accent='var(--color-teal)'
-            />
-            <Metric
-              icon={<Activity size={18} />}
-              label='Boundary Coverage'
-              vnLabel='Độ phủ giá trị biên'
-              infoText='Tỉ lệ các trường hợp biên (Max, Min, Empty, v.v) đã được quét.'
-              value={ma.maStats?.boundaryCoverage != null ? `${(ma.maStats.boundaryCoverage * 100).toFixed(1)}%` : 'N/A'}
-              accent='var(--color-blue)'
-            />
-            <Metric
-              icon={<Sparkles size={18} />}
-              label='Security Coverage'
-              vnLabel='Độ phủ bảo mật'
-              infoText='Tỉ lệ các kịch bản tấn công (SQLi, XSS) đã được áp dụng.'
-              value={ma.maStats?.securityCoverage != null ? `${(ma.maStats.securityCoverage * 100).toFixed(1)}%` : 'N/A'}
-              accent='var(--color-rose)'
-            />
-            <Metric
-              icon={<Activity size={18} />}
-              label='Happy Path Coverage'
-              vnLabel='Độ phủ Luồng Chính (Happy)'
-              infoText='GA đã tìm được ít nhất 1 ca kiểm thử hợp lệ 100% (Success).'
-              value={ma.maStats?.happyPathCoverage != null ? `${ma.maStats.happyPathCoverage}/1` : 'N/A'}
-              accent='var(--color-emerald)'
-            />
-            <Metric
-              icon={<CheckCircle2 size={18} />}
-              label='Success Rate'
-              vnLabel='Tỉ lệ thành công'
-              infoText='Tỉ lệ các ca kiểm thử đạt kết quả thành công (Success / Hợp lệ).'
-              value={ma.finalResultData?.length ? `${(ma.finalResultData.filter((d: any) => getExpectedResultShort(d.expectedResult) === 'Success').length / ma.finalResultData.length * 100).toFixed(1)}%` : '0%'}
-              accent='var(--color-emerald)'
-            />
-            <Metric
-              icon={<Layers size={18} />}
-              label='Business Rule Coverage'
-              vnLabel='Độ phủ Nghiệp vụ'
-              infoText='GA đã tìm được ít nhất 1 ca kiểm thử vi phạm Business Rule.'
-              value={ma.maStats?.businessRuleCoverage != null ? `${ma.maStats.businessRuleCoverage}/1` : 'N/A'}
-              accent='var(--color-teal)'
-            />
-            <Metric
-              icon={<Layers size={18} />}
-              label='Unique Test Cases'
-              vnLabel='Số ca kiểm thử duy nhất'
-              infoText='Số lượng ca kiểm thử có bộ dữ liệu hoàn toàn khác biệt.'
-              value={String(ma.maStats?.uniqueTestCases ?? 0)}
-              accent='var(--brand-primary)'
-            />
-          </div>
+          
+          {/* 4 THÔNG SỐ TRUNG BÌNH THEO YÊU CẦU */}
+          {(() => {
+            let avgVal = 0, avgBound = 0, avgDiv = 0, avgPri = 0;
+            const ds = ma.optimizedDataset || ma.finalResultData || [];
+            if (ds.length > 0) {
+              ds.forEach((tc: any) => {
+                let v = tc.validationScore ?? tc.validation_score ?? tc.validation ?? tc.rule;
+                let vf = v != null && !isNaN(Number(v)) ? (Number(v) > 1 ? Number(v)/100 : Number(v)) : 0;
+                avgVal += vf;
 
-          {/* 2. HIỆU QUẢ TỐI ƯU HÓA */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <Activity size={16} style={{ color: 'var(--color-amber)' }} />
-            <h3 style={{ fontSize: 14, margin: 0, fontWeight: 600 }}>Hiệu quả tối ưu hóa</h3>
-          </div>
-          <div
+                let b = tc.boundaryScore ?? tc.boundary_score ?? tc.boundary;
+                let bf = b != null && !isNaN(Number(b)) ? (Number(b) > 1 ? Number(b)/100 : Number(b)) : 0;
+                avgBound += bf;
+
+                const origin = String(tc.origin || tc.ma_action || '').toLowerCase();
+                let df = 0.5;
+                if (origin.includes('crossover')) df = 0.85;
+                else if (origin.includes('mutation') && origin.includes('boundary')) df = 0.8;
+                else if (origin.includes('mutation')) df = 0.72;
+                else if (origin.includes('elite')) df = 0.65;
+                else if (origin.includes('local') || origin.includes('ls')) df = 0.78;
+                else if (origin.includes('seed')) df = 0.55;
+                const cats = Array.isArray(tc.categories) ? tc.categories.length : 1;
+                df = Math.min(df + (cats - 1) * 0.04, 0.99);
+                avgDiv += df;
+
+                let p = tc.negativeScore ?? tc.negative_score;
+                if (p == null) p = typeof tc.fitness === 'number' ? tc.fitness * 0.8 : 0.6;
+                let pf = p != null && !isNaN(Number(p)) ? (Number(p) > 1 ? Number(p)/100 : Number(p)) : 0;
+                avgPri += pf;
+              });
+              avgVal /= ds.length;
+              avgBound /= ds.length;
+              avgDiv /= ds.length;
+              avgPri /= ds.length;
+            }
+            return (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: 12,
+                  marginBottom: 16,
+                }}
+              >
+                <Metric icon={<CheckCircle2 size={18}/>} label="Validation Score" vnLabel="Hợp lệ (TB)" infoText="Tỉ lệ hợp lệ trung bình của các ca kiểm thử." value={`${(avgVal * 100).toFixed(1)}%`} accent="#10b981" />
+                <Metric icon={<Activity size={18}/>} label="Boundary Score" vnLabel="Biên (TB)" infoText="Mức độ bao phủ giá trị biên trung bình." value={`${(avgBound * 100).toFixed(1)}%`} accent="#6366f1" />
+                <Metric icon={<Layers size={18}/>} label="Diversity Score" vnLabel="Đa dạng (TB)" infoText="Tính đa dạng trung bình của dữ liệu." value={`${(avgDiv * 100).toFixed(1)}%`} accent="#f59e0b" />
+                <Metric icon={<Sparkles size={18}/>} label="Priority Score" vnLabel="Ưu tiên (TB)" infoText="Độ ưu tiên trung bình của các ca kiểm thử." value={`${(avgPri * 100).toFixed(1)}%`} accent="#ef4444" />
+              </div>
+            );
+          })()}
+
+          <details
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-              gap: 12,
-              marginBottom: 24,
+              background: 'rgba(255, 255, 255, 0.02)',
+              padding: '14px',
+              borderRadius: '8px',
+              border: '1px solid var(--border-subtle)',
+              cursor: 'pointer',
+              marginBottom: 16
             }}
           >
-            <Metric
-              icon={<TrendingUp size={16} />}
-              label='Covered Nodes'
-              vnLabel='Số Node phủ được'
-              infoText='Số lượng Node mà GA quét được (Tuyệt đối).'
-              value={ma.maStats?.initialStats != null ? `${(ma.maStats.ruleNodesCount || 0) + (ma.maStats.boundaryNodesCount || 0)} (+${(ma.maStats.ruleNodesCount || 0) + (ma.maStats.boundaryNodesCount || 0) - ((ma.maStats.initialStats.ruleNodesCount || 0) + (ma.maStats.initialStats.boundaryNodesCount || 0))})` : 'N/A'}
-              accent='var(--color-emerald)'
-            />
-            <Metric
-              icon={<Layers size={16} />}
-              label='Rules Added'
-              vnLabel='Quy tắc mới khai phá'
-              infoText='Số lượng Business Rules mới được GA tìm ra so với tập hạt giống ban đầu.'
-              value={ma.maStats?.initialStats != null ? `+${(ma.maStats.ruleNodesCount || 0) - (ma.maStats.initialStats.ruleNodesCount || 0)}` : 'N/A'}
-              accent='var(--color-teal)'
-            />
-            <Metric
-              icon={<Activity size={16} />}
-              label='Boundary Cases Added'
-              vnLabel='Biên mới khai phá'
-              infoText='Số lượng giá trị biên mới được GA tìm ra.'
-              value={ma.maStats?.initialStats != null ? `+${(ma.maStats.boundaryNodesCount || 0) - (ma.maStats.initialStats.boundaryNodesCount || 0)}` : 'N/A'}
-              accent='var(--color-blue)'
-            />
-            <Metric
-              icon={<ShieldCheck size={16} />}
-              label='Security Gain'
-              vnLabel='Tăng trưởng bảo mật'
-              infoText='Phần trăm độ phủ bảo mật tăng thêm.'
-              value={ma.maStats?.initialStats != null ? `+${((ma.maStats.securityCoverage - ma.maStats.initialStats.securityCoverage) * 100).toFixed(1)}%` : 'N/A'}
-              accent='var(--color-rose)'
-            />
-          </div>
+            <summary style={{ fontWeight: 600, fontSize: 13, color: 'var(--brand-primary)' }}>
+              Xem thêm chi tiết kết quả độ phủ và hiệu quả tối ưu hóa
+            </summary>
+            <div style={{ marginTop: 16, cursor: 'default' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: 12,
+                  marginBottom: 24,
+                }}
+              >
+                <Metric
+                  icon={<TrendingUp size={18} />}
+                  label='Coverage Score'
+                  vnLabel='Độ phủ tổng thể'
+                  infoText='Điểm chất lượng (Coverage Score) dựa trên tổng các node bao phủ được.'
+                  value={`${((ma.maStats?.coverageScore ?? ma.bestFitness ?? 0) * 100).toFixed(1)}%`}
+                  accent='var(--color-emerald)'
+                />
+                <Metric
+                  icon={<ShieldCheck size={18} />}
+                  label='Rule Coverage'
+                  vnLabel='Độ phủ Rule nghiệp vụ'
+                  infoText='Tỉ lệ các ràng buộc bắt buộc và danh mục Enum đã được quét qua.'
+                  value={
+                    ma.maStats?.ruleCoverage != null
+                      ? `${(ma.maStats.ruleCoverage * 100).toFixed(1)}%`
+                      : 'N/A'
+                  }
+                  accent='var(--color-teal)'
+                />
+                <Metric
+                  icon={<Activity size={18} />}
+                  label='Boundary Coverage'
+                  vnLabel='Độ phủ giá trị biên'
+                  infoText='Tỉ lệ các trường hợp biên (Max, Min, Empty, v.v) đã được quét.'
+                  value={
+                    ma.maStats?.boundaryCoverage != null
+                      ? `${(ma.maStats.boundaryCoverage * 100).toFixed(1)}%`
+                      : 'N/A'
+                  }
+                  accent='var(--color-blue)'
+                />
+                <Metric
+                  icon={<Sparkles size={18} />}
+                  label='Security Coverage'
+                  vnLabel='Độ phủ bảo mật'
+                  infoText='Tỉ lệ các kịch bản tấn công (SQLi, XSS) đã được áp dụng.'
+                  value={
+                    ma.maStats?.securityCoverage != null
+                      ? `${(ma.maStats.securityCoverage * 100).toFixed(1)}%`
+                      : 'N/A'
+                  }
+                  accent='var(--color-rose)'
+                />
+                <Metric
+                  icon={<Activity size={18} />}
+                  label='Happy Path Coverage'
+                  vnLabel='Độ phủ Luồng Chính (Happy)'
+                  infoText='GA đã tìm được ít nhất 1 ca kiểm thử hợp lệ 100% (Success).'
+                  value={
+                    ma.maStats?.happyPathCoverage != null ? `${ma.maStats.happyPathCoverage}/1` : 'N/A'
+                  }
+                  accent='var(--color-emerald)'
+                />
+                <Metric
+                  icon={<CheckCircle2 size={18} />}
+                  label='Success Rate'
+                  vnLabel='Tỉ lệ thành công'
+                  infoText='Tỉ lệ các ca kiểm thử đạt kết quả thành công (Success / Hợp lệ).'
+                  value={
+                    ma.finalResultData?.length
+                      ? `${((ma.finalResultData.filter((d: any) => getExpectedResultShort(d.expectedResult) === 'Success').length / ma.finalResultData.length) * 100).toFixed(1)}%`
+                      : '0%'
+                  }
+                  accent='var(--color-emerald)'
+                />
+                <Metric
+                  icon={<Layers size={18} />}
+                  label='Business Rule Coverage'
+                  vnLabel='Độ phủ Nghiệp vụ'
+                  infoText='GA đã tìm được ít nhất 1 ca kiểm thử vi phạm Business Rule.'
+                  value={
+                    ma.maStats?.businessRuleCoverage != null
+                      ? `${ma.maStats.businessRuleCoverage}/1`
+                      : 'N/A'
+                  }
+                  accent='var(--color-teal)'
+                />
+                <Metric
+                  icon={<Layers size={18} />}
+                  label='Unique Test Cases'
+                  vnLabel='Số ca kiểm thử duy nhất'
+                  infoText='Số lượng ca kiểm thử có bộ dữ liệu hoàn toàn khác biệt.'
+                  value={String(ma.maStats?.uniqueTestCases ?? 0)}
+                  accent='var(--brand-primary)'
+                />
+              </div>
+
+              {/* 2. HIỆU QUẢ TỐI ƯU HÓA */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <Activity size={16} style={{ color: 'var(--color-amber)' }} />
+                <h3 style={{ fontSize: 14, margin: 0, fontWeight: 600 }}>Hiệu quả tối ưu hóa</h3>
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: 12,
+                  marginBottom: 24,
+                }}
+              >
+                <Metric
+                  icon={<TrendingUp size={16} />}
+                  label='Covered Nodes'
+                  vnLabel='Số Node phủ được'
+                  infoText='Số lượng Node mà GA quét được (Tuyệt đối).'
+                  value={
+                    ma.maStats?.initialStats != null
+                      ? `${(ma.maStats.ruleNodesCount || 0) + (ma.maStats.boundaryNodesCount || 0)} (+${(ma.maStats.ruleNodesCount || 0) + (ma.maStats.boundaryNodesCount || 0) - ((ma.maStats.initialStats.ruleNodesCount || 0) + (ma.maStats.initialStats.boundaryNodesCount || 0))})`
+                      : 'N/A'
+                  }
+                  accent='var(--color-emerald)'
+                />
+                <Metric
+                  icon={<Layers size={16} />}
+                  label='Rules Added'
+                  vnLabel='Quy tắc mới khai phá'
+                  infoText='Số lượng Business Rules mới được GA tìm ra so với tập hạt giống ban đầu.'
+                  value={
+                    ma.maStats?.initialStats != null
+                      ? `+${(ma.maStats.ruleNodesCount || 0) - (ma.maStats.initialStats.ruleNodesCount || 0)}`
+                      : 'N/A'
+                  }
+                  accent='var(--color-teal)'
+                />
+                <Metric
+                  icon={<Activity size={16} />}
+                  label='Boundary Cases Added'
+                  vnLabel='Biên mới khai phá'
+                  infoText='Số lượng giá trị biên mới được GA tìm ra.'
+                  value={
+                    ma.maStats?.initialStats != null
+                      ? `+${(ma.maStats.boundaryNodesCount || 0) - (ma.maStats.initialStats.boundaryNodesCount || 0)}`
+                      : 'N/A'
+                  }
+                  accent='var(--color-blue)'
+                />
+                <Metric
+                  icon={<ShieldCheck size={16} />}
+                  label='Security Gain'
+                  vnLabel='Tăng trưởng bảo mật'
+                  infoText='Phần trăm độ phủ bảo mật tăng thêm.'
+                  value={
+                    ma.maStats?.initialStats != null
+                      ? `+${((ma.maStats.securityCoverage - ma.maStats.initialStats.securityCoverage) * 100).toFixed(1)}%`
+                      : 'N/A'
+                  }
+                  accent='var(--color-rose)'
+                />
+              </div>
+            </div>
+          </details>
 
           {/* 3. DEBUG GIAI ĐOẠN TIẾN HÓA (ẨN) */}
           <details
@@ -972,41 +1126,51 @@ export const GeneticOptimize: React.FC = () => {
               padding: '14px',
               borderRadius: '8px',
               border: '1px solid var(--border-subtle)',
-              cursor: 'pointer'
+              cursor: 'pointer',
             }}
           >
-            <summary style={{ fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>Advanced Algorithm Debug Statistics</summary>
+            <summary style={{ fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>
+              Advanced Algorithm Debug Statistics
+            </summary>
             <div
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                 gap: 12,
-                marginTop: 14
+                marginTop: 14,
               }}
             >
               <Metric
                 icon={<Cpu size={16} />}
                 label='Generation'
                 vnLabel='Tiến trình'
-                value={ma.maStats?.generationProgress != null ? `${ma.maStats.generationProgress}%` : 'N/A'}
+                value={
+                  ma.maStats?.generationProgress != null
+                    ? `${ma.maStats.generationProgress}%`
+                    : 'N/A'
+                }
               />
               <Metric
                 icon={<Activity size={16} />}
                 label='Population Size'
                 vnLabel='Kích thước quần thể'
-                value="50"
+                value='50'
               />
               <Metric
                 icon={<Sparkles size={16} />}
                 label='Diversity Score'
                 vnLabel='Độ đa dạng'
-                value={ma.maStats?.uniqueTestCases ? `${((ma.maStats.uniqueTestCases / 50) * 100).toFixed(1)}%` : 'N/A'}
+                value={
+                  ma.maStats?.uniqueTestCases
+                    ? `${((ma.maStats.uniqueTestCases / 50) * 100).toFixed(1)}%`
+                    : 'N/A'
+                }
               />
               <Metric
                 icon={<Layers size={16} />}
                 label='Duplicates Removed'
                 vnLabel='Trùng lặp bị loại'
-                value="Ẩn (Xử lý ngầm)"
+                value='Ẩn (Xử lý ngầm)'
               />
             </div>
           </details>
@@ -1278,7 +1442,7 @@ export const GeneticOptimize: React.FC = () => {
                             color: isSeed ? '#3b82f6' : 'var(--text-secondary)',
                           }}
                         >
-                          {isSeed ? 'LLM (Seed)' : tc.origin || 'GA'}
+                          {isSeed ? 'LLM (Seed)' : 'LLM'}
                         </span>
                       </td>
 
@@ -1330,7 +1494,9 @@ export const GeneticOptimize: React.FC = () => {
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
                         <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
                           {getExpectedResultShort(tc.expectedResult) === 'Error' ? (
-                            <span style={{ color: 'var(--error)', fontWeight: 700, marginRight: '4px' }}>
+                            <span
+                              style={{ color: 'var(--error)', fontWeight: 700, marginRight: '4px' }}
+                            >
                               Error:
                             </span>
                           ) : (
@@ -1339,7 +1505,9 @@ export const GeneticOptimize: React.FC = () => {
                             </span>
                           )}
                           <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                            {typeof tc.expectedResult === 'string' ? tc.expectedResult : (tc.expectedResult?.statusText || String(tc.expectedResult || ''))}
+                            {typeof tc.expectedResult === 'string'
+                              ? tc.expectedResult
+                              : tc.expectedResult?.statusText || String(tc.expectedResult || '')}
                           </span>
                         </div>
                       </td>
@@ -1352,7 +1520,9 @@ export const GeneticOptimize: React.FC = () => {
                               {getExpectedError(tc.expectedResult)}
                             </span>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Không có</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                              Không có
+                            </span>
                           )}
                         </div>
                       </td>
@@ -1367,7 +1537,9 @@ export const GeneticOptimize: React.FC = () => {
                           minWidth: 200,
                         }}
                       >
-                        {tc.rationale || tc.scenario || <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                        {tc.rationale || tc.scenario || (
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        )}
                       </td>
 
                       {/* Fitness sau GA */}
@@ -1381,22 +1553,57 @@ export const GeneticOptimize: React.FC = () => {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {typeof tc.fitness === 'number' ? tc.fitness.toFixed(3) : (typeof tc.gaFitness === 'number' ? tc.gaFitness.toFixed(3) : '0.000')}
+                        {typeof tc.fitness === 'number'
+                          ? tc.fitness.toFixed(3)
+                          : typeof tc.gaFitness === 'number'
+                            ? tc.gaFitness.toFixed(3)
+                            : '0.000'}
                       </td>
 
                       {/* ValidationScore - từ backend */}
-                      <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}>
+                      <td
+                        style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}
+                      >
                         {(() => {
-                          const raw = tc.validationScore ?? tc.validation_score;
-                          const val = raw != null ? (raw > 1 ? raw / 100 : raw) : null;
-                          if (val == null) return <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>;
+                          let raw = tc.validationScore ?? tc.validation_score;
+                          if (raw == null && typeof tc.validation === 'number') raw = tc.validation;
+                          if (raw == null && typeof tc.rule === 'number') raw = tc.rule;
+                          const val = raw != null && !isNaN(Number(raw)) ? (Number(raw) > 1 ? Number(raw) / 100 : Number(raw)) : null;
+                          if (val == null)
+                            return (
+                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>
+                            );
                           const pct = Math.round(val * 100);
                           const color = val >= 0.8 ? '#10b981' : val >= 0.5 ? '#f59e0b' : '#ef4444';
                           return (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>{val.toFixed(2)}</span>
-                              <div style={{ width: 48, height: 4, borderRadius: 2, background: 'var(--border-subtle)', overflow: 'hidden' }}>
-                                <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2 }} />
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-end',
+                                gap: 2,
+                              }}
+                            >
+                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>
+                                {val.toFixed(2)}
+                              </span>
+                              <div
+                                style={{
+                                  width: 48,
+                                  height: 4,
+                                  borderRadius: 2,
+                                  background: 'var(--border-subtle)',
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: `${pct}%`,
+                                    height: '100%',
+                                    background: color,
+                                    borderRadius: 2,
+                                  }}
+                                />
                               </div>
                             </div>
                           );
@@ -1404,18 +1611,48 @@ export const GeneticOptimize: React.FC = () => {
                       </td>
 
                       {/* BoundaryScore - từ backend */}
-                      <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}>
+                      <td
+                        style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}
+                      >
                         {(() => {
-                          const raw = tc.boundaryScore ?? tc.boundary_score;
-                          const val = raw != null ? (raw > 1 ? raw / 100 : raw) : null;
-                          if (val == null) return <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>;
+                          let raw = tc.boundaryScore ?? tc.boundary_score;
+                          if (raw == null && typeof tc.boundary === 'number') raw = tc.boundary;
+                          const val = raw != null && !isNaN(Number(raw)) ? (Number(raw) > 1 ? Number(raw) / 100 : Number(raw)) : null;
+                          if (val == null)
+                            return (
+                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>
+                            );
                           const pct = Math.round(val * 100);
                           const color = val >= 0.7 ? '#6366f1' : val >= 0.4 ? '#f59e0b' : '#94a3b8';
                           return (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>{val.toFixed(2)}</span>
-                              <div style={{ width: 48, height: 4, borderRadius: 2, background: 'var(--border-subtle)', overflow: 'hidden' }}>
-                                <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2 }} />
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-end',
+                                gap: 2,
+                              }}
+                            >
+                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>
+                                {val.toFixed(2)}
+                              </span>
+                              <div
+                                style={{
+                                  width: 48,
+                                  height: 4,
+                                  borderRadius: 2,
+                                  background: 'var(--border-subtle)',
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: `${pct}%`,
+                                    height: '100%',
+                                    background: color,
+                                    borderRadius: 2,
+                                  }}
+                                />
                               </div>
                             </div>
                           );
@@ -1423,13 +1660,16 @@ export const GeneticOptimize: React.FC = () => {
                       </td>
 
                       {/* DiversityScore - tính FE từ origin uniqueness */}
-                      <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}>
+                      <td
+                        style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}
+                      >
                         {(() => {
                           // TC có nhiều loại origin khác nhau = diversity cao hơn seed
                           const origin = String(tc.origin || tc.ma_action || '').toLowerCase();
                           let val = 0.5; // default
                           if (origin.includes('crossover')) val = 0.85;
-                          else if (origin.includes('mutation') && origin.includes('boundary')) val = 0.80;
+                          else if (origin.includes('mutation') && origin.includes('boundary'))
+                            val = 0.8;
                           else if (origin.includes('mutation')) val = 0.72;
                           else if (origin.includes('elite')) val = 0.65;
                           else if (origin.includes('local') || origin.includes('ls')) val = 0.78;
@@ -1438,12 +1678,37 @@ export const GeneticOptimize: React.FC = () => {
                           const cats = Array.isArray(tc.categories) ? tc.categories.length : 1;
                           val = Math.min(val + (cats - 1) * 0.04, 0.99);
                           const pct = Math.round(val * 100);
-                          const color = val >= 0.75 ? '#06b6d4' : val >= 0.60 ? '#f59e0b' : '#94a3b8';
+                          const color =
+                            val >= 0.75 ? '#06b6d4' : val >= 0.6 ? '#f59e0b' : '#94a3b8';
                           return (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>{val.toFixed(2)}</span>
-                              <div style={{ width: 48, height: 4, borderRadius: 2, background: 'var(--border-subtle)', overflow: 'hidden' }}>
-                                <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2 }} />
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-end',
+                                gap: 2,
+                              }}
+                            >
+                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>
+                                {val.toFixed(2)}
+                              </span>
+                              <div
+                                style={{
+                                  width: 48,
+                                  height: 4,
+                                  borderRadius: 2,
+                                  background: 'var(--border-subtle)',
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: `${pct}%`,
+                                    height: '100%',
+                                    background: color,
+                                    borderRadius: 2,
+                                  }}
+                                />
                               </div>
                             </div>
                           );
@@ -1451,19 +1716,50 @@ export const GeneticOptimize: React.FC = () => {
                       </td>
 
                       {/* PriorityScore = fitness × validationScore */}
-                      <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}>
+                      <td
+                        style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}
+                      >
                         {(() => {
-                          const fit = typeof tc.fitness === 'number' ? tc.fitness : (tc.gaFitness ?? 0);
-                          const rawVal = tc.validationScore ?? tc.validation_score;
-                          const valScore = rawVal != null ? (rawVal > 1 ? rawVal / 100 : rawVal) : fit;
+                          const fit =
+                            typeof tc.fitness === 'number' ? tc.fitness : (tc.gaFitness ?? 0);
+                          let rawVal = tc.validationScore ?? tc.validation_score;
+                          if (rawVal == null && typeof tc.validation === 'number') rawVal = tc.validation;
+                          if (rawVal == null && typeof tc.rule === 'number') rawVal = tc.rule;
+                          const valScore =
+                            rawVal != null && !isNaN(Number(rawVal)) ? (Number(rawVal) > 1 ? Number(rawVal) / 100 : Number(rawVal)) : fit;
                           const priority = Math.min(fit * (0.5 + 0.5 * valScore), 1);
                           const pct = Math.round(priority * 100);
-                          const color = priority >= 0.75 ? '#8b5cf6' : priority >= 0.50 ? '#f59e0b' : '#94a3b8';
+                          const color =
+                            priority >= 0.75 ? '#8b5cf6' : priority >= 0.5 ? '#f59e0b' : '#94a3b8';
                           return (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>{priority.toFixed(2)}</span>
-                              <div style={{ width: 48, height: 4, borderRadius: 2, background: 'var(--border-subtle)', overflow: 'hidden' }}>
-                                <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2 }} />
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-end',
+                                gap: 2,
+                              }}
+                            >
+                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>
+                                {priority.toFixed(2)}
+                              </span>
+                              <div
+                                style={{
+                                  width: 48,
+                                  height: 4,
+                                  borderRadius: 2,
+                                  background: 'var(--border-subtle)',
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: `${pct}%`,
+                                    height: '100%',
+                                    background: color,
+                                    borderRadius: 2,
+                                  }}
+                                />
                               </div>
                             </div>
                           );
@@ -1639,7 +1935,7 @@ export const GeneticOptimize: React.FC = () => {
                           'test_type',
                           'test_subtype',
                           'coverage',
-                        ].indexOf(k) === -1,
+                        ].indexOf(k) === -1
                     )
                     .map(([k, v]) => (
                       <div
@@ -2160,15 +2456,22 @@ const getExpectedResultShort = (expectedResult: string): string => {
   if (!expectedResult) return 'Success';
   const clean = String(expectedResult).trim().toUpperCase();
   if (
-    clean.startsWith('LỖI') || clean.startsWith('ERROR') || clean.startsWith('THẤT BẠI') ||
+    clean.startsWith('LỖI') ||
+    clean.startsWith('ERROR') ||
+    clean.startsWith('THẤT BẠI') ||
     clean.includes('VALIDATION_ERROR') ||
-    clean.includes('HTTP 400') || clean.includes('HTTP 422') || clean.includes('HTTP 500')
+    clean.includes('HTTP 400') ||
+    clean.includes('HTTP 422') ||
+    clean.includes('HTTP 500')
   ) {
     return 'Error';
   }
   if (
-    clean.startsWith('HỢP LỆ') || clean.startsWith('SUCCESS') || clean.startsWith('THÀNH CÔNG') ||
-    clean.includes('HTTP 200') || clean.includes('HTTP 201')
+    clean.startsWith('HỢP LỆ') ||
+    clean.startsWith('SUCCESS') ||
+    clean.startsWith('THÀNH CÔNG') ||
+    clean.includes('HTTP 200') ||
+    clean.includes('HTTP 201')
   ) {
     return 'Success';
   }

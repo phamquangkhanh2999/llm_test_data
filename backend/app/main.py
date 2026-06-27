@@ -547,15 +547,17 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
             # Truyền current_pop nếu có để tính điểm đa dạng (Diversity)
             final_fitness, _ = optimizer.evaluate_testcase_quality(values, current_pop, categories)
             
-            # Keep Oracle validation for validationScore and negativeScore
             oracle = derive_expected_result(values, schema_rules)
-            # Pass/Fail nhị phân: hợp lệ = 100, bị từ chối = 0 (không còn nửa điểm cho 422).
-            validation_score = 100 if oracle.get("is_valid") else 0
+            total_fields = max(len(schema_rules), 1)
+            violated = len(oracle.get("violated_fields", []))
+            frac_valid = max(0.0, (total_fields - violated) / total_fields) * 100
             
             is_negative = "negative" in [c.lower() for c in categories]
             if is_negative:
+                validation_score = 0 if oracle.get("is_valid") else 100
                 negative_score = 100 if not oracle.get("is_valid") else 20
             else:
+                validation_score = frac_valid
                 negative_score = 100 if oracle.get("is_valid") else 30
 
             return {

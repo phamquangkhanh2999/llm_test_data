@@ -352,11 +352,15 @@ class V4TestSuiteOptimizer:
         Fitness = 0.5 * validation_score + 0.3 * goal_match + 0.2 * diversity
         """
         nodes = self._extract_coverage_nodes(values)
-        is_valid = self._oracle(values).get("is_valid", False)
+        oracle = self._oracle(values)
+        is_valid = oracle.get("is_valid", False)
+        total_fields = max(len(self.schema), 1)
+        violated = len(oracle.get("violated_fields", []))
+        frac_valid = max(0.0, (total_fields - violated) / total_fields)
         
         # 1. Validation Score (0.5) (bao gồm rule + boundary)
         if category == "POSITIVE":
-            validation_score = 1.0 if is_valid else 0.0
+            validation_score = frac_valid
         elif category == "NEGATIVE_SECURITY":
             validation_score = 1.0 if any("SECURITY" in n for n in nodes) else 0.0
         else: # NEGATIVE_FUNCTIONAL / BOUNDARY
@@ -364,7 +368,7 @@ class V4TestSuiteOptimizer:
             
         boundary_coverage = min(1.0, sum(1 for n in nodes if "MIN" in n or "MAX" in n) / max(len(self.schema), 1))
         # Gộp boundary vào validation_score
-        validation_score = validation_score * 0.7 + boundary_coverage * 0.3
+        blended_validation = validation_score * 0.7 + boundary_coverage * 0.3
         
         # 2. Semantic Goal Match (0.3)
         actual_cat = self._classify_record({}, values)
@@ -377,7 +381,7 @@ class V4TestSuiteOptimizer:
         if len(str_all) > 500 and "A" * 50 in str_all: noise_score += 0.4
         
         # 3. Tính scalar fitness (scale 100)
-        scalar = (0.5 * validation_score + 0.3 * goal_match + 0.2 * diversity_score) * 100
+        scalar = (0.5 * blended_validation + 0.3 * goal_match + 0.2 * diversity_score) * 100
         scalar = max(0.0, scalar - noise_score * 10)
         
         # Không giết hẳn cá thể nếu trượt mục tiêu (giữ hướng tìm kiếm)
@@ -695,6 +699,8 @@ class V4TestSuiteOptimizer:
                 "values": vals,
                 "category": cat,
                 "fitness": ind.get("fitness", 0.0),
+                "validationScore": (ind.get("fitness_vector", {}).get("rule", 0.0) * 100) if "fitness_vector" in ind else 0.0,
+                "boundaryScore": (ind.get("fitness_vector", {}).get("boundary", 0.0) * 100) if "fitness_vector" in ind else 0.0,
                 "origin": ind.get("origin", "GA"),
                 "rationale": ind.get("rationale") or ind.get("scenario") or "Được sinh ra bằng lai ghép GA.",
                 "scenario": ind.get("scenario") or ind.get("rationale") or "Được sinh ra bằng lai ghép GA."
@@ -711,6 +717,8 @@ class V4TestSuiteOptimizer:
                     "values": s.get("values", s), 
                     "categories": s.get("categories"), 
                     "origin": "Seed_F0",
+                    "fitness": s.get("fitness", 0.0),
+                    "fitness_vector": s.get("fitness_vector", {"rule": s.get("validationScore", 100)/100, "boundary": s.get("boundaryScore", 0)/100}),
                     "rationale": s.get("rationale") or s.get("expectedResult", ""),
                     "scenario": s.get("scenario", "")
                 })
