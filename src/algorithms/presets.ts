@@ -21,60 +21,7 @@ export interface PresetSpec {
 }
 
 export const PRESETS: PresetSpec[] = [
-  {
-    id: "preset-0",
-    title: "Đăng ký tài khoản",
-    description: "Đặc tả Đăng ký tài khoản từ dữ liệu mẫu.",
-    rawText: "Đăng ký tài khoản:\n- fullName: bắt buộc, không được rỗng, tối đa 70 ký tự, chỉ chứa chữ/số/khoảng trắng, không chứa script hoặc SQL injection.\n- email: bắt buộc, không được rỗng, tối đa 40 ký tự, đúng định dạng email, không trùng email đã tồn tại, không chứa dữ liệu nguy hiểm.\n- password: bắt buộc, dài 8–16 ký tự, có chữ hoa, chữ thường, chữ số và ký tự đặc biệt.\n- phone: bắt buộc, tối đa 10 ký tự, chỉ chứa chữ số, không chứa chữ cái hoặc ký tự đặc biệt.\n- address: không bắt buộc, tối đa 191 ký tự, không chứa script, HTML nguy hiểm hoặc SQL injection.",
-    fields: [
-      {
-        name: "fullName",
-        type: "string",
-        required: true,
-        description: "bắt buộc, không được rỗng, tối đa 70 ký tự, chỉ chứa chữ/số/khoảng trắng, không chứa script hoặc SQL injection."
-      },
-      {
-        name: "email",
-        type: "email",
-        required: true,
-        description: "bắt buộc, không được rỗng, tối đa 40 ký tự, đúng định dạng email, không trùng email đã tồn tại, không chứa dữ liệu nguy hiểm."
-      },
-      {
-        name: "password",
-        type: "string",
-        required: true,
-        description: "bắt buộc, dài 8–16 ký tự, có chữ hoa, chữ thường, chữ số và ký tự đặc biệt."
-      },
-      {
-        name: "phone",
-        type: "string",
-        required: true,
-        description: "bắt buộc, tối đa 10 ký tự, chỉ chứa chữ số, không chứa chữ cái hoặc ký tự đặc biệt."
-      },
-      {
-        name: "address",
-        type: "string",
-        required: false,
-        description: "không bắt buộc, tối đa 191 ký tự, không chứa script, HTML nguy hiểm hoặc SQL injection."
-      }
-    ],
-    initialPopulation: [
-      {
-        fullName: "Test1",
-        email: "test1@gmail.com",
-        password: "Test1",
-        phone: "Test1",
-        address: "Test1"
-      },
-      {
-        fullName: "Test2",
-        email: "test2@gmail.com",
-        password: "Test2",
-        phone: "Test2",
-        address: "Test2"
-      }
-    ]
-  },
+
   {
     id: "preset-1",
     title: "Đăng nhập",

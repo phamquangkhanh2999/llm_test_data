@@ -161,8 +161,15 @@ const BarTopLabel = (props: any) => {
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────
-export const AlgorithmCharts: React.FC = () => {
-  const { initialSeeds, gaResult, hcResult, gaProgressHistory, evaluationMetrics, parsedSchema } = useAppStore();
+export const AlgorithmCharts: React.FC<{ snapshotData?: any }> = ({ snapshotData }) => {
+  const storeData = useAppStore();
+
+  const initialSeeds = snapshotData ? (snapshotData.step3_seeds?.seeds || []) : storeData.initialSeeds;
+  const gaResult = snapshotData ? (snapshotData.step4_optimized_data || []) : storeData.gaResult;
+  const hcResult = snapshotData ? (snapshotData.step4_optimized_data || []) : storeData.hcResult;
+  const gaProgressHistory = snapshotData ? [] : storeData.gaProgressHistory;
+  const evaluationMetrics = snapshotData ? (snapshotData.step3_seeds?.metrics || null) : storeData.evaluationMetrics;
+  const parsedSchema = snapshotData ? (snapshotData.step2_schema?.fields || []) : storeData.parsedSchema;
 
   const fieldCount = parsedSchema?.length || 5;
 

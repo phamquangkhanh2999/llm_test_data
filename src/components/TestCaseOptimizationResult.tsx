@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Table, Tag, Modal, Tabs, Spin } from 'antd';
 import { Activity, CheckCircle, Database, Search } from 'lucide-react';
 
+import { useAppStore } from '../store/useAppStore';
+
 interface TestCaseSummary {
   id: string;
   scenario: string;
@@ -21,11 +23,33 @@ export const TestCaseOptimizationResult: React.FC = () => {
   const fetchTestCases = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/test-cases');
-      if (res.ok) {
-        const data = await res.json();
-        setTestCases(data);
-      }
+      const { hcResult, gaResult, initialSeeds } = useAppStore.getState();
+      const finalResult = hcResult && hcResult.length > 0 ? hcResult : (gaResult || []);
+      
+      const mapped = finalResult.map((tc: any) => {
+        // Match by id or tcId
+        const matchId = tc.id || tc.tcId || tc['Test Code'];
+        const f0 = initialSeeds.find((f: any) => (f.id || f.tcId || f['Test Code']) === matchId) || tc;
+        
+        const fitF0 = f0.fitness || 0;
+        const fitHC = tc.fitness || tc.gaFitness || tc.hcFitness || 0;
+        const imp = fitHC - fitF0;
+        
+        return {
+          id: matchId,
+          scenario: tc.rationale || tc.scenario || tc.errorDescription || tc['Expected Error'] || 'Testing scenario',
+          strategy: tc.origin || tc['Origin'] || 'HC',
+          fitness: { f0: fitF0, hc: fitHC },
+          improvement: imp,
+          status: imp > 0 ? 'Optimized' : imp < 0 ? 'Degraded' : 'No Change',
+        };
+      });
+      setTestCases(mapped);
+    } catch (e) {
+      console.error(e);
+    }
+    setLoading(false);
+  };
     } catch (e) {
       console.error(e);
     }
@@ -36,11 +60,31 @@ export const TestCaseOptimizationResult: React.FC = () => {
     setDetailLoading(true);
     setSelectedId(id);
     try {
-      const res = await fetch(`http://localhost:8000/api/test-cases/${id}/evolution`);
-      if (res.ok) {
-        const data = await res.json();
-        setDetailData(data);
-      }
+      const { hcResult, gaResult, initialSeeds, parsedSchema } = useAppStore.getState();
+      const f0 = initialSeeds.find((f: any) => (f.id || f.tcId || f['Test Code']) === id) || {};
+      const ga = gaResult.find((f: any) => (f.id || f.tcId || f['Test Code']) === id) || f0;
+      const hc = hcResult.find((f: any) => (f.id || f.tcId || f['Test Code']) === id) || ga;
+      
+      const fields = parsedSchema.map((f: any) => {
+        const fieldName = f.name;
+        const f0Val = f0[fieldName] || f0.values?.[fieldName] || '';
+        const gaVal = ga[fieldName] || ga.values?.[fieldName] || '';
+        const hcVal = hc[fieldName] || hc.values?.[fieldName] || '';
+        return {
+          name: fieldName,
+          f0: f0Val,
+          ga: gaVal,
+          hc: hcVal,
+          changed: f0Val !== hcVal,
+          fitness: {
+            f0: f0.fitness || 0,
+            ga: ga.fitness || 0,
+            hc: hc.fitness || 0
+          }
+        };
+      });
+
+      setDetailData({ fields });
     } catch (e) {
       console.error(e);
     }

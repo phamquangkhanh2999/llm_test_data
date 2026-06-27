@@ -75,64 +75,87 @@ export const HillClimbingOptimize: React.FC = () => {
       return;
     }
 
-
-
     setIsOptimizing(true);
     setOptimizationPhase('Đang thiết lập thuật toán Hill Climbing...');
     setHcData(null);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate delay
-      const mockDataPath = await import('../data/dlieu_mau_data.json');
-      const allRes = mockDataPath.default || mockDataPath;
-      const { selectedPresetId } = useAppStore.getState();
-      const prefixes: any = {
-        'preset-1': 'DangNhap',
-        'preset-2': 'ThemSP',
-        'preset-3': 'SuaSP',
-        'preset-4': 'XoaSP',
-        'preset-5': 'TimKiem'
-      };
-      const prefix = selectedPresetId ? prefixes[selectedPresetId] : 'DangNhap';
-      const hcSheet = allRes[`${prefix}_LLM_GA_HC`] || [];
-      
-      const mapData = (sheet: any[]) => {
-        return sheet.map((row: any) => {
-          const mapped: any = {};
-          for (const [k, v] of Object.entries(row)) {
-            if (k === 'Test Code') mapped.tcId = v;
-            else if (k === 'Expected Result') mapped.expectedResult = v;
-            else if (k === 'Expected Error') mapped.errorDescription = v;
-            else if (k === 'Fitness') mapped.fitness = Number(v) / 100 || 0;
-            else if (k === 'Origin') mapped.origin = v;
-            else mapped[k] = v;
-          }
-          if (!mapped.id) mapped.id = mapped.tcId || `TC-${Math.floor(Math.random() * 90000) + 10000}`;
-          if (mapped.fitness > 1) mapped.fitness = mapped.fitness / 100;
-          return mapped;
-        });
-      };
-      
-      const hcResultData = mapData(hcSheet);
-      
-      const mockResult = hcResultData.map((tc: any) => ({
-        ...(tc.values || tc),
-        fitness: tc.finalFitness ?? tc.hcFitness ?? tc.fitness ?? 0,
-        origin: tc.origin ?? 'HC',
-        id: tc.tcId ?? tc.id ?? `TC-HC-${Math.floor(Math.random() * 90000) + 10000}`,
-        expectedResult: tc.expectedResult,
-        errorDescription: tc.errorDescription,
-        rationale: tc.rationale,
-        categories:
-          tc.categories || tc.category
-            ? Array.isArray(tc.categories)
-              ? tc.categories
-              : [tc.category || tc.categories]
-            : ['positive'],
-      }));
+      const { initialSeeds: storeSeeds, parsedSchema: storeSchema, llmProvider, apiKey } = useAppStore.getState();
+      let snapshot: any = null;
+      if (selectedPresetId) {
+        setOptimizationPhase('Đang tải dữ liệu Hill Climbing mẫu...');
+        await new Promise(r => setTimeout(r, 1000));
+        const mockDataPath = await import('../data/dlieu_mau_data.json');
+        const allRes = mockDataPath.default || mockDataPath;
+        const prefixes: any = {
+          'preset-1': 'DangNhap', 'preset-2': 'ThemSP', 'preset-3': 'SuaSP',
+          'preset-4': 'XoaSP', 'preset-5': 'TimKiem'
+        };
+        const prefix = prefixes[selectedPresetId] || 'DangNhap';
+        const hcDataset = (allRes[`${prefix}_LLM_GA_HC`] || []).slice(1);
 
-      setHcData(mockResult);
-      setHcResult(mockResult);
+        snapshot = {
+          hcResult: hcDataset,
+          gaResult: gaResult,
+          finalResult: hcDataset,
+          progressHistory: [],
+          summary: { coverageRate: 0.96, avgFinalFitness: 0.99, duplicateRate: 0 },
+          maStats: { bestFitness: 0.99, avgFitness: 0.95 }
+        };
+      } else {
+        const jobId = crypto.randomUUID();
+
+        setOptimizationPhase('Đang chạy Hill Climbing trên máy chủ...');
+
+        const response = await fetch(`${config.API_BASE_URL}/api/optimize`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            specification_id: specificationId || 'local',
+            algorithm: 'hc',
+            initial_seeds: gaResult, // HC cải tiến trực tiếp từ kết quả GA
+            schema_rules: storeSchema,
+            llm_provider: llmProvider,
+            api_key_override: apiKey ? apiKey.trim() : null,
+            job_id: jobId,
+            generations: 1,
+            popSize: gaResult.length || 50,
+            mutationRate: 0.2,
+            crossoverRate: 0.8,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || 'Lỗi khi gọi API HC Optimize');
+        }
+
+        snapshot = await response.json();
+      }
+      // Backend /api/optimize trả về: { gaResult, hcResult, finalResult, maStats, progressHistory, summary }
+      // Mỗi tc có cấu trúc: { tcId, values: { fieldName: value }, expectedResult, ... }
+      // Cần flatten values vào root để bảng có thể đọc tc[fieldName] trực tiếp
+      const flattenTc = (tc: any) => ({
+        ...(tc.values || {}),       // flatten các trường dữ liệu động lên root
+        ...tc,                      // giữ lại tcId, expectedResult, fitness, origin, ...
+        fitness: tc.finalFitness ?? tc.hcFitness ?? tc.gaFitness ?? tc.fitness ?? 0,
+        id: tc.tcId ?? tc.id ?? `TC-HC-${Math.floor(Math.random() * 90000) + 10000}`,
+      });
+
+      const hcDataset  = (snapshot.hcResult    || []).map(flattenTc);
+      const gaDataset  = (snapshot.gaResult     || []).map(flattenTc);
+      const rawFinal   = snapshot.finalResult   || [];
+      const hcResultMapped = rawFinal.length > 0 ? rawFinal.map(flattenTc) : (hcDataset.length > 0 ? hcDataset : gaDataset);
+      const progressHistory = snapshot.progressHistory || [];
+      const summaryData = snapshot.summary || {};
+
+      // Nếu GA bước này cũng trả về GA result, lưu lại
+      if (gaDataset.length > 0) {
+        useAppStore.getState().setGaResult(gaDataset);
+      }
+
+      setHcData(hcResultMapped);
+      setHcResult(hcResultMapped);
 
       // Lưu snapshot gộp 4 bước với dữ liệu sau HC
       const payload = {
@@ -143,15 +166,15 @@ export const HillClimbingOptimize: React.FC = () => {
         constraints: parsedConstraints,
         businessRules: parsedBusinessRules,
         coverageTargets: parsedCoverageTargets,
-        initialPopulation: initialSeeds,
+        initialPopulation: storeSeeds,
         step2_eval_result: evaluationResult,
         step3_metrics: evaluationMetrics,
-        step4_optimized_data: mockResult,
-        step4_history: [], // For HC, we might not have generation history
-        coverage_rate: 96,
+        step4_optimized_data: hcResultMapped,
+        step4_history: progressHistory,
+        coverage_rate: summaryData.coverageRate || 96,
         config: {
           generations: 1,
-          popSize: 10,
+          popSize: gaResult.length || 10,
           crossoverRate: 0.8,
           mutationRate: 0.2,
           localSearchRate: 1.0,

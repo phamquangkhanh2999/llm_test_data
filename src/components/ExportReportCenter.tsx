@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import {
   Database, RefreshCw, FileSpreadsheet, FileJson, ArrowLeft, Trash2,
-  FileInput, Gauge, Zap, CheckCircle2, ShieldAlert, AlertTriangle, ListChecks, FileText,
+  FileInput, Gauge, Zap, CheckCircle2, ShieldAlert, AlertTriangle, ListChecks, FileText, Activity, GitCompare
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
+import { AlgorithmCharts } from './AlgorithmCharts';
 
 // =============================================================================
 //  TRUNG TÂM XUẤT KẾT QUẢ (BƯỚC 6)
@@ -37,9 +38,10 @@ const toCleanRow = (tc: any) => {
 
 const STEPS = [
   { n: 1, label: 'Đầu vào', icon: <FileInput size={15} /> },
-  { n: 2, label: 'Phân tích', icon: <Database size={15} /> },
-  { n: 3, label: 'Đánh giá', icon: <Gauge size={15} /> },
-  { n: 4, label: 'Tối ưu GA/HC', icon: <Zap size={15} /> },
+  { n: 2, label: 'Đánh giá F0', icon: <Gauge size={15} /> },
+  { n: 3, label: 'Tối ưu GA', icon: <Zap size={15} /> },
+  { n: 4, label: 'Tối ưu HC', icon: <GitCompare size={15} /> },
+  { n: 5, label: 'Biểu đồ', icon: <Activity size={15} /> },
 ];
 
 export const ExportReportCenter: React.FC = () => {
@@ -55,11 +57,10 @@ export const ExportReportCenter: React.FC = () => {
   const [activeStep, setActiveStep] = useState<number>(1);
 
   useEffect(() => {
-    // Tối ưu: Chỉ tự động fetch nếu danh sách đang rỗng
-    if (generationHistory.length === 0) {
-      fetchGenerationHistory();
-    }
-  }, [fetchGenerationHistory, generationHistory.length]);
+    // Luôn fetch mới nhất khi vào màn lịch sử & xuất kết quả
+    fetchGenerationHistory();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Mở chi tiết: chỉ 1 GET snapshot, KHÔNG tính toán lại
   const handleViewDetail = async (id: string) => {
@@ -221,10 +222,12 @@ export const ExportReportCenter: React.FC = () => {
                     <tr key={h.id} style={{ borderTop: '1px solid var(--border-subtle)' }} className="row-hover">
                       <td style={{ padding: '14px 20px' }}>
                         <div style={{ fontWeight: 700 }}>{h.spec_name || 'Báo cáo tối ưu'}</div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Quy mô: {h.total_testcases ?? 0} TCs</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Quy mô: {h.total_testcases || h.total_test_cases || h.total_cases || h.testcases || h.step4_optimized_data?.length || 0} TCs</div>
                       </td>
                       <td style={{ padding: '14px 20px' }}>
-                        <b style={{ color: 'var(--color-emerald)', fontSize: 16 }}>{Math.round((h.coverage_rate || 0) * 100)}%</b>
+                        <b style={{ color: 'var(--color-emerald)', fontSize: 16 }}>
+                          {Math.round((h.coverage_rate > 1 ? h.coverage_rate : (h.coverage_rate || 0) * 100))}%
+                        </b>
                       </td>
                       <td style={{ padding: '14px 20px', color: 'var(--text-muted)' }}>{fmtDate(h.created_at)}</td>
                       <td style={{ padding: '14px 20px', textAlign: 'right' }}>
@@ -314,27 +317,45 @@ export const ExportReportCenter: React.FC = () => {
         </div>
       ) : (
         <div className="glass-card" style={{ padding: 20 }}>
-          {activeStep === 1 && <StepInputView data={{ raw_text: snapshot.step1_raw_text }} />}
-          {activeStep === 2 && <StepAnalysisView data={{
-            fields: snapshot.step2_schema?.fields,
-            initial_seeds: snapshot.step3_seeds?.seeds,
-            constraints: snapshot.step2_schema?.constraints,
-            businessRules: snapshot.step2_schema?.business_rules
+          {activeStep === 1 && <StepInputView data={{ raw_text: snapshot.raw_text || snapshot.step1_raw_text }} />}
+          {activeStep === 2 && <StepEvaluationView data={{
+            evaluation: snapshot.step2_eval_result || snapshot.step3_seeds?.evaluation,
+            metrics: snapshot.step3_metrics || snapshot.step3_seeds?.metrics,
+            seeds: snapshot.initialPopulation || snapshot.step3_seeds?.seeds || [],
+            fields: snapshot.fields || snapshot.step2_schema?.fields,
+            constraints: snapshot.constraints || snapshot.step2_schema?.constraints,
+            businessRules: snapshot.businessRules || snapshot.step2_schema?.business_rules
           }} />}
-          {activeStep === 3 && <StepEvaluationView data={{
-            evaluation: snapshot.step3_seeds?.evaluation,
-            metrics: snapshot.step3_seeds?.metrics
-          }} />}
-          {activeStep === 4 && (
+          {activeStep === 3 && (
             <StepOptimizedView
-              rows={snapshot.step4_optimized_data || []}
-              coverage={snapshot.coverage_rate}
-              progressHistory={snapshot.step4_progress_history || []}
-              maStats={snapshot.step4_ma_stats}
+              forceTab="ga"
+              rows={snapshot.gaResult || snapshot.step4_history?.[snapshot.step4_history.length - 1]?.best_solution || []}
+              coverage={snapshot.coverage_rate || snapshot.step4_history?.[snapshot.step4_history.length - 1]?.coverage}
+              progressHistory={snapshot.step4_history || snapshot.step4_progress_history || []}
+              maStats={snapshot.step4_ma_stats || snapshot.maStats}
+              snapshot={snapshot}
               onExportCSV={handleExportCSV}
               onExportJSON={handleExportJSON}
               onExportPDF={handleExportPDF}
             />
+          )}
+          {activeStep === 4 && (
+            <StepOptimizedView
+              forceTab="hc"
+              rows={snapshot.step4_optimized_data || snapshot.hcResult || []}
+              coverage={snapshot.coverage_rate}
+              progressHistory={snapshot.step4_history || snapshot.step4_progress_history || []}
+              maStats={snapshot.step4_ma_stats || snapshot.maStats}
+              snapshot={snapshot}
+              onExportCSV={handleExportCSV}
+              onExportJSON={handleExportJSON}
+              onExportPDF={handleExportPDF}
+            />
+          )}
+          {activeStep === 5 && (
+            <div className="fade-in-up">
+              <AlgorithmCharts snapshotData={snapshot} />
+            </div>
           )}
         </div>
       )}
@@ -345,12 +366,17 @@ export const ExportReportCenter: React.FC = () => {
 
 // ─── BƯỚC 1: Đầu vào ────────────────────────────────────────────────────────
 const StepInputView: React.FC<{ data: any }> = ({ data }) => {
-  if (!data) return <Empty text="Không có dữ liệu đầu vào." />;
+  const text = data?.raw_text || data?.step1_raw_text || '';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <SectionTitle icon={<FileInput size={18} />} text="Đặc tả yêu cầu đầu vào (Bước 1)" />
-      <div style={{ background: 'var(--surface-subtle)', padding: 16, borderRadius: 8, border: '1px solid var(--border-subtle)', whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: 13.5 }}>
-        {data.raw_text || '—'}
+      <div style={{
+        background: 'var(--surface-subtle)', padding: '16px 20px', borderRadius: 8,
+        border: '1px solid var(--border-subtle)', whiteSpace: 'pre-wrap',
+        lineHeight: 1.8, fontSize: 13.5, color: 'var(--text-primary)',
+        maxHeight: 520, overflowY: 'auto', fontFamily: 'var(--font-mono, monospace)'
+      }}>
+        {text ? text : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>(Không có văn bản đặc tả - Phiên chạy này sử dụng mẫu Preset hoặc cấu hình trực tiếp)</span>}
       </div>
     </div>
   );
@@ -362,12 +388,19 @@ const StepAnalysisView: React.FC<{ data: any }> = ({ data }) => {
   const seeds: any[] = data?.initial_seeds || [];
   const constraints: any[] = data?.constraints || [];
   const businessRules: any[] = data?.businessRules || [];
-  const seedKeys = seeds.length > 0 ? Object.keys(toCleanRow(seeds[0])) : [];
+
+  const flattenSeed = (s: any) => ({ ...(s.values || {}), ...s });
+  const flatSeeds = seeds.map(flattenSeed);
+  const seedKeys = flatSeeds.length > 0
+    ? Object.keys(flatSeeds[0]).filter(k => !['values', 'id', 'tcId', 'rationale', 'origin', 'fitness', 'llmFitness', 'gaFitness', 'hcFitness', 'finalFitness', 'categories', 'validationScore', 'boundaryScore', 'negativeScore', 'errorDescription'].includes(k))
+    : [];
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div>
-        <SectionTitle icon={<Database size={18} />} text={`Trường dữ liệu & ràng buộc (${fields.length})`} />
-        {fields.length === 0 ? <Empty text="Không có trường dữ liệu." /> : (
+      {/* Chỉ hiển thị fields nếu có */}
+      {fields.length > 0 && (
+        <div>
+          <SectionTitle icon={<Database size={18} />} text={`Trường dữ liệu & ràng buộc (${fields.length})`} />
           <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 8, overflow: 'hidden', marginTop: 10 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead style={{ background: 'var(--surface-subtle)', color: 'var(--text-muted)' }}>
@@ -388,30 +421,35 @@ const StepAnalysisView: React.FC<{ data: any }> = ({ data }) => {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
+      {/* Tập hạt giống F0 */}
       <div>
-        <SectionTitle icon={<ListChecks size={18} />} text={`Tập hạt giống F0 (${seeds.length})`} />
-        {seeds.length === 0 ? <Empty text="Không có hạt giống F0." /> : (
-          <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8, marginTop: 10 }}>
+        <SectionTitle icon={<ListChecks size={18} />} text={`Tập hạt giống F0 (${flatSeeds.length} ca)`} />
+        {flatSeeds.length === 0 ? <Empty text="Không có hạt giống F0." /> : (
+          <div style={{ maxHeight: 360, overflow: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8, marginTop: 10 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-subtle)' }}>
+              <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-subtle)', zIndex: 2 }}>
                 <tr>
                   <th style={thS}>#</th>
                   {seedKeys.map(k => <th key={k} style={thS}>{k}</th>)}
+                  <th style={thS}>Expected Result</th>
+                  <th style={thS}>Fitness</th>
                 </tr>
               </thead>
               <tbody>
-                {seeds.slice(0, 100).map((s: any, i: number) => {
-                  const row = toCleanRow(s);
-                  return (
-                    <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                      <td style={{ ...tdS, color: 'var(--text-muted)' }}>{i + 1}</td>
-                      {seedKeys.map(k => <td key={k} style={tdS}>{String(row[k] ?? '')}</td>)}
-                    </tr>
-                  );
-                })}
+                {flatSeeds.slice(0, 100).map((s: any, i: number) => (
+                  <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                    <td style={{ ...tdS, color: 'var(--text-muted)' }}>{i + 1}</td>
+                    {seedKeys.map(k => <td key={k} style={{ ...tdS, maxWidth: 200, wordBreak: 'break-word' }}>{String(s[k] ?? '')}</td>)}
+                    <td style={{ ...tdS, fontSize: 11.5, color: 'var(--text-secondary)' }}>{
+                      typeof s.expectedResult === 'string' ? s.expectedResult :
+                      s.expectedResult?.statusText || String(s.expectedResult || '')
+                    }</td>
+                    <td style={{ ...tdS, fontWeight: 600 }}>{s.fitness != null ? `${Math.round(s.fitness * 100)}%` : '—'}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -445,30 +483,92 @@ const StepAnalysisView: React.FC<{ data: any }> = ({ data }) => {
   );
 };
 
-// ─── BƯỚC 3: Đánh giá ───────────────────────────────────────────────────────
 const StepEvaluationView: React.FC<{ data: any }> = ({ data }) => {
-  // data = { evaluation: {score, strengths,...} | null, metrics: {coverage,fitness,dupRate,total,validCount} | null }
-  // Tương thích ngược: snapshot cũ có thể lưu thẳng evaluation object.
   const evalData = data?.evaluation ?? (data && (data.score != null || data.strengths) ? data : null);
   const metrics = data?.metrics ?? null;
-  if (!evalData && !metrics) return <Empty text="Phiên này chưa lưu dữ liệu đánh giá (Bước 3 đã bỏ qua)." />;
+  const seeds: any[] = data?.seeds || data?.f0 || [];
+  const fields: any[] = data?.fields || [];
+  const constraints: any[] = data?.constraints || [];
+  const businessRules: any[] = data?.businessRules || [];
+
+  if (!evalData && !metrics && fields.length === 0) return <Empty text="Phiên này chưa lưu dữ liệu đánh giá (Bước 2 đã bỏ qua)." />;
+
+  const flattenSeed = (s: any) => ({ ...(s.values || {}), ...s });
+  const flatSeeds = seeds.map(flattenSeed);
+  const seedKeys = flatSeeds.length > 0
+    ? Object.keys(flatSeeds[0]).filter(k => !['values', 'id', 'tcId', 'rationale', 'origin', 'fitness', 'llmFitness', 'gaFitness', 'hcFitness', 'finalFitness', 'categories', 'validationScore', 'boundaryScore', 'negativeScore'].includes(k) && !k.startsWith('_'))
+    : [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <SectionTitle icon={<Gauge size={18} />} text="Đánh giá chất lượng tập F0 (Bước 3)" />
-
-      {/* Thông số định lượng (biểu đồ thanh đơn giản) */}
-      {metrics && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
-          <MetricCard label="Độ phủ F0" value={`${Number(metrics.coverage ?? 0).toFixed(1)}%`} pct={Number(metrics.coverage ?? 0)} color="var(--color-emerald)" />
-          <MetricCard label="Fitness trung bình" value={Number(metrics.fitness ?? 0).toFixed(3)} pct={Number(metrics.fitness ?? 0) * 100} color="var(--color-teal)" />
-          <MetricCard label="Tỉ lệ trùng lặp" value={`${(Number(metrics.dupRate ?? 0) * 100).toFixed(1)}%`} pct={Number(metrics.dupRate ?? 0) * 100} color="#f59e0b" />
-          <MetricCard label="Quy mô F0" value={`${metrics.total ?? 0}`} sub={`${metrics.validCount ?? 0} hợp lệ · ${(metrics.total ?? 0) - (metrics.validCount ?? 0)} biên/âm`} />
+      {/* Chỉ hiển thị fields nếu có */}
+      {fields.length > 0 && (
+        <div>
+          <SectionTitle icon={<Database size={18} />} text={`Trường dữ liệu & ràng buộc (${fields.length})`} />
+          <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 8, overflow: 'hidden', marginTop: 10 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead style={{ background: 'var(--surface-subtle)', color: 'var(--text-muted)' }}>
+                <tr>
+                  <th style={thS}>Tên trường</th><th style={thS}>Kiểu</th>
+                  <th style={thS}>Bắt buộc</th><th style={thS}>Ràng buộc</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fields.map((f: any, i: number) => (
+                  <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                    <td style={{ ...tdS, fontWeight: 600 }}>{f.name}</td>
+                    <td style={tdS}><span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--color-teal)' }}>{f.type}</span></td>
+                    <td style={tdS}>{f.required ? 'Có' : 'Không'}</td>
+                    <td style={{ ...tdS, color: 'var(--text-muted)', fontSize: 11.5 }}>{describeConstraints(f)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {/* Đánh giá AI */}
-      {evalData ? (
+      {(businessRules.length > 0 || constraints.length > 0) && (
+        <div>
+          <SectionTitle icon={<ListChecks size={18} />} text="Quy tắc nghiệp vụ & Ràng buộc chéo" />
+          <div style={{ background: 'var(--surface-subtle)', padding: 16, borderRadius: 8, border: '1px solid var(--border-subtle)', marginTop: 10, fontSize: 13, color: 'var(--text-secondary)' }}>
+            {businessRules.map((br, idx) => (
+              <div key={`br-${idx}`} style={{ marginBottom: 6 }}>
+                <strong style={{ color: 'var(--brand-primary)' }}>ĐK: {br.condition}</strong>
+                {br.expectedAction && <span> → <span style={{color: br.expectedAction === 'allow' ? 'var(--color-emerald)' : 'var(--color-rose)'}}>{br.expectedAction.toUpperCase()}</span></span>}
+                {br.errorMessage && <span> (Lỗi: {br.errorMessage})</span>}
+              </div>
+            ))}
+            {constraints.map((c, idx) => {
+              const fieldName = c.field || (c.when && c.when.field) || c.constraint_id || 'Unknown';
+              const ruleDesc = c.rule || c.description || JSON.stringify(c);
+              return (
+                <div key={`c-${idx}`} style={{ marginBottom: 6 }}>
+                  <strong style={{ color: 'var(--color-violet)' }}>Ràng buộc ({fieldName}):</strong> {ruleDesc}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <SectionTitle icon={<Gauge size={18} />} text="Đánh giá chất lượng tập F0" />
+
+      {/* KPI Cards */}
+      {metrics && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+          <MetricCard label="Coverage Rate" value={`${Number(metrics.coverage ?? 0).toFixed(1)}%`} pct={Number(metrics.coverage ?? 0)} color="var(--color-emerald)" />
+          <MetricCard label="Fitness Score" value={Number(metrics.fitness ?? 0).toFixed(3)} pct={Number(metrics.fitness ?? 0) * 100} color="var(--color-teal)" />
+          <MetricCard label="Duplicate Rate" value={`${(Number(metrics.dupRate ?? 0) * 100).toFixed(1)}%`} pct={Number(metrics.dupRate ?? 0) * 100} color="#f59e0b" />
+          <MetricCard label="Tập F0" value={`${metrics.total ?? 0}`} sub={`${metrics.validCount ?? 0} hợp lệ`} />
+          {metrics.securityRate != null && (
+            <MetricCard label="Security Case Rate" value={`${(Number(metrics.securityRate) * 100).toFixed(1)}%`} pct={Number(metrics.securityRate) * 100} color="var(--color-rose)" />
+          )}
+        </div>
+      )}
+
+      {/* AI Evaluation */}
+      {evalData && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Điểm AI tổng quan:</div>
@@ -481,103 +581,244 @@ const StepEvaluationView: React.FC<{ data: any }> = ({ data }) => {
             <EvalList title="Rủi ro bảo mật" items={evalData.security_risks} color="var(--color-rose)" icon={<ShieldAlert size={14} />} />
           </div>
         </div>
-      ) : (
-        <Empty text="Phiên này không lưu đánh giá AI (chỉ có thông số định lượng)." />
+      )}
+
+      {/* Bảng F0 seeds nếu có */}
+      {flatSeeds.length > 0 && (
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>Tập F0 ({flatSeeds.length} ca)</div>
+          <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-subtle)', zIndex: 2 }}>
+                <tr>
+                  <th style={thS}>Mã ca kiểm thử</th>
+                  <th style={thS}>Nguồn LLM</th>
+                  {seedKeys.map(k => <th key={k} style={thS}>{k}</th>)}
+                  <th style={thS}>Kết quả mong muốn</th>
+                  <th style={thS}>Lỗi mong muốn</th>
+                  <th style={thS}>Mục tiêu cải tiến</th>
+                  <th style={thS}>Fitness</th>
+                  <th style={thS}>Hợp lệ</th>
+                  <th style={thS}>Biên</th>
+                  <th style={thS}>Đa dạng</th>
+                  <th style={thS}>Ưu tiên</th>
+                </tr>
+              </thead>
+              <tbody>
+                {flatSeeds.slice(0, 100).map((s: any, i: number) => {
+                  const isSeed = String(s.origin || '').toLowerCase().includes('seed');
+                  return (
+                    <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                      <td style={{ ...tdS, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                        {s.tcId || s.id || `TC-${String(i + 1).padStart(3, '0')}`}
+                      </td>
+                      <td style={{ ...tdS }}>
+                        <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 600, backgroundColor: isSeed ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-subtle)', border: `1px solid ${isSeed ? 'rgba(59, 130, 246, 0.2)' : 'var(--border-subtle)'}`, color: isSeed ? '#3b82f6' : 'var(--text-secondary)' }}>
+                          {isSeed ? 'LLM (Seed)' : 'LLM'}
+                        </span>
+                      </td>
+                      {seedKeys.map(k => <td key={k} style={{ ...tdS, maxWidth: 200, wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{String(s[k] ?? '')}</td>)}
+                      <td style={{ ...tdS, verticalAlign: 'top', maxWidth: 240, wordBreak: 'break-word' }}>
+                        {typeof s.expectedResult === 'string' ? s.expectedResult : s.expectedResult?.statusText || ''}
+                      </td>
+                      <td style={{ ...tdS, verticalAlign: 'top', color: 'var(--text-muted)', fontSize: 11 }}>
+                        {s.errorDescription || 'Không có'}
+                      </td>
+                      <td style={{ ...tdS, verticalAlign: 'top', fontSize: 11.5 }}>
+                        {s.rationale || s.scenario || '—'}
+                      </td>
+                      <td style={{ ...tdS, fontWeight: 600, color: 'var(--color-emerald)' }}>
+                        {s.fitness != null ? `${(s.fitness > 1 ? s.fitness : s.fitness * 100).toFixed(1)}%` : '—'}
+                      </td>
+                      <td style={{ ...tdS, fontSize: 11 }}>{s.validationScore != null ? s.validationScore.toFixed(2) : '—'}</td>
+                      <td style={{ ...tdS, fontSize: 11 }}>{s.boundaryScore != null ? s.boundaryScore.toFixed(2) : '—'}</td>
+                      <td style={{ ...tdS, fontSize: 11 }}>{s.diversityScore != null ? s.diversityScore.toFixed(2) : '—'}</td>
+                      <td style={{ ...tdS, fontSize: 11 }}>{s.priorityScore != null ? s.priorityScore.toFixed(2) : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );
 };
 
-// ─── BƯỚC 4: Toàn bộ data tối ưu + biểu đồ + thống kê + download ─────────────
+// ─── BƯỚC 4: Tối ưu GA & HC (tab) ──────────────────────────────────────────
 const StepOptimizedView: React.FC<{
   rows: any[]; coverage: number; progressHistory: any[]; maStats: any;
+  snapshot: any;
+  forceTab?: 'ga' | 'hc';
   onExportCSV: () => void; onExportJSON: () => void; onExportPDF: () => void;
-}> = ({ rows, coverage, progressHistory, maStats, onExportCSV, onExportJSON, onExportPDF }) => {
-  const cleanRows = rows.map(toCleanRow);
-  const keys = cleanRows.length > 0 ? Object.keys(cleanRows[0]) : [];
+}> = ({ rows, coverage, progressHistory, maStats, snapshot, forceTab, onExportCSV, onExportJSON, onExportPDF }) => {
+  const [tab, setTab] = useState<'ga' | 'hc'>('ga');
+  const activeTab = forceTab || tab;
+
+  // Flatten tc để đọc trực tiếp các trường
+  const flattenTc = (tc: any) => ({
+    ...(tc.values || {}), ...tc,
+    fitness: tc.finalFitness ?? tc.hcFitness ?? tc.gaFitness ?? tc.fitness ?? 0,
+  });
+
+  const gaRows = (snapshot?.gaResult || []).map(flattenTc);
+  const hcRows = (snapshot?.hcResult || snapshot?.step4_optimized_data || rows || []).map(flattenTc);
+  const activeRows = activeTab === 'ga' ? gaRows : hcRows;
+
+  // Lấy keys từ data (bỏ metadata keys)
+  const META_KEYS = new Set(['values', 'id', 'tcId', 'rationale', 'origin', 'fitness', 'llmFitness',
+    'gaFitness', 'hcFitness', 'finalFitness', 'categories', 'validationScore', 'boundaryScore',
+    'negativeScore', 'errorDescription', 'expectedResult', 'ma_action', 'generation',
+    'parent_ids', 'local_search_applied', 'improvement', 'coverage', 'changes', 'covers',
+    'llm_values', 'ga_values', 'hc_values', 'scenario']);
+  const dataKeys = activeRows.length > 0
+    ? Object.keys(activeRows[0]).filter(k => !META_KEYS.has(k) && !k.startsWith('_'))
+    : [];
 
   const chartData = (progressHistory || []).map((e: any) => ({
     gen: e.generation,
     'Fitness tốt nhất': e.bestFitness != null ? +(e.bestFitness * 100).toFixed(1) : null,
     'Độ phủ': e.coverage != null ? +(e.coverage * 100).toFixed(1) : null,
-    'Đa dạng': e.diversity != null ? +(e.diversity * 100).toFixed(1) : null,
   }));
+
+  const TabBtn = ({ value, label }: { value: 'ga' | 'hc'; label: string }) => (
+    <button
+      onClick={() => setTab(value)}
+      style={{
+        padding: '7px 20px', fontSize: 13, fontWeight: tab === value ? 700 : 500,
+        borderRadius: 6, border: 'none', cursor: 'pointer',
+        background: tab === value ? 'var(--brand-primary)' : 'var(--surface-subtle)',
+        color: tab === value ? '#fff' : 'var(--text-secondary)',
+        transition: 'all 0.2s',
+      }}
+    >{label} ({value === 'ga' ? gaRows.length : hcRows.length})</button>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <SectionTitle icon={<Zap size={18} />} text={`Bộ test tối ưu bằng MA (${rows.length} ca)`} />
+        <SectionTitle icon={<Zap size={18} />} text={activeTab === 'ga' ? "Bộ test tối ưu (GA)" : "Bộ test tối ưu (HC)"} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} className="no-print">
           <span style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--color-emerald)', padding: '4px 12px', borderRadius: 20, fontWeight: 700, fontSize: 12 }}>
-            Độ phủ: {Math.round((coverage || 0) * 100)}%
+            Độ phủ: {Math.round((coverage || 0) > 1 ? (coverage || 0) : (coverage || 0) * 100)}%
           </span>
           <button onClick={onExportCSV} className="btn btn-secondary" style={{ padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-            <FileSpreadsheet size={14} style={{ color: 'var(--color-emerald)' }} /> Excel (.csv)
+            <FileSpreadsheet size={14} style={{ color: 'var(--color-emerald)' }} /> Excel
           </button>
           <button onClick={onExportPDF} className="btn btn-secondary" style={{ padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-            <FileText size={14} style={{ color: 'var(--color-rose)' }} /> Xuất PDF
+            <FileText size={14} style={{ color: 'var(--color-rose)' }} /> PDF
           </button>
           <button onClick={onExportJSON} className="btn btn-primary" style={{ padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, background: 'var(--brand-primary)' }}>
-            <FileJson size={14} /> Xuất JSON
+            <FileJson size={14} /> JSON
           </button>
         </div>
       </div>
 
-      {/* Thống kê thuật toán MA */}
+      {/* Tab switcher GA / HC (ẩn nếu forceTab) */}
+      {!forceTab && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <TabBtn value="ga" label="Tối ưu GA" />
+          <TabBtn value="hc" label="Tối ưu HC" />
+        </div>
+      )}
+
+      {/* MA Stats */}
       {maStats && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-          <MetricCard label="Fitness tốt nhất" value={maStats.bestFitness != null ? `${Math.round(maStats.bestFitness * 100)}%` : '—'} />
-          <MetricCard label="Fitness TB" value={maStats.avgFitness != null ? `${Math.round(maStats.avgFitness * 100)}%` : '—'} />
-          <MetricCard label="Đa dạng quần thể" value={maStats.diversity != null ? `${Math.round(maStats.diversity * 100)}%` : '—'} />
-          <MetricCard label="Cá thể Elite" value={String(maStats.eliteCount ?? '—')} />
+          <MetricCard label="Fitness tốt nhất" value={maStats.bestFitness != null ? `${Math.round(maStats.bestFitness * 100)}%` : '—'} color="var(--color-emerald)" />
+          <MetricCard label="Fitness TB" value={maStats.avgFitness != null ? `${Math.round(maStats.avgFitness * 100)}%` : '—'} color="var(--color-teal)" />
+          <MetricCard label="Đa dạng" value={maStats.diversity != null ? `${Math.round(maStats.diversity * 100)}%` : '—'} />
+          <MetricCard label="Elite" value={String(maStats.eliteCount ?? '—')} />
           <MetricCard label="Lai ghép" value={String(maStats.crossoverCount ?? '—')} />
           <MetricCard label="Đột biến" value={String(maStats.mutationCount ?? '—')} />
-          <MetricCard label="Tìm kiếm cục bộ" value={String(maStats.localSearchCount ?? '—')} />
+          <MetricCard label="Local Search" value={String(maStats.localSearchCount ?? '—')} />
           <MetricCard label="Trùng đã loại" value={String(maStats.duplicatesRemoved ?? '—')} />
         </div>
       )}
 
-      {/* Biểu đồ tiến hóa qua các thế hệ */}
-      {chartData.length > 1 && (
+      {/* Biểu đồ tiến hóa (chỉ hiện với tab GA) */}
+      {tab === 'ga' && chartData.length > 1 && (
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--text-secondary)' }}>Đồ thị tiến hóa Memetic qua các thế hệ</div>
-          <div style={{ height: 260, background: 'var(--surface-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', padding: '12px 8px 0 0' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--text-secondary)' }}>Đồ thị tiến hóa qua các thế hệ</div>
+          <div style={{ height: 220, background: 'var(--surface-subtle)', borderRadius: 8, border: '1px solid var(--border-subtle)', padding: '12px 8px 0 0' }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 6, right: 16, bottom: 6, left: -10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis dataKey="gen" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
                 <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} domain={[0, 100]} />
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border-subtle)' }} />
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="Fitness tốt nhất" stroke="#0891B2" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="Độ phủ" stroke="#10B981" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="Đa dạng" stroke="#4F46E5" strokeWidth={2} dot={false} strokeDasharray="4 3" />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
       )}
 
-      {rows.length === 0 ? <Empty text="Không có dữ liệu test case." /> : (
+      {/* Bảng dữ liệu */}
+      {activeRows.length === 0 ? (
+        <Empty text={`Không có dữ liệu ${tab === 'ga' ? 'GA' : 'HC'} trong snapshot này.`} />
+      ) : (
         <div style={{ maxHeight: 480, overflow: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-subtle)', zIndex: 2 }}>
               <tr>
-                <th style={thS}>#</th>
-                {keys.map(k => <th key={k} style={thS}>{k}</th>)}
+                <th style={thS}>Mã ca kiểm thử</th>
+                <th style={thS}>Nguồn LLM</th>
+                <th style={thS}>Toán tử GA</th>
+                {dataKeys.map(k => <th key={k} style={thS}>{k}</th>)}
+                <th style={thS}>Kết quả mong muốn</th>
+                <th style={thS}>Lỗi mong muốn</th>
+                <th style={thS}>Mục tiêu cải tiến</th>
                 <th style={thS}>Fitness</th>
-                <th style={thS}>Nguồn</th>
+                <th style={thS}>Hợp lệ</th>
+                <th style={thS}>Biên</th>
+                <th style={thS}>Đa dạng</th>
+                <th style={thS}>Ưu tiên</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((tc: any, i: number) => {
-                const row = toCleanRow(tc);
+              {activeRows.map((tc: any, i: number) => {
+                const isSeed = String(tc.origin || '').toLowerCase().includes('seed');
                 return (
-                  <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                    <td style={{ ...tdS, color: 'var(--text-muted)' }}>{i + 1}</td>
-                    {keys.map(k => <td key={k} style={{ ...tdS, verticalAlign: 'top', maxWidth: 240, wordBreak: 'break-all' }}>{String(row[k] ?? '')}</td>)}
-                    <td style={{ ...tdS, fontWeight: 600 }}>{tc.fitness != null ? `${Math.round(tc.fitness * 100)}%` : '—'}</td>
-                    <td style={{ ...tdS, color: 'var(--text-muted)', fontSize: 11 }}>{tc.origin ?? tc.ma_action ?? 'MA'}</td>
+                  <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)', background: i % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.01)' }}>
+                    <td style={{ ...tdS, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                      {tc.tcId || tc.id || `TC-${String(i + 1).padStart(3, '0')}`}
+                    </td>
+                    <td style={{ ...tdS }}>
+                      <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 600, backgroundColor: isSeed ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-subtle)', border: `1px solid ${isSeed ? 'rgba(59, 130, 246, 0.2)' : 'var(--border-subtle)'}`, color: isSeed ? '#3b82f6' : 'var(--text-secondary)' }}>
+                        {isSeed ? 'LLM (Seed)' : 'LLM'}
+                      </span>
+                    </td>
+                    <td style={{ ...tdS }}>
+                      <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 600, backgroundColor: 'rgba(6, 182, 212, 0.08)', border: '1px solid rgba(6, 182, 212, 0.2)', color: 'var(--color-teal)' }}>
+                        {tc.origin ?? tc.ma_action ?? (tab === 'ga' ? 'GA' : 'HC')}
+                      </span>
+                    </td>
+                    {dataKeys.map(k => (
+                      <td key={k} style={{ ...tdS, verticalAlign: 'top', maxWidth: 220, wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                        {String(tc[k] ?? '')}
+                      </td>
+                    ))}
+                    <td style={{ ...tdS, verticalAlign: 'top', maxWidth: 240, wordBreak: 'break-word' }}>
+                      {typeof tc.expectedResult === 'string' ? tc.expectedResult : tc.expectedResult?.statusText || String(tc.expectedResult || '')}
+                    </td>
+                    <td style={{ ...tdS, verticalAlign: 'top', color: 'var(--text-muted)', fontSize: 11 }}>
+                      {tc.errorDescription || 'Không có'}
+                    </td>
+                    <td style={{ ...tdS, verticalAlign: 'top', fontSize: 11.5 }}>
+                      {tc.rationale || tc.scenario || '—'}
+                    </td>
+                    <td style={{ ...tdS, fontWeight: 600, color: 'var(--color-emerald)' }}>
+                      {tc.fitness != null ? `${(tc.fitness > 1 ? tc.fitness : tc.fitness * 100).toFixed(1)}%` : '—'}
+                    </td>
+                    <td style={{ ...tdS, fontSize: 11 }}>{tc.validationScore != null ? tc.validationScore.toFixed(2) : '—'}</td>
+                    <td style={{ ...tdS, fontSize: 11 }}>{tc.boundaryScore != null ? tc.boundaryScore.toFixed(2) : '—'}</td>
+                    <td style={{ ...tdS, fontSize: 11 }}>{tc.diversityScore != null ? tc.diversityScore.toFixed(2) : '—'}</td>
+                    <td style={{ ...tdS, fontSize: 11 }}>{tc.priorityScore != null ? tc.priorityScore.toFixed(2) : '—'}</td>
                   </tr>
                 );
               })}
@@ -588,6 +829,8 @@ const StepOptimizedView: React.FC<{
     </div>
   );
 };
+
+
 
 // ─── Sub-components dùng chung ──────────────────────────────────────────────
 const SectionTitle: React.FC<{ icon: React.ReactNode; text: string }> = ({ icon, text }) => (

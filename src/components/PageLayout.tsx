@@ -355,32 +355,60 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
       </div>
 
       {/* ── NEXT STEP CTA ── */}
-      {nextScreen && nextLabel && allPrereqsMet && (
+      {(nextScreen || stepId) && allPrereqsMet && (
         <div
           style={{
             display: 'flex',
-            justifyContent: 'flex-end',
+            justifyContent: 'space-between',
             paddingTop: '8px',
             borderTop: '1px solid var(--border-subtle)',
+            marginTop: '16px'
           }}
         >
-          <button
-            className="btn btn-primary"
-            onClick={handleNext}
-            style={{
-              padding: '12px 28px',
-              fontSize: '14.5px',
-              borderRadius: 'var(--radius-lg)',
-              marginTop: '12px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '10px'
-            }}
-          >
-            {nextIcon && <span style={{ opacity: 0.9 }}>{nextIcon}</span>}
-            <span>Tiếp theo: {nextLabel}</span>
-            <ArrowRight size={18} />
-          </button>
+          {/* Nút Quay Lại (tự động dựa vào stepId) */}
+          <div>
+            {stepId && stepIndex(stepId) > 0 && (
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  const prevId = WORKFLOW_STEPS[stepIndex(stepId) - 1].id;
+                  setActiveScreen(prevId);
+                }}
+                style={{
+                  padding: '10px 24px',
+                  fontSize: '14px',
+                  borderRadius: 'var(--radius-lg)',
+                  marginTop: '12px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <ArrowLeft size={16} />
+                <span>Quay lại</span>
+              </button>
+            )}
+          </div>
+
+          {nextScreen && nextLabel && (
+            <button
+              className="btn btn-primary"
+              onClick={handleNext}
+              style={{
+                padding: '12px 28px',
+                fontSize: '14.5px',
+                borderRadius: 'var(--radius-lg)',
+                marginTop: '12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '10px'
+              }}
+            >
+              {nextIcon && <span style={{ opacity: 0.9 }}>{nextIcon}</span>}
+              <span>Tiếp theo: {nextLabel}</span>
+              <ArrowRight size={18} />
+            </button>
+          )}
         </div>
       )}
     </div>

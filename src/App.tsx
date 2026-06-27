@@ -540,14 +540,6 @@ function App() {
               title='Lịch Sử & Xuất Kết Quả'
               icon={<HistoryIcon size={24} />}
               description='Tra cứu lại các phiên chạy đã lưu theo từng yêu cầu, xem lại 4 bước và xuất bộ test ra nhiều định dạng (CSV / JSON / PDF).'
-              prerequisites={[
-                {
-                  met: completedScreens.includes('charts'),
-                  warningText: 'Chưa xem biểu đồ phân tích. Vui lòng xem biểu đồ trước khi xuất kết quả.',
-                  goBackScreen: 'charts',
-                  goBackLabel: 'Đến: Biểu đồ (GA/HC)',
-                },
-              ]}
             >
               <ExportReportCenter />
             </PageLayout>
