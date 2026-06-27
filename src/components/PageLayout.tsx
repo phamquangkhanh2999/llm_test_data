@@ -365,46 +365,21 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
           }}
         >
           <button
+            className="btn btn-primary"
             onClick={handleNext}
             style={{
-              display: 'flex',
+              padding: '12px 28px',
+              fontSize: '14.5px',
+              borderRadius: 'var(--radius-lg)',
+              marginTop: '12px',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '10px',
-              padding: '12px 24px',
-              borderRadius: '10px',
-              background: `linear-gradient(135deg, ${accentColor}cc, ${accentColor}80)`,
-              border: `1px solid ${accentColor}55`,
-              color: '#fff',
-              fontSize: '14px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: `0 4px 20px ${accentColor}30`,
-              transition: 'all 0.2s ease',
-            }}
-            onMouseOver={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
-              (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                `0 8px 28px ${accentColor}50`;
-            }}
-            onMouseOut={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
-              (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                `0 4px 20px ${accentColor}30`;
-            }}
-            onFocus={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
-              (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                `0 8px 28px ${accentColor}50`;
-            }}
-            onBlur={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
-              (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                `0 4px 20px ${accentColor}30`;
+              gap: '10px'
             }}
           >
             {nextIcon && <span style={{ opacity: 0.9 }}>{nextIcon}</span>}
             <span>Tiếp theo: {nextLabel}</span>
-            <ArrowRight size={16} />
+            <ArrowRight size={18} />
           </button>
         </div>
       )}

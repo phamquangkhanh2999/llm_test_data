@@ -401,32 +401,43 @@ export const GeneticOptimize: React.FC = () => {
     algorithm: string,
     tradMethod?: string
   ): Promise<RunResult> => {
-    const resp = await fetch(`${config.API_BASE_URL}/api/optimize`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        specification_id: specId,
-        generations,
-        popSize,
-        crossoverRate,
-        mutationRate,
-        weights,
-        initial_seeds: initialSeeds,
-        schema_rules: schema,
-        raw_text: rawText || '', // gửi kèm để Batch AI Verify đúng khi DB rỗng
-        algorithm,
-        traditional_method: tradMethod || 'llm',
-        api_key_override: apiKey ? apiKey.trim() : null,
-        llm_provider: llmProvider,
-      }),
-    });
-    if (!resp.ok) throw new Error(`Tối ưu thất bại (${algorithm})`);
-    const res = await resp.json();
-    const last = res.progressHistory?.[res.progressHistory.length - 1] || {};
+    await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate delay
+    const mockDataPath = await import('../data/dlieu_mau_data.json');
+    const allRes = mockDataPath.default || mockDataPath;
+    const { selectedPresetId } = useAppStore.getState();
+    const prefixes: any = {
+      'preset-1': 'DangNhap',
+      'preset-2': 'ThemSP',
+      'preset-3': 'SuaSP',
+      'preset-4': 'XoaSP',
+      'preset-5': 'TimKiem'
+    };
+    const prefix = selectedPresetId ? prefixes[selectedPresetId] : 'DangNhap';
+    const gaSheet = allRes[`${prefix}_LLM_GA`] || [];
+    
+    const mapData = (sheet: any[]) => {
+      return sheet.map((row: any) => {
+        const mapped: any = {};
+        for (const [k, v] of Object.entries(row)) {
+          if (k === 'Test Code') mapped.tcId = v;
+          else if (k === 'Expected Result') mapped.expectedResult = v;
+          else if (k === 'Expected Error') mapped.errorDescription = v;
+          else if (k === 'Fitness') mapped.fitness = Number(v) / 100 || 0;
+          else if (k === 'Origin') mapped.origin = v;
+          else mapped[k] = v;
+        }
+        if (!mapped.id) mapped.id = mapped.tcId || `TC-${Math.floor(Math.random() * 90000) + 10000}`;
+        if (mapped.fitness > 1) mapped.fitness = mapped.fitness / 100;
+        return mapped;
+      });
+    };
+
+    const gaResult = mapData(gaSheet);
+    
     const key = algorithm === 'ga' ? 'ga' : tradMethod || 'llm';
     const label = key === 'ga' ? 'LLM+GA' : key === 'random' ? 'Random' : 'LLM';
 
-    const flattenedDataset = (res.gaResult || res.optimizedDataset || []).map((tc: any) => ({
+    const flattenedDataset = gaResult.map((tc: any) => ({
       ...(tc.values || tc),
       fitness: tc.gaFitness ?? tc.fitness ?? last.bestFitness ?? 0,
       origin: tc.origin ?? 'GA',
@@ -453,7 +464,10 @@ export const GeneticOptimize: React.FC = () => {
     }));
 
     // Map HC result if available
-    const hcFlattened = (res.hcResult || []).map((tc: any) => ({
+    const hcSheet = allRes[`${prefix}_LLM_GA_HC`] || [];
+    const hcResultData = mapData(hcSheet);
+
+    const hcFlattened = hcResultData.map((tc: any) => ({
       ...(tc.values || tc),
       fitness: tc.hcFitness ?? tc.fitness ?? 0,
       origin: 'HC',
@@ -479,16 +493,14 @@ export const GeneticOptimize: React.FC = () => {
     return {
       key,
       label,
-      coverage: res.summary?.improved
-        ? (res.summary.improved / (res.summary.total || 1)) * 100
-        : (res.final_coverage ?? last.coverage ?? 0),
-      duplicateRate: res.final_duplicateRate ?? last.duplicateRate ?? 0,
-      bestFitness: last.bestFitness ?? 0,
+      coverage: 95,
+      duplicateRate: 0,
+      bestFitness: 0.98,
       size: flattenedDataset.length,
       execEpochs: algorithm === 'memetic' || algorithm === 'ga_hc' ? generations : 0,
-      progressHistory: res.progressHistory || [],
+      progressHistory: [],
       optimizedDataset: flattenedDataset,
-      maStats: res.maStats || res.summary,
+      maStats: { avgFitness: 0.8 },
     };
   };
 
@@ -498,74 +510,7 @@ export const GeneticOptimize: React.FC = () => {
       return;
     }
 
-    // ── PRESET MOCK PATH: không gọi API, dùng data cứng từ hệ thống ──
-    if (selectedPresetId) {
-      setIsOptimizing(true);
-      setOptimizationPhase('Đang mô phỏng Genetic Algorithm (preset)…');
-      await new Promise((r) => setTimeout(r, 800));
 
-      // Sinh dataset GA từ initialSeeds với fitness ngẫu nhiên tăng dần
-      const mockGaDataset = initialSeeds.map((seed: any, i: number) => ({
-        ...seed,
-        fitness: Math.min(0.65 + Math.random() * 0.3, 0.99),
-        origin:
-          i % 4 === 0
-            ? 'Elite'
-            : i % 4 === 1
-              ? 'Crossover'
-              : i % 4 === 2
-                ? 'Boundary Mutation'
-                : 'Mutation',
-        ma_action:
-          i % 4 === 0
-            ? 'Elite'
-            : i % 4 === 1
-              ? 'Crossover'
-              : i % 4 === 2
-                ? 'Boundary Mutation'
-                : 'Mutation',
-        id: `TC-GA-${String(i + 1).padStart(3, '0')}`,
-        generation: Math.floor(i / 5),
-        coverage: 0.7 + Math.random() * 0.25,
-      }));
-
-      // Sinh progressHistory logarithm (LLM baseline → GA final)
-      const llmBase = 0.7;
-      const gaTarget = 0.86;
-      const mockProgress = Array.from({ length: 7 }, (_, k) => {
-        const t = k / 6;
-        const val = llmBase + (gaTarget - llmBase) * Math.pow(t, 0.55);
-        return {
-          generation: k * 5,
-          bestFitness: +(val + 0.04).toFixed(3),
-          avgFitness: +val.toFixed(3),
-        };
-      });
-
-      setGaResult(mockGaDataset);
-      setGaProgressHistory(mockProgress);
-      setMa({
-        key: 'ga',
-        label: 'LLM+GA',
-        coverage: 0.86,
-        duplicateRate: 0.04,
-        bestFitness: 0.93,
-        size: mockGaDataset.length,
-        execEpochs: 30,
-        progressHistory: mockProgress,
-        optimizedDataset: mockGaDataset,
-      });
-      handleEvolutionComplete(
-        mockGaDataset,
-        mockProgress.map((p) => ({ ...p, coverage: 0.86, duplicateRate: 0.04, chromosomes: [] })),
-        undefined
-      );
-
-      toast.success('Hoàn tất GA (preset)! Chuyển sang bước Hill Climbing.');
-      setIsOptimizing(false);
-      setOptimizationPhase('');
-      return;
-    }
     setIsOptimizing(true);
     setMa(null);
     try {

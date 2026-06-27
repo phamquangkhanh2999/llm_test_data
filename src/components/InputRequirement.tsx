@@ -12,6 +12,8 @@ import React, { useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
 
+import { PRESETS } from '../algorithms/presets';
+
 // =============================================================================
 //  BƯỚC 1: NHẬP YÊU CẦU ĐẦU VÀO — bám sát màn "Bước 1" của Stitch.
 //  Bố cục 2 cột: trái = textarea nội dung yêu cầu; phải = thẻ đen "Gợi ý phân tích" + nút "Tiếp theo".
@@ -20,7 +22,7 @@ import { toast } from '../store/useToastStore';
 export const InputRequirement: React.FC = () => {
   const { 
     rawText, setRawText, setActiveScreen, markScreenCompleted, 
-    handleParseSpec, isParsing 
+    handleParseSpec, isParsing, handlePresetSelect, selectedPresetId
   } = useAppStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -146,21 +148,31 @@ export const InputRequirement: React.FC = () => {
 
         {/* Cột phải — gợi ý đen + nút tiếp theo */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Thẻ đen gợi ý */}
-          {/* <div style={{ background: 'var(--brand-primary)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', color: '#fff', boxShadow: 'var(--shadow-md)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, marginBottom: 12 }}>
-              <Sparkles size={16} style={{ color: 'var(--color-teal)' }} /> Gợi ý phân tích
+          {/* Preset Selector */}
+          <div style={{ background: 'var(--surface-subtle)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, marginBottom: 12, color: 'var(--text-primary)' }}>
+              <Zap size={16} style={{ color: 'var(--color-teal)' }} /> Chọn Đặc Tả (Mẫu)
             </div>
-            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 1.6, marginBottom: 16 }}>
-              Hệ thống LLM sẽ tự động phân tách nội dung này thành các ràng buộc logic. 
-              Sử dụng định dạng Gherkin hoặc cấu trúc gạch đầu dòng rõ ràng để có kết quả tốt nhất.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <Hint icon={<Target size={14} />} text="Xác định Input/Output rõ ràng" />
-              <Hint icon={<ListChecks size={14} />} text="Mô tả ranh giới (Min/Max)" />
-              <Hint icon={<FileText size={14} />} text="Chỉ định định dạng dữ liệu (Email, Số)" />
-            </div>
-          </div> */}
+            <select
+              value={selectedPresetId || ''}
+              onChange={(e) => {
+                const preset = PRESETS.find(p => p.id === e.target.value);
+                if (preset) handlePresetSelect(preset);
+              }}
+              style={{
+                width: '100%', padding: '10px 12px', borderRadius: '6px',
+                border: '1px solid var(--border-subtle)', background: 'transparent',
+                color: 'var(--text-primary)', outline: 'none', fontSize: 13,
+                cursor: 'pointer'
+              }}
+            >
+              <option value="" disabled>-- Chọn một bài đặt tả --</option>
+              {PRESETS.map(p => (
+                <option key={p.id} value={p.id}>{p.title}</option>
+              ))}
+            </select>
+          </div>
+
 
           {/* Nút tiếp theo */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

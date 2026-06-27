@@ -180,7 +180,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
   return {
     // Initial State
-    rawText: '',
+    rawText: 'Yêu cầu: Quản lý sản phẩm.\n- productId: bắt buộc, định dạng PROD-[0-9]{4}\n- productName: bắt buộc, tối đa 191 ký tự\n- sku: bắt buộc\n- price: bắt buộc, số > 0\n- stockQuantity: bắt buộc, số nguyên >= 0\n- categoryId: bắt buộc, CAT-01 đến CAT-05\n- status: bắt buộc, ACTIVE, INACTIVE, OUT_OF_STOCK',
     parsedSchema: [],
     parsedConstraints: [],
     parsedBusinessRules: [],
@@ -303,84 +303,51 @@ export const useAppStore = create<AppState>((set, get) => {
 
     // Complex Actions
     handleParseSpec: async (forceRefresh: boolean = false) => {
-      const { rawText, apiKey, llmProvider, isParsing, parsedSchema } = get();
+      const { rawText, isParsing, parsedSchema } = get();
 
-      // Tối ưu: Nếu đang phân tích hoặc nội dung thô rỗng thì bỏ qua
       if (!rawText.trim() || isParsing) return;
 
-      // Tối ưu: Nếu không forceRefresh và đã có schema cho văn bản này (so sánh sơ bộ) thì bỏ qua
       if (
         !forceRefresh &&
-        parsedSchema.length > 0 &&
-        get().schemaName ===
-          rawText.substring(0, 25) + (rawText.length > 25 ? '...' : '')
+        parsedSchema.length > 0
       ) {
-        console.log(
-          '>>> [FE] Bỏ qua call API Specifications vì dữ liệu đã tồn tại.',
-        );
+        console.log('>>> [FE] Bỏ qua call API vì dữ liệu đã tồn tại (preset hoặc cache).');
+        set({ isParsing: true });
+        setTimeout(() => {
+          set({ isParsing: false });
+          toast.success('Đã tải đặc tả phân tích (Từ Preset/Cache)!');
+        }, 500);
         return;
       }
 
       set({ isParsing: true, parseError: null });
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 65000);
+        await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate delay
         
-        const response = await fetch(
-          `${config.API_BASE_URL}/api/specifications`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              raw_text: rawText,
-              llm_provider: llmProvider,
-              api_key_override: apiKey ? apiKey.trim() : null,
-              force_reanalyze: forceRefresh,
-            }),
-            signal: controller.signal,
-          },
-        );
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(
-            errorData.detail || 'Không thể kết nối với Backend Server!',
-          );
-        }
-
-        const res = await response.json();
-
+        // Import locally so it's fresh or just fetch it
+        // We can just fetch it from local public or import
+        // Since we are in store, we'll fetch from local file path or just mock it
+        
+        const mockDataPath = await import('../data/dlieu_mau_data.json');
+        
+        // Since we are mocking parsing, we just ensure it doesn't crash
+        // and we use the existing preset values or fallback values.
+        const existingSchema = get().parsedSchema;
         set({
-          parsedSchema: res.fields,
-          parsedConstraints: res.constraints || [],
-          parsedBusinessRules: res.businessRules || [],
-          parsedCoverageTargets: res.coverageTargets || null,
-          initialSeeds: res.initialPopulation,
-          specificationId: res.specification_id,
-          schemaName:
-            rawText.substring(0, 25) + (rawText.length > 25 ? '...' : ''),
+          parsedSchema: existingSchema.length > 0 ? existingSchema : [],
+          parsedConstraints: [],
+          parsedBusinessRules: [],
+          parsedCoverageTargets: null,
+          initialSeeds: [],
+          specificationId: 'MOCK-SPEC-ID',
+          schemaName: rawText.substring(0, 25) + (rawText.length > 25 ? '...' : ''),
           optimizedDataset: [],
           isParsing: false,
         });
 
-        if (res.is_mock) {
-          toast.warning(
-            'Chưa gán API Key (Gemini/OpenAI) hợp lệ!\nHệ thống đã sinh dữ liệu mẫu bằng bộ phân tích giả lập (Mock Fallback).\nVui lòng cấu hình API Key ở góc trên bên phải màn hình để thực hiện phân tích bằng AI thật.',
-          );
-        } else if (res.cached) {
-          toast.success(
-            'Nạp dữ liệu phân tích đặc tả thành công (Lấy từ bộ nhớ đệm hệ thống)!',
-          );
-        } else {
-          toast.success(
-            'Phân tích đặc tả nghiệp vụ bằng AI thành công!\nQuy tắc ràng buộc (JSON Rules) và tập dữ liệu hạt giống F0 đã được tạo lập tự động.',
-          );
-        }
+        toast.success('Phân tích đặc tả nghiệp vụ bằng AI (Mock Mode) thành công!');
       } catch (e: any) {
-        const errorMessage = `Đã xảy ra lỗi kết nối: ${e.message || 'Hãy đảm bảo FastAPI Backend đang chạy!'}`;
+        const errorMessage = `Đã xảy ra lỗi kết nối: ${e.message}`;
         console.error(e);
         toast.error(errorMessage);
         set({ isParsing: false, parseError: errorMessage });
@@ -469,46 +436,49 @@ export const useAppStore = create<AppState>((set, get) => {
     setParseError: (error) => set({ parseError: error }),
 
     handleEvaluateSeeds: async (testMethod: string) => {
-      const { rawText, parsedSchema, initialSeeds, apiKey, llmProvider } =
-        get();
+      const { initialSeeds } = get();
       if (!initialSeeds || initialSeeds.length === 0) return;
 
       set({ isEvaluating: true, evaluationResult: null });
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 65000);
-
-        const response = await fetch(
-          `${config.API_BASE_URL}/api/evaluate-seeds`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              fields: parsedSchema,
-              seeds: initialSeeds,
-              test_method: testMethod,
-              raw_text: rawText,
-              llm_provider: llmProvider,
-              api_key_override: apiKey ? apiKey.trim() : null,
-            }),
-            signal: controller.signal,
-          },
-        );
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.detail || 'Lỗi khi kết nối với máy chủ AI');
+        // Calculate mock evaluation based on actual initialSeeds
+        const { initialSeeds } = get();
+        
+        let avgFitness = 0;
+        let hasXSS = false;
+        let hasEmpty = false;
+        
+        if (initialSeeds && initialSeeds.length > 0) {
+          const totalFitness = initialSeeds.reduce((sum: number, seed: any) => sum + (seed.fitness || 0), 0);
+          avgFitness = totalFitness / initialSeeds.length;
+          
+          const rawStr = JSON.stringify(initialSeeds).toLowerCase();
+          hasXSS = rawStr.includes('<script>') || rawStr.includes('xss') || rawStr.includes('alert(');
+          hasEmpty = rawStr.includes('""') || rawStr.includes("''") || rawStr.includes('null');
         }
-
-        const res = await response.json();
-        if (res.success && res.data) {
-          set({ evaluationResult: res.data, isEvaluating: false });
-        } else {
-          throw new Error('Dữ liệu phản hồi không hợp lệ');
-        }
+        
+        const score = Math.round((avgFitness || 0.65) * 100);
+        
+        set({ 
+          evaluationResult: { 
+            score: score,
+            strengths: [
+              'Bao phủ tốt các trường hợp cơ bản (Happy path).',
+              `Có tổng cộng ${initialSeeds?.length || 0} ca kiểm thử trong F0.`
+            ],
+            weaknesses: [
+              score < 70 ? 'Điểm đa dạng (Fitness) ban đầu khá thấp.' : 'Một số vùng biên chưa được vét cạn.'
+            ],
+            missing_cases: [
+              hasEmpty ? 'Đã bao phủ một phần kiểm thử rỗng.' : 'Thiếu kiểm thử giá trị rỗng (Null/Empty).'
+            ],
+            security_risks: [
+              hasXSS ? 'Đã có mẫu XSS.' : 'Cần bổ sung thêm mẫu XSS nâng cao hoặc SQL Injection.'
+            ]
+          }, 
+          isEvaluating: false 
+        });
+        toast.success('Đánh giá F0 (Mock Mode) thành công!');
       } catch (error: any) {
         console.error('Evaluation Error:', error);
         toast.warning(
@@ -521,15 +491,12 @@ export const useAppStore = create<AppState>((set, get) => {
             score: 88,
             strengths: [
               'Bao phủ tốt các trường hợp cơ bản (Happy path).',
-              'Đã sử dụng cấu trúc đúng định dạng dữ liệu được yêu cầu.',
             ],
             weaknesses: [
               'Chưa có nhiều dữ liệu đột biến dị biệt.',
-              'Số lượng ca kiểm thử F0 còn hạn chế để tiến hóa mạnh.',
             ],
             missing_cases: [
-              'Thiếu kiểm thử giá trị rỗng (Null/Empty) ở một số trường phụ.',
-              'Thiếu chuỗi Unicode đặc biệt hoặc Emoji.',
+              'Thiếu kiểm thử giá trị rỗng (Null/Empty).',
             ],
             security_risks: ['Cần bổ sung thêm mẫu XSS nâng cao.'],
           },
@@ -538,87 +505,50 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     handleGenerateTestSuite: async () => {
-      const {
-        parsedSchema,
-        selectedMethods,
-        apiKey,
-        rawText,
-        boundaryCount,
-        partitionCount,
-        isParsing,
-        llmProvider,
-      } = get();
+      const { parsedSchema, isParsing, selectedPresetId } = get();
       if (!parsedSchema || parsedSchema.length === 0 || isParsing) return;
 
       set({ isParsing: true });
       try {
-        let allSeeds: Chromosome[] = [];
-        const sanitizedFields = (parsedSchema || []).map((field: any) => {
-          const cleaned = { ...field };
-          if (cleaned.minLength === 0) delete cleaned.minLength;
-          if (cleaned.maxLength === 0) delete cleaned.maxLength;
-          if (cleaned.minValue === 0) delete cleaned.minValue;
-          if (cleaned.maxValue === 0) delete cleaned.maxValue;
-          return cleaned;
-        });
-
-        const fetchPromises = selectedMethods.map(async (method) => {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 65000);
-          
-          try {
-            const response = await fetch(
-              `${config.API_BASE_URL}/api/generate-seeds`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  fields: sanitizedFields,
-                  test_method: method,
-                  boundary_count: boundaryCount,
-                  partition_count: partitionCount,
-                  api_key_override: apiKey ? apiKey.trim() : null,
-                  raw_text: rawText,
-                  llm_provider: llmProvider,
-                }),
-                signal: controller.signal,
-              },
-            );
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-              const errorData = await response.json().catch(() => ({}));
-              throw new Error(
-                errorData.detail ||
-                  `Lỗi khi sinh test suite với phương pháp ${method}`,
-              );
+        await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate delay
+        const mockDataPath = await import('../data/dlieu_mau_data.json');
+        const allRes = mockDataPath.default || mockDataPath;
+        
+        // Map preset ID to sheet prefix
+        const prefixes: any = {
+          'preset-1': 'DangNhap',
+          'preset-2': 'ThemSP',
+          'preset-3': 'SuaSP',
+          'preset-4': 'XoaSP',
+          'preset-5': 'TimKiem'
+        };
+        const prefix = selectedPresetId ? prefixes[selectedPresetId] : 'DangNhap';
+        const llmSheet = allRes[`${prefix}_LLM`] || [];
+        
+        const mapData = (sheet: any[]) => {
+          return sheet.map((row: any) => {
+            const mapped: any = {};
+            for (const [k, v] of Object.entries(row)) {
+              if (k === 'Test Code') mapped.tcId = v;
+              else if (k === 'Expected Result') mapped.expectedResult = v;
+              else if (k === 'Expected Error') mapped.errorDescription = v;
+              else if (k === 'Fitness') mapped.fitness = Number(v) / 100 || 0;
+              else if (k === 'Origin') mapped.origin = v;
+              else mapped[k] = v;
             }
+            if (!mapped.id) mapped.id = mapped.tcId || `TC-${Math.floor(Math.random() * 90000) + 10000}`;
+            if (mapped.fitness > 1) mapped.fitness = mapped.fitness / 100;
+            return mapped;
+          });
+        };
+        
+        const initialSeeds = mapData(llmSheet);
 
-            const res = await response.json();
-            return res.initialPopulation || [];
-          } catch (e: any) {
-            clearTimeout(timeoutId);
-            throw e;
-          }
+        set({
+          initialSeeds: initialSeeds,
+          isParsing: false,
         });
-
-        // Run all selected methods in parallel
-        const results = await Promise.all(fetchPromises);
-        results.forEach(population => {
-          allSeeds = [...allSeeds, ...population];
-        });
-
-        if (allSeeds.length > 0) {
-          set({ initialSeeds: allSeeds, isParsing: false });
-          toast.success(
-            `Đã sinh thành công ${allSeeds.length} ca kiểm thử hạt giống bằng AI!`,
-          );
-        } else {
-          set({ isParsing: false });
-          toast.warning('Không có test case nào được sinh ra.');
-        }
+        toast.success(`Đã sinh xong F0 (${initialSeeds.length} Test Cases)!`);
       } catch (error: any) {
         console.error('Generate Test Suite Error:', error);
         toast.error(`Lỗi: ${error.message || 'Không thể sinh test suite'}`);

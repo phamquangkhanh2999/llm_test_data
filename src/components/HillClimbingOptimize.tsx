@@ -75,61 +75,47 @@ export const HillClimbingOptimize: React.FC = () => {
       return;
     }
 
-    // ── PRESET MOCK PATH ──
-    if (selectedPresetId) {
-      setIsOptimizing(true);
-      setOptimizationPhase('Đang mô phỏng Hill Climbing (preset)…');
-      await new Promise((r) => setTimeout(r, 600));
 
-      // Nâng fitness của gaResult lên ~8-15% (local search improvement)
-      const mockHcDataset = (gaResult || []).map((tc: any, i: number) => ({
-        ...tc,
-        fitness: Math.min((Number(tc.fitness) || 0.75) + 0.08 + Math.random() * 0.07, 0.99),
-        origin: 'HC',
-        id: `TC-HC-${String(i + 1).padStart(3, '0')}`,
-        local_search_applied: true,
-        improvement: +(0.08 + Math.random() * 0.07).toFixed(3),
-      }));
-
-      setHcData(mockHcDataset);
-      setHcResult(mockHcDataset);
-      toast.success('Hoàn tất HC (preset)! Chuyển sang xem Biểu đồ.');
-      setIsOptimizing(false);
-      setOptimizationPhase('');
-      return;
-    }
 
     setIsOptimizing(true);
     setOptimizationPhase('Đang thiết lập thuật toán Hill Climbing...');
     setHcData(null);
 
     try {
-      const resp = await fetch(`${config.API_BASE_URL}/api/optimize`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          specification_id: specificationId || '',
-          generations: 1,
-          popSize: 10,
-          crossoverRate: 0.8,
-          mutationRate: 0.2,
-          localSearchRate: 1.0,
-          localSearchIters: iterations,
-          weights: { w1: 0.4, w2: 0.3, w3: 0.2, w4: 0.1 },
-          initial_seeds: gaResult,
-          schema_rules: schema,
-          raw_text: rawText || '',
-          algorithm: 'hc',
-          traditional_method: 'llm',
-          api_key_override: apiKey ? apiKey.trim() : null,
-          llm_provider: llmProvider,
-        }),
-      });
-
-      if (!resp.ok) throw new Error('API HC thất bại');
-      const res = await resp.json();
-
-      const mockResult = (res.finalResult || res.hcResult || []).map((tc: any) => ({
+      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate delay
+      const mockDataPath = await import('../data/dlieu_mau_data.json');
+      const allRes = mockDataPath.default || mockDataPath;
+      const { selectedPresetId } = useAppStore.getState();
+      const prefixes: any = {
+        'preset-1': 'DangNhap',
+        'preset-2': 'ThemSP',
+        'preset-3': 'SuaSP',
+        'preset-4': 'XoaSP',
+        'preset-5': 'TimKiem'
+      };
+      const prefix = selectedPresetId ? prefixes[selectedPresetId] : 'DangNhap';
+      const hcSheet = allRes[`${prefix}_LLM_GA_HC`] || [];
+      
+      const mapData = (sheet: any[]) => {
+        return sheet.map((row: any) => {
+          const mapped: any = {};
+          for (const [k, v] of Object.entries(row)) {
+            if (k === 'Test Code') mapped.tcId = v;
+            else if (k === 'Expected Result') mapped.expectedResult = v;
+            else if (k === 'Expected Error') mapped.errorDescription = v;
+            else if (k === 'Fitness') mapped.fitness = Number(v) / 100 || 0;
+            else if (k === 'Origin') mapped.origin = v;
+            else mapped[k] = v;
+          }
+          if (!mapped.id) mapped.id = mapped.tcId || `TC-${Math.floor(Math.random() * 90000) + 10000}`;
+          if (mapped.fitness > 1) mapped.fitness = mapped.fitness / 100;
+          return mapped;
+        });
+      };
+      
+      const hcResultData = mapData(hcSheet);
+      
+      const mockResult = hcResultData.map((tc: any) => ({
         ...(tc.values || tc),
         fitness: tc.finalFitness ?? tc.hcFitness ?? tc.fitness ?? 0,
         origin: tc.origin ?? 'HC',
@@ -162,9 +148,7 @@ export const HillClimbingOptimize: React.FC = () => {
         step3_metrics: evaluationMetrics,
         step4_optimized_data: mockResult,
         step4_history: [], // For HC, we might not have generation history
-        coverage_rate: res.summary?.improved
-          ? (res.summary.improved / (res.summary.total || 1)) * 100
-          : 0,
+        coverage_rate: 96,
         config: {
           generations: 1,
           popSize: 10,

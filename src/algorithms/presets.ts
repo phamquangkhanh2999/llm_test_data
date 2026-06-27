@@ -1,6 +1,6 @@
 export interface FieldConstraint {
   name: string;
-  type: 'string' | 'number' | 'email' | 'card' | 'phone';
+  type: 'string' | 'number' | 'email' | 'card' | 'phone' | 'boolean';
   required: boolean;
   minLength?: number;
   maxLength?: number;
@@ -22,382 +22,395 @@ export interface PresetSpec {
 
 export const PRESETS: PresetSpec[] = [
   {
-    id: 'user-signup',
-    title: 'Đăng ký Tài khoản Người dùng (User Account Sign Up)',
-    description: 'Đặc tả chuẩn cho tài khoản đăng ký hệ thống bao gồm: Tên tài khoản, Mật khẩu, Email và Tuổi.',
-    rawText: `Yêu cầu hệ thống đăng ký người dùng:
-- Username: Bắt buộc, độ dài từ 5 đến 15 ký tự, chỉ chứa chữ và số, không chứa khoảng trắng.
-- Password: Bắt buộc, tối thiểu 8 ký tự, tối đa 20 ký tự, cần có chữ thường, chữ hoa, và ký tự đặc biệt.
-- Email: Bắt buộc, đúng định dạng email tiêu chuẩn.
-- Age: Không bắt buộc, định dạng số nguyên, phải từ 18 đến 100 tuổi.`,
+    id: "preset-0",
+    title: "Đăng ký tài khoản",
+    description: "Đặc tả Đăng ký tài khoản từ dữ liệu mẫu.",
+    rawText: "Đăng ký tài khoản:\n- fullName: bắt buộc, không được rỗng, tối đa 70 ký tự, chỉ chứa chữ/số/khoảng trắng, không chứa script hoặc SQL injection.\n- email: bắt buộc, không được rỗng, tối đa 40 ký tự, đúng định dạng email, không trùng email đã tồn tại, không chứa dữ liệu nguy hiểm.\n- password: bắt buộc, dài 8–16 ký tự, có chữ hoa, chữ thường, chữ số và ký tự đặc biệt.\n- phone: bắt buộc, tối đa 10 ký tự, chỉ chứa chữ số, không chứa chữ cái hoặc ký tự đặc biệt.\n- address: không bắt buộc, tối đa 191 ký tự, không chứa script, HTML nguy hiểm hoặc SQL injection.",
     fields: [
       {
-        name: 'username',
-        type: 'string',
+        name: "fullName",
+        type: "string",
         required: true,
-        minLength: 5,
-        maxLength: 15,
-        regex: '^[a-zA-Z0-9]+$',
-        description: 'Độ dài 5-15 ký tự, chữ và số'
+        description: "bắt buộc, không được rỗng, tối đa 70 ký tự, chỉ chứa chữ/số/khoảng trắng, không chứa script hoặc SQL injection."
       },
       {
-        name: 'password',
-        type: 'string',
+        name: "email",
+        type: "email",
         required: true,
-        minLength: 8,
-        maxLength: 20,
-        regex: '(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])',
-        description: 'Tối thiểu 8 ký tự, có chữ hoa, thường và số'
+        description: "bắt buộc, không được rỗng, tối đa 40 ký tự, đúng định dạng email, không trùng email đã tồn tại, không chứa dữ liệu nguy hiểm."
       },
       {
-        name: 'email',
-        type: 'email',
+        name: "password",
+        type: "string",
         required: true,
-        description: 'Địa chỉ email hợp lệ'
+        description: "bắt buộc, dài 8–16 ký tự, có chữ hoa, chữ thường, chữ số và ký tự đặc biệt."
       },
       {
-        name: 'age',
-        type: 'number',
+        name: "phone",
+        type: "string",
+        required: true,
+        description: "bắt buộc, tối đa 10 ký tự, chỉ chứa chữ số, không chứa chữ cái hoặc ký tự đặc biệt."
+      },
+      {
+        name: "address",
+        type: "string",
         required: false,
-        minValue: 18,
-        maxValue: 100,
-        description: 'Số nguyên từ 18 đến 100'
+        description: "không bắt buộc, tối đa 191 ký tự, không chứa script, HTML nguy hiểm hoặc SQL injection."
       }
     ],
     initialPopulation: [
-      { username: 'alex99', password: 'Password123!', email: 'alex.jones@gmail.com', age: 25 },
-      { username: 'sarah_k', password: 'SecurePass9!', email: 'sarah.k@yahoo.com', age: 31 },
-      { username: 'john', password: '123', email: 'john@com', age: 15 }, // invalid seed
-      { username: 'user1234567890123', password: 'mypassword', email: 'invalid_email.com', age: 105 }, // edge / invalid seed
-      { username: 'rootadmin', password: 'SuperUser789#', email: 'admin@company.vn', age: 42 },
-      { username: 'guest', password: 'Password@2026', email: 'guest_user@outlook.com', age: 18 }, // boundary age
-      { username: 'dev_user', password: 'aB1!cDeFgHiJ', email: 'dev@test.io', age: 100 }, // boundary age
-      { username: 'hack\' OR \'1\'=\'1', password: 'inject\' --', email: 'sql@inject.org', age: 29 }, // security seed
-      { username: '<script>alert(1)</script>', password: 'XssPassword!', email: 'xss@payload.com', age: 30 } // security seed
-    ]
-  },
-  {
-    id: 'payment-gateway',
-    title: 'Cổng Thanh toán Hóa đơn (E-Commerce Payment Gateway)',
-    description: 'Quy trình thanh toán bằng thẻ tín dụng bao gồm: Số thẻ, Mã bảo mật CVV, Số tiền và Đơn vị tiền tệ.',
-    rawText: `Đặc tả kỹ thuật của giao dịch thanh toán:
-- Card Number: Bắt buộc, đúng định dạng thẻ tín dụng 16 số.
-- CVV: Bắt buộc, là số gồm đúng 3 chữ số (mã bảo mật).
-- Amount: Bắt buộc, phải là số dương lớn hơn 0, tối đa 50,000 USD.
-- Currency: Bắt buộc, chỉ nhận một trong các giá trị: USD, VND, EUR.`,
-    fields: [
       {
-        name: 'cardNumber',
-        type: 'card',
-        required: true,
-        regex: '^\\d{16}$',
-        description: 'Số thẻ tín dụng gồm 16 chữ số'
+        fullName: "Test1",
+        email: "test1@gmail.com",
+        password: "Test1",
+        phone: "Test1",
+        address: "Test1"
       },
       {
-        name: 'cvv',
-        type: 'string',
-        required: true,
-        minLength: 3,
-        maxLength: 3,
-        regex: '^\\d{3}$',
-        description: '3 chữ số bảo mật'
-      },
-      {
-        name: 'amount',
-        type: 'number',
-        required: true,
-        minValue: 1,
-        maxValue: 50000,
-        description: 'Số dương từ 1 đến 50,000'
-      },
-      {
-        name: 'currency',
-        type: 'string',
-        required: true,
-        allowedValues: ['USD', 'VND', 'EUR'],
-        description: 'Đơn vị: USD, VND, EUR'
+        fullName: "Test2",
+        email: "test2@gmail.com",
+        password: "Test2",
+        phone: "Test2",
+        address: "Test2"
       }
-    ],
-    initialPopulation: [
-      { cardNumber: '4111222233334444', cvv: '123', amount: 150, currency: 'USD' },
-      { cardNumber: '5555666677778888', cvv: '999', amount: 2000000, currency: 'VND' }, // invalid amount (too high)
-      { cardNumber: '12345', cvv: '99', amount: -50, currency: 'YEN' }, // invalid seed
-      { cardNumber: '1111111111111111', cvv: '000', amount: 1, currency: 'USD' }, // boundary seed
-      { cardNumber: '9999999999999999', cvv: '999', amount: 50000, currency: 'EUR' }, // boundary seed
-      { cardNumber: '4111222233334444\' OR cvv=\'999', cvv: '999', amount: 100, currency: 'USD' } // security seed
     ]
   },
   {
-    id: 'vip-member',
-    title: 'Đăng ký Thành viên VIP (VIP Member REST API)',
-    description: 'Quy trình tạo mới thành viên VIP tích hợp API: Tên đầy đủ, Số điện thoại Việt Nam, Mã giảm giá VIP.',
-    rawText: `Mô tả trường dữ liệu API Đăng ký VIP:
-- Full Name: Bắt buộc, độ dài từ 2 đến 50 ký tự, không chứa ký tự đặc biệt.
-- Phone: Bắt buộc, số điện thoại Việt Nam hợp lệ (bắt đầu bằng 09, 03, 07, 08, 05, gồm 10 chữ số).
-- Discount Code: Không bắt buộc, chuỗi chữ và số viết hoa, độ dài tối đa 10 ký tự.`,
+    id: "preset-1",
+    title: "Đăng nhập",
+    description: "Đặc tả Đăng nhập từ dữ liệu mẫu.",
+    rawText: "Đăng nhập:\n- email: bắt buộc, không được rỗng, đúng định dạng email, tối đa 40 ký tự, phải tồn tại trong hệ thống.\n- password: bắt buộc, không được rỗng, phải khớp với tài khoản tương ứng.\n- rememberMe: không bắt buộc, nếu có thì chỉ nhận TRUE hoặc FALSE.",
     fields: [
       {
-        name: 'fullName',
-        type: 'string',
+        name: "email",
+        type: "email",
         required: true,
-        minLength: 2,
-        maxLength: 50,
-        regex: '^[a-zA-ZÀ-ỹ ]+$',
-        description: 'Họ tên 2-50 ký tự, không chứa ký tự đặc biệt'
+        description: "bắt buộc, không được rỗng, đúng định dạng email, tối đa 40 ký tự, phải tồn tại trong hệ thống."
       },
       {
-        name: 'phone',
-        type: 'phone',
+        name: "password",
+        type: "string",
         required: true,
-        regex: '^(03|05|07|08|09)\\d{8}$',
-        description: 'SĐT Việt Nam gồm 10 chữ số'
+        description: "bắt buộc, không được rỗng, phải khớp với tài khoản tương ứng."
       },
       {
-        name: 'discountCode',
-        type: 'string',
+        name: "rememberMe",
+        type: "boolean",
         required: false,
-        maxLength: 10,
-        regex: '^[A-Z0-9]+$',
-        description: 'Mã chữ và số viết hoa, tối đa 10 ký tự'
+        description: "không bắt buộc, nếu có thì chỉ nhận TRUE hoặc FALSE."
       }
     ],
     initialPopulation: [
-      { fullName: 'Nguyễn Văn A', phone: '0912345678', discountCode: 'VIP2026' },
-      { fullName: 'Trần Thị B', phone: '0388888888', discountCode: 'PROMO10' },
-      { fullName: 'A', phone: '123456', discountCode: 'lowercase' }, // invalid seed
-      { fullName: 'Lê Hoàng Cực Dài'.repeat(5), phone: '0999999999', discountCode: 'SUPERLONGCODE123' }, // edge seed
-      { fullName: 'Hồ Anh Dũng', phone: '0555555555', discountCode: '' }, // boundary empty code
-      { fullName: '<svg/onload=alert(1)>', phone: '0777777777', discountCode: 'XSS' } // security seed
+      {
+        email: "test1@gmail.com",
+        password: "Test1",
+        rememberMe: true
+      },
+      {
+        email: "test2@gmail.com",
+        password: "Test2",
+        rememberMe: false
+      }
     ]
   },
   {
-    id: 'health-insurance',
-    title: 'Hồ Sơ Bảo Hiểm VIP (Health Insurance VIP Underwriting)',
-    description: 'Hồ sơ đăng ký bảo hiểm y tế cao cấp với các kiểm soát chặt chẽ về mã đơn bảo hiểm, thu nhập hàng tháng, tình trạng bệnh lý có sẵn và thông tin thụ hưởng.',
-    rawText: `Yêu cầu hồ sơ đăng ký Bảo Hiểm Sức Khỏe VIP:
-- Policy Number: Bắt buộc, định dạng chuỗi gồm 3 chữ và 6 số (Regex ^[A-Z]{3}-\\d{6}$).
-- Monthly Income: Định dạng số nguyên từ 10,000 USD đến 1,000,000 USD.
-- Pre-Existing Conditions: Cho phép một trong các giá trị: None, HeartDisease, Diabetes, Hypertension.
-- Beneficiary Email: Đúng định dạng email thụ hưởng.`,
+    id: "preset-2",
+    title: "Thêm sản phẩm",
+    description: "Đặc tả Thêm sản phẩm từ dữ liệu mẫu.",
+    rawText: "Thêm sản phẩm:\n- productName: bắt buộc, không được rỗng, là tên sản phẩm hợp lệ, không chứa script hoặc SQL injection.\n- sku: bắt buộc, không được rỗng, dùng để định danh sản phẩm, không chứa dữ liệu nguy hiểm.\n- price: bắt buộc, phải là số, lớn hơn 0, không nhận số âm, số 0 hoặc chuỗi như “150k”.\n- stockQuantity: bắt buộc, phải là số nguyên, lớn hơn hoặc bằng 0, không nhận số âm, số thập phân hoặc chữ.\n- categoryId: bắt buộc, phải thuộc danh mục hợp lệ, ví dụ CAT-01 đến CAT-05.\n- imageUrl: không bắt buộc, nếu nhập thì phải là đường dẫn ảnh hợp lệ và an toàn.\n- status: bắt buộc, chỉ nhận ACTIVE, INACTIVE hoặc OUT_OF_STOCK.\n- description: không bắt buộc, không chứa script, HTML nguy hiểm hoặc SQL injection.",
     fields: [
       {
-        name: 'policyNumber',
-        type: 'string',
+        name: "productName",
+        type: "string",
         required: true,
-        regex: '^[A-Z]{3}-\\d{6}$',
-        description: 'Định dạng: 3 chữ cái in hoa - 6 chữ số (e.g. VIP-123456)'
+        description: "bắt buộc, không được rỗng, là tên sản phẩm hợp lệ, không chứa script hoặc SQL injection."
       },
       {
-        name: 'monthlyIncome',
-        type: 'number',
+        name: "sku",
+        type: "string",
         required: true,
-        minValue: 10000,
-        maxValue: 1000000,
-        description: 'Thu nhập hàng tháng từ 10,000 USD đến 1,000,000 USD'
+        description: "bắt buộc, không được rỗng, dùng để định danh sản phẩm, không chứa dữ liệu nguy hiểm."
       },
       {
-        name: 'preExistingConditions',
-        type: 'string',
+        name: "price",
+        type: "number",
         required: true,
-        allowedValues: ['None', 'HeartDisease', 'Diabetes', 'Hypertension'],
-        description: 'Tình trạng bệnh lý có sẵn: None, HeartDisease, Diabetes, Hypertension'
+        description: "bắt buộc, phải là số, lớn hơn 0, không nhận số âm, số 0 hoặc chuỗi như “150k”."
       },
       {
-        name: 'beneficiaryEmail',
-        type: 'email',
+        name: "stockQuantity",
+        type: "number",
         required: true,
-        description: 'Địa chỉ email của người thụ hưởng hợp lệ'
+        description: "bắt buộc, phải là số nguyên, lớn hơn hoặc bằng 0, không nhận số âm, số thập phân hoặc chữ."
+      },
+      {
+        name: "categoryId",
+        type: "string",
+        required: true,
+        description: "bắt buộc, phải thuộc danh mục hợp lệ, ví dụ CAT-01 đến CAT-05."
+      },
+      {
+        name: "imageUrl",
+        type: "string",
+        required: false,
+        description: "không bắt buộc, nếu nhập thì phải là đường dẫn ảnh hợp lệ và an toàn."
+      },
+      {
+        name: "status",
+        type: "string",
+        required: true,
+        description: "bắt buộc, chỉ nhận ACTIVE, INACTIVE hoặc OUT_OF_STOCK."
+      },
+      {
+        name: "description",
+        type: "string",
+        required: false,
+        description: "không bắt buộc, không chứa script, HTML nguy hiểm hoặc SQL injection."
       }
     ],
     initialPopulation: [
-      { policyNumber: 'VIP-123456', monthlyIncome: 50000, preExistingConditions: 'None', beneficiaryEmail: 'beneficiary@gmail.com' },
-      { policyNumber: 'MED-987654', monthlyIncome: 120000, preExistingConditions: 'Diabetes', beneficiaryEmail: 'spouse@yahoo.com' },
-      { policyNumber: 'invalid-policy', monthlyIncome: 8000, preExistingConditions: 'None', beneficiaryEmail: 'not_an_email' }, // invalid seed
-      { policyNumber: 'ABC-123456', monthlyIncome: 9999, preExistingConditions: 'Hypertension', beneficiaryEmail: 'test@domain.com' }, // boundary error (income under 10k)
-      { policyNumber: 'MAX-999999', monthlyIncome: 1000000, preExistingConditions: 'HeartDisease', beneficiaryEmail: 'heir@estate.co' }, // boundary max seed
-      { policyNumber: 'POL-000001', monthlyIncome: 25000, preExistingConditions: 'Cancer', beneficiaryEmail: 'valid@email.com' }, // invalid enum selection
-      { policyNumber: "VIP-000000' OR '1'='1", monthlyIncome: 30000, preExistingConditions: 'None', beneficiaryEmail: 'sql@attacker.com' }, // security SQLi seed
-      { policyNumber: 'VIP-111111', monthlyIncome: 45000, preExistingConditions: '<script>alert(1)</script>', beneficiaryEmail: 'xss@attacker.com' } // security XSS seed
+      {
+        productName: "Test1",
+        sku: "Test1",
+        price: 10,
+        stockQuantity: 10,
+        categoryId: "Test1",
+        imageUrl: "Test1",
+        status: "Test1",
+        description: "Test1"
+      },
+      {
+        productName: "Test2",
+        sku: "Test2",
+        price: 100,
+        stockQuantity: 100,
+        categoryId: "Test2",
+        imageUrl: "Test2",
+        status: "Test2",
+        description: "Test2"
+      }
     ]
   },
   {
-    id: 'login-form',
-    title: 'Đăng nhập Hệ thống (Login Form)',
-    description: 'Form đăng nhập với username/password và tùy chọn ghi nhớ. Kiểm thử SQL injection, brute-force pattern, và credential stuffing.',
-    rawText: `Yêu cầu chức năng đăng nhập:
-- Username: Bắt buộc, độ dài từ 3 đến 32 ký tự, có thể là email hoặc tên đăng nhập.
-- Password: Bắt buộc, tối thiểu 6 ký tự, tối đa 30 ký tự.
-- Remember Me: Không bắt buộc, giá trị boolean (true/false).`,
+    id: "preset-3",
+    title: "Sửa sản phẩm",
+    description: "Đặc tả Sửa sản phẩm từ dữ liệu mẫu.",
+    rawText: "Sửa sản phẩm:\n- productId: bắt buộc, không được rỗng, đúng định dạng ID, ví dụ PROD-0001, và phải tồn tại trong hệ thống.\n- productName: có thể cập nhật, nếu nhập thì không được rỗng, không chứa script hoặc SQL injection.\n- sku: có thể cập nhật, nếu nhập thì không được rỗng, không chứa dữ liệu nguy hiểm.\n- price: có thể cập nhật, nếu nhập thì phải là số, lớn hơn 0, không nhận chuỗi như “250000đ”.\n- stockQuantity: có thể cập nhật, nếu nhập thì phải là số nguyên, lớn hơn hoặc bằng 0.\n- categoryId: có thể cập nhật, nếu nhập thì phải thuộc danh mục hợp lệ.\n- status: có thể cập nhật, chỉ nhận ACTIVE, INACTIVE hoặc OUT_OF_STOCK.\n- description: không bắt buộc, không chứa script, HTML nguy hiểm hoặc SQL injection.",
     fields: [
-      { name: 'username', type: 'string', required: true, minLength: 3, maxLength: 32, description: 'Tên đăng nhập hoặc email' },
-      { name: 'password', type: 'string', required: true, minLength: 6, maxLength: 30, description: 'Mật khẩu đăng nhập' },
-      { name: 'rememberMe', type: 'string', required: false, allowedValues: ['true', 'false'], description: 'Ghi nhớ đăng nhập' }
+      {
+        name: "productId",
+        type: "string",
+        required: true,
+        description: "bắt buộc, không được rỗng, đúng định dạng ID, ví dụ PROD-0001, và phải tồn tại trong hệ thống."
+      },
+      {
+        name: "productName",
+        type: "string",
+        required: false,
+        description: "có thể cập nhật, nếu nhập thì không được rỗng, không chứa script hoặc SQL injection."
+      },
+      {
+        name: "sku",
+        type: "string",
+        required: false,
+        description: "có thể cập nhật, nếu nhập thì không được rỗng, không chứa dữ liệu nguy hiểm."
+      },
+      {
+        name: "price",
+        type: "number",
+        required: false,
+        description: "có thể cập nhật, nếu nhập thì phải là số, lớn hơn 0, không nhận chuỗi như “250000đ”."
+      },
+      {
+        name: "stockQuantity",
+        type: "number",
+        required: false,
+        description: "có thể cập nhật, nếu nhập thì phải là số nguyên, lớn hơn hoặc bằng 0."
+      },
+      {
+        name: "categoryId",
+        type: "string",
+        required: false,
+        description: "có thể cập nhật, nếu nhập thì phải thuộc danh mục hợp lệ."
+      },
+      {
+        name: "status",
+        type: "string",
+        required: false,
+        description: "có thể cập nhật, chỉ nhận ACTIVE, INACTIVE hoặc OUT_OF_STOCK."
+      },
+      {
+        name: "description",
+        type: "string",
+        required: false,
+        description: "không bắt buộc, không chứa script, HTML nguy hiểm hoặc SQL injection."
+      }
     ],
     initialPopulation: [
-      { username: 'admin', password: 'Admin@123!', rememberMe: 'true' },
-      { username: 'john.doe@gmail.com', password: 'JohnDoe2026!', rememberMe: 'false' },
-      { username: '', password: 'short', rememberMe: 'true' }, // lỗi empty + short
-      { username: 'a'.repeat(33), password: 'ValidPass1!', rememberMe: 'maybe' }, // lỗi max length + invalid enum
-      { username: "admin' OR '1'='1", password: "' OR 1=1 --", rememberMe: 'true' }, // SQLi
-      { username: '<img src=x onerror=alert(1)>', password: 'XssPass!', rememberMe: 'false' }, // XSS
-      { username: 'test_user', password: 'PassW0rd!', rememberMe: 'false' },
+      {
+        productId: "Test1",
+        productName: "Test1",
+        sku: "Test1",
+        price: 10,
+        stockQuantity: 10,
+        categoryId: "Test1",
+        status: "Test1",
+        description: "Test1"
+      },
+      {
+        productId: "Test2",
+        productName: "Test2",
+        sku: "Test2",
+        price: 100,
+        stockQuantity: 100,
+        categoryId: "Test2",
+        status: "Test2",
+        description: "Test2"
+      }
     ]
   },
   {
-    id: 'product-search',
-    title: 'Tìm kiếm Sản phẩm (Product Search API)',
-    description: 'API endpoint tìm kiếm sản phẩm với phân trang, sắp xếp và lọc. Kiểm thử injection, boundary pagination, và invalid sort parameters.',
-    rawText: `Đặc tả API tìm kiếm sản phẩm:
-- Query: Từ khóa tìm kiếm, bắt buộc, dài 1-200 ký tự.
-- Limit: Số kết quả mỗi trang, không bắt buộc, từ 1 đến 100.
-- Page: Số trang, không bắt buộc, từ 1 đến 1000.
-- Sort By: Tiêu chí sắp xếp, không bắt buộc, chỉ nhận: relevance, date, price, name.
-- Order: Thứ tự, không bắt buộc, chỉ nhận: asc hoặc desc.`,
+    id: "preset-4",
+    title: "Xóa sản phẩm",
+    description: "Đặc tả Xóa sản phẩm từ dữ liệu mẫu.",
+    rawText: "Xóa sản phẩm:\n- productId: bắt buộc, không được rỗng, đúng định dạng ID, ví dụ PROD-0001, và phải tồn tại trong hệ thống.\n- confirmDelete: bắt buộc, chỉ cho phép xóa khi giá trị là TRUE.\n- deleteMode: bắt buộc, trong phạm vi kiểm thử chỉ chấp nhận SOFT_DELETE.\n- reason: không bắt buộc, nếu nhập thì không chứa script hoặc SQL injection.\n- ràng buộc nghiệp vụ: không xóa sản phẩm nếu đang liên kết với đơn hàng hoặc dữ liệu nghiệp vụ quan trọng.",
     fields: [
-      { name: 'query', type: 'string', required: true, minLength: 1, maxLength: 200, description: 'Từ khóa tìm kiếm' },
-      { name: 'limit', type: 'number', required: false, minValue: 1, maxValue: 100, description: 'Số kết quả mỗi trang' },
-      { name: 'page', type: 'number', required: false, minValue: 1, maxValue: 1000, description: 'Số trang' },
-      { name: 'sortBy', type: 'string', required: false, allowedValues: ['relevance', 'date', 'price', 'name'], description: 'Tiêu chí sắp xếp' },
-      { name: 'order', type: 'string', required: false, allowedValues: ['asc', 'desc'], description: 'Thứ tự sắp xếp' }
+      {
+        name: "productId",
+        type: "string",
+        required: true,
+        description: "bắt buộc, không được rỗng, đúng định dạng ID, ví dụ PROD-0001, và phải tồn tại trong hệ thống."
+      },
+      {
+        name: "confirmDelete",
+        type: "boolean",
+        required: true,
+        description: "bắt buộc, chỉ cho phép xóa khi giá trị là TRUE."
+      },
+      {
+        name: "deleteMode",
+        type: "string",
+        required: true,
+        description: "bắt buộc, trong phạm vi kiểm thử chỉ chấp nhận SOFT_DELETE."
+      },
+      {
+        name: "reason",
+        type: "string",
+        required: false,
+        description: "không bắt buộc, nếu nhập thì không chứa script hoặc SQL injection."
+      }
     ],
     initialPopulation: [
-      { query: 'laptop gaming', limit: 20, page: 1, sortBy: 'relevance', order: 'desc' },
-      { query: '', limit: 0, page: 0, sortBy: 'invalid', order: 'asc' }, // lỗi validation
-      { query: 'phone', limit: 100, page: 1, sortBy: 'price', order: 'asc' }, // biên limit max
-      { query: 'x'.repeat(201), limit: 101, page: 1001, sortBy: 'name', order: 'desc' }, // lỗi biên max
-      { query: "laptop' UNION SELECT * FROM users --", limit: 50, page: 1, sortBy: 'date', order: 'desc' }, // SQLi
-      { query: '<script>alert(document.cookie)</script>', limit: 10, page: 1, sortBy: 'relevance', order: 'asc' }, // XSS
+      {
+        productId: "Test1",
+        confirmDelete: true,
+        deleteMode: "Test1",
+        reason: "Test1"
+      },
+      {
+        productId: "Test2",
+        confirmDelete: false,
+        deleteMode: "Test2",
+        reason: "Test2"
+      }
+    ]
+  },
+  {
+    id: "preset-5",
+    title: "Tìm kiếm sản phẩm",
+    description: "Đặc tả Tìm kiếm sản phẩm từ dữ liệu mẫu.",
+    rawText: "Tìm kiếm sản phẩm:\n- keyword: không bắt buộc, có thể để trống, nếu nhập thì không chứa script hoặc SQL injection.\n- categoryId: không bắt buộc, nếu nhập thì phải thuộc danh mục hợp lệ.\n- minPrice: không bắt buộc, nếu nhập thì phải là số và lớn hơn hoặc bằng 0.\n- maxPrice: không bắt buộc, nếu nhập thì phải là số, lớn hơn hoặc bằng 0 và lớn hơn hoặc bằng minPrice.\n- status: không bắt buộc, nếu nhập thì chỉ nhận ACTIVE, INACTIVE hoặc OUT_OF_STOCK.\n- sortBy: dùng để sắp xếp, chỉ nhận price, name, createdAt, updatedAt hoặc productName.\n- sortDirection: chỉ nhận ASC hoặc DESC.\n- page: bắt buộc khi phân trang, phải là số nguyên và lớn hơn hoặc bằng 1.\n- pageSize: bắt buộc khi phân trang, phải là số nguyên từ 1 đến 100.",
+    fields: [
+      {
+        name: "keyword",
+        type: "string",
+        required: false,
+        description: "không bắt buộc, có thể để trống, nếu nhập thì không chứa script hoặc SQL injection."
+      },
+      {
+        name: "categoryId",
+        type: "string",
+        required: false,
+        description: "không bắt buộc, nếu nhập thì phải thuộc danh mục hợp lệ."
+      },
+      {
+        name: "minPrice",
+        type: "number",
+        required: false,
+        description: "không bắt buộc, nếu nhập thì phải là số và lớn hơn hoặc bằng 0."
+      },
+      {
+        name: "maxPrice",
+        type: "number",
+        required: false,
+        description: "không bắt buộc, nếu nhập thì phải là số, lớn hơn hoặc bằng 0 và lớn hơn hoặc bằng minPrice."
+      },
+      {
+        name: "status",
+        type: "string",
+        required: false,
+        description: "không bắt buộc, nếu nhập thì chỉ nhận ACTIVE, INACTIVE hoặc OUT_OF_STOCK."
+      },
+      {
+        name: "sortBy",
+        type: "string",
+        required: false,
+        description: "dùng để sắp xếp, chỉ nhận price, name, createdAt, updatedAt hoặc productName."
+      },
+      {
+        name: "sortDirection",
+        type: "string",
+        required: false,
+        description: "chỉ nhận ASC hoặc DESC."
+      },
+      {
+        name: "page",
+        type: "number",
+        required: true,
+        description: "bắt buộc khi phân trang, phải là số nguyên và lớn hơn hoặc bằng 1."
+      },
+      {
+        name: "pageSize",
+        type: "number",
+        required: true,
+        description: "bắt buộc khi phân trang, phải là số nguyên từ 1 đến 100."
+      }
+    ],
+    initialPopulation: [
+      {
+        keyword: "Test1",
+        categoryId: "Test1",
+        minPrice: 10,
+        maxPrice: 10,
+        status: "Test1",
+        sortBy: "Test1",
+        sortDirection: "Test1",
+        page: 10,
+        pageSize: 10
+      },
+      {
+        keyword: "Test2",
+        categoryId: "Test2",
+        minPrice: 100,
+        maxPrice: 100,
+        status: "Test2",
+        sortBy: "Test2",
+        sortDirection: "Test2",
+        page: 100,
+        pageSize: 100
+      }
     ]
   }
 ];
 
 // Mock LLM Parse Function
 export async function mockLLMParse(rawText: string): Promise<{ parsedSchema: FieldConstraint[], initialPopulation: Record<string, any>[] }> {
-  // Simulate network latency of LLM API
   await new Promise((resolve) => setTimeout(resolve, 1500));
-
-  // 1. Try to find a matching preset by simple text matching
   const textLower = rawText.toLowerCase();
   for (const preset of PRESETS) {
-    if (
-      textLower.includes(preset.id) ||
-      textLower.includes(preset.title.toLowerCase().substring(0, 10)) ||
-      (textLower.includes('đăng ký') && preset.id === 'user-signup' && textLower.includes('email')) ||
-      (preset.id === 'health-insurance' && (textLower.includes('bảo hiểm') || textLower.includes('insurance') || textLower.includes('underwrite') || textLower.includes('y tế')))
-    ) {
-      // Create random variations of initial population to simulate fresh LLM responses
-      const mutatedSeeds = preset.initialPopulation.map(seed => {
-        const copy = { ...seed };
-        // Small random tweak to ages or amount if present
-        if ('age' in copy && typeof copy.age === 'number' && copy.age < 100 && copy.age > 18) {
-          copy.age += Math.floor(Math.random() * 5) - 2;
-        }
-        if ('amount' in copy && typeof copy.amount === 'number' && copy.amount < 1000) {
-          copy.amount += Math.floor(Math.random() * 20) - 10;
-        }
-        return copy;
-      });
-
-      return {
-        parsedSchema: preset.fields,
-        initialPopulation: mutatedSeeds
-      };
+    if (textLower.includes(preset.title.toLowerCase().substring(0, 10))) {
+      return { parsedSchema: preset.fields, initialPopulation: preset.initialPopulation };
     }
   }
-
-  // 2. Fallback: Parse dynamically using naive keyword extraction (giving the LLM parser a "smart" fallback)
-  const fields: FieldConstraint[] = [];
-  
-  if (textLower.includes('username') || textLower.includes('tên') || textLower.includes('user')) {
-    fields.push({
-      name: 'username',
-      type: 'string',
-      required: true,
-      minLength: 5,
-      maxLength: 12,
-      regex: '^[a-z0-9]+$',
-      description: 'Độ dài 5-12, chữ thường và số (Tự động nhận diện)'
-    });
-  }
-
-  if (textLower.includes('password') || textLower.includes('mật khẩu') || textLower.includes('pass')) {
-    fields.push({
-      name: 'password',
-      type: 'string',
-      required: true,
-      minLength: 6,
-      maxLength: 16,
-      description: 'Mật khẩu từ 6-16 ký tự (Tự động nhận diện)'
-    });
-  }
-
-  if (textLower.includes('email') || textLower.includes('thư điện tử')) {
-    fields.push({
-      name: 'email',
-      type: 'email',
-      required: true,
-      description: 'Email hợp lệ (Tự động nhận diện)'
-    });
-  }
-
-  if (textLower.includes('tuổi') || textLower.includes('age') || textLower.includes('số')) {
-    fields.push({
-      name: 'score',
-      type: 'number',
-      required: false,
-      minValue: 0,
-      maxValue: 100,
-      description: 'Số nguyên từ 0 đến 100 (Tự động nhận diện)'
-    });
-  }
-
-  // If no fields could be identified, create a default simple schema
-  if (fields.length === 0) {
-    fields.push({
-      name: 'inputText',
-      type: 'string',
-      required: true,
-      minLength: 3,
-      maxLength: 30,
-      description: 'Dữ liệu văn bản 3-30 ký tự (Default)'
-    });
-  }
-
-  // Synthesize dynamic F0 seeds
-  const initialPopulation: Record<string, any>[] = [];
-  const testNames = ['admin', 'guest', 'member', 'mod', 'super_user'];
-  
-  for (let i = 0; i < 8; i++) {
-    const record: Record<string, any> = {};
-    fields.forEach(f => {
-      if (f.type === 'string') {
-        record[f.name] = `${testNames[i % testNames.length]}${Math.floor(Math.random() * 90) + 10}`;
-      } else if (f.type === 'email') {
-        record[f.name] = `user${i}@domain.com`;
-      } else if (f.type === 'number') {
-        record[f.name] = Math.floor(Math.random() * 80) + 18;
-      } else {
-        record[f.name] = 'val123';
-      }
-    });
-    initialPopulation.push(record);
-  }
-
-  // Inject a security XSS seed
-  const secRecord: Record<string, any> = {};
-  fields.forEach(f => {
-    if (f.type === 'string') {
-      secRecord[f.name] = `<script>alert('${f.name}')</script>`;
-    } else if (f.type === 'email') {
-      secRecord[f.name] = 'xss@inject.org';
-    } else {
-      secRecord[f.name] = 0;
-    }
-  });
-  initialPopulation.push(secRecord);
-
-  return {
-    parsedSchema: fields,
-    initialPopulation
-  };
+  return { parsedSchema: PRESETS[0].fields, initialPopulation: PRESETS[0].initialPopulation };
 }
