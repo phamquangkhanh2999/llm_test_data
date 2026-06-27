@@ -45,11 +45,18 @@ const isValidCase = (row: Record<string, any>, schema: FieldConstraint[]): boole
       if (f.maxValue != null && n > f.maxValue) return false;
     } else if (f.type === 'email') {
       if (s && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return false;
-    } else if (f.type === 'phone') {
+    } else if (f.regex && s) {
+      try {
+        const re = new RegExp(f.regex);
+        if (!re.test(s)) return false;
+      } catch (e) {
+        // Ignore invalid regex
+      }
+    } else if (f.type === 'phone' && !f.regex) {
       if (s && !/^(03|05|07|08|09)\d{8}$/.test(s)) return false;
-    } else if (f.type === 'card') {
+    } else if (f.type === 'card' && !f.regex) {
       if (s && !/^\d{16}$/.test(s)) return false;
-    } else {
+    } else if (f.type !== 'email' && f.type !== 'number' && f.type !== 'phone' && f.type !== 'card') {
       if (f.minLength != null && s.length < f.minLength) return false;
       if (f.maxLength != null && s.length > f.maxLength) return false;
     }
@@ -174,15 +181,24 @@ export const getFailureReasons = (
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) {
         errors.push(`Email "${f.name}" không hợp lệ / Email "${f.name}" is invalid`);
       }
-    } else if (f.type === 'phone') {
+    } else if (f.regex && s) {
+      try {
+        const re = new RegExp(f.regex);
+        if (!re.test(s)) {
+          errors.push(`Trường "${f.name}" không khớp định dạng / Field "${f.name}" does not match pattern: ${f.regex}`);
+        }
+      } catch (e) {
+        // Ignore invalid regex
+      }
+    } else if (f.type === 'phone' && !f.regex) {
       if (!/^(03|05|07|08|09)\d{8}$/.test(s)) {
         errors.push(`Số điện thoại "${f.name}" không hợp lệ (Phải là SĐT Việt Nam 10 số)`);
       }
-    } else if (f.type === 'card') {
+    } else if (f.type === 'card' && !f.regex) {
       if (!/^\d{16}$/.test(s)) {
         errors.push(`Số thẻ "${f.name}" không hợp lệ (Phải gồm 16 chữ số)`);
       }
-    } else {
+    } else if (f.type !== 'email' && f.type !== 'number' && f.type !== 'phone' && f.type !== 'card') {
       if (f.minLength != null && s.length < f.minLength) {
         errors.push(
           `Độ dài "${f.name}" (${s.length}) < min length (${f.minLength}) / Length of "${f.name}" (${s.length}) < min length (${f.minLength})`,
@@ -756,7 +772,7 @@ export const EvaluateData: React.FC = () => {
               </div>
             </div>
 
-            <div className='glass-card' style={{ padding: '18px 20px' }}>
+            <div className='glass-card' style={{ padding: '18px 20px', display: 'none' }}>
               <div
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
               >

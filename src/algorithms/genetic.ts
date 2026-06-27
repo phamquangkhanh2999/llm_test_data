@@ -1,5 +1,6 @@
 import type { FieldConstraint } from './presets';
 import type { CoverageBreakdown } from '../types/testcase';
+import RandExp from 'randexp';
 
 export type Chromosome = Record<string, any>;
 
@@ -140,10 +141,36 @@ export function generateRandomValue(field: FieldConstraint, mode: 'valid' | 'inv
     if (mode === 'invalid' || mode === 'ep_invalid') return Math.random() > 0.5 ? min - 5 : max + 5;
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
+
+  // Use randexp if a custom regex is provided
+  if (field.regex) {
+    try {
+      const randexp = new RandExp(field.regex);
+      randexp.max = 5; // keep generated strings reasonably short
+      let generated = randexp.gen();
+      if (mode === 'invalid' || mode === 'ep_invalid') {
+        // Mess it up to make it invalid
+        generated = generated + '!@#';
+      }
+      return generated;
+    } catch (e) {
+      // If randexp fails, fallback to standard logic
+    }
+  }
   
   if (field.type === 'email') {
     if (mode === 'invalid') return 'invalid-email@';
     return `test${Math.floor(Math.random()*1000)}@test.com`;
+  }
+
+  if (field.type === 'phone') {
+    if (mode === 'invalid') return '01' + Math.floor(Math.random() * 10000000);
+    return `09${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`;
+  }
+
+  if (field.type === 'card') {
+    if (mode === 'invalid') return Math.floor(Math.random() * 10000000).toString();
+    return Math.floor(Math.random() * 10000000000000000).toString().padStart(16, '0');
   }
 
   if (field.allowedValues && field.allowedValues.length > 0) {
@@ -194,12 +221,14 @@ export class GeneticEngine {
     this.lastMatrixSize = 0;
     this.currentMutationRate = this.initialMutationRate;
 
-    // Seeds + Random Valid/Boundary
+    // Seeds + Random Valid/Boundary/Invalid
     seeds.forEach(s => this.population.push({ values: s, fitness: 0, origin: 'Seed' }));
     
     while (this.population.length < this.config.popSize) {
       const record: Chromosome = {};
-      const mode = Math.random() > 0.5 ? 'valid' : 'boundary';
+      const rand = Math.random();
+      // 40% Invalid (Fail), 30% Valid (Pass), 30% Boundary (Pass) -> 60% Success vs 40% Error
+      const mode = rand < 0.4 ? 'invalid' : rand < 0.7 ? 'valid' : 'boundary';
       this.schema.forEach(f => record[f.name] = generateRandomValue(f, mode));
       this.population.push({ values: record, fitness: 0, origin: `Init_${mode}` });
     }

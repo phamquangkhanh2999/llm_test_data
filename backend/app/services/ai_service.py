@@ -1041,13 +1041,17 @@ def _bva_value_of_length(field: dict, length: int) -> str:
         return "a" * length  # quá ngắn cho email -> Oracle sẽ phản ánh sai định dạng
     if ftype in ("phone", "card"):
         return "0" * length
-    # string/text/password/url...: mẫu đủ lớp ký tự, nếu charset của field cấm thì lùi về chữ cái
-    candidate = ("Aa1!" * (length // 4 + 1))[:length]
+    # string/text/password/url...
+    import random, string
+    base_chars = string.ascii_letters + string.digits
+    # Tạo một chuỗi ngẫu nhiên có nghĩa hơn thay vì lặp Aa1!
+    candidate = "".join(random.choice(base_chars) for _ in range(length))
+    
     fp = field.get("forbiddenPattern")
     if fp:
         try:
             if _re.search(fp, candidate):
-                candidate = ("Abcde" * (length // 5 + 1))[:length]
+                candidate = "A" * length
         except _re.error:
             pass
     return candidate
@@ -1056,16 +1060,9 @@ def _bva_value_of_length(field: dict, length: int) -> str:
 def _bva_baseline(fields: list) -> dict:
     """Một record HỢP LỆ làm nền, để mỗi seed biên chỉ phá đúng 1 trường (cô lập biên)."""
     rec = {}
+    from ..algorithms.optimizer_engine import generate_random_field_value
     for f in fields:
-        name = f["name"]
-        ftype = (f.get("type") or f.get("semantic_type") or f.get("data_type") or "string")
-        if ftype == "number":
-            mn, mx = f.get("minValue"), f.get("maxValue")
-            rec[name] = mn if mn is not None else (mx if mx is not None else 0)
-        else:
-            min_l = int(f.get("minLength") or 1)
-            max_l = int(f.get("maxLength") or max(min_l, 8))
-            rec[name] = _bva_value_of_length(f, max(min_l, min(max_l, 8)))
+        rec[f["name"]] = generate_random_field_value(f, mode="ep_valid")
     return rec
 
 
