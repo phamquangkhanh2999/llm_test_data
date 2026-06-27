@@ -102,7 +102,7 @@ const ColHeader: React.FC<{
   minWidth?: number;
   align?: 'left' | 'right' | 'center';
 }> = ({ en, vi, width, minWidth, align = 'left' }) => (
-  <th style={{ padding: '12px 16px', width, minWidth, textAlign: align, background: 'var(--surface-subtle)' }}>
+  <th style={{ padding: '5px 8px', width, minWidth, textAlign: align, background: 'var(--surface-subtle)' }}>
     <div
       style={{
         display: 'flex',
@@ -297,7 +297,7 @@ export const ExportReportCenter: React.FC = () => {
                 <div style={{ fontSize: 13, marginTop: 4 }}>Hãy hoàn tất bước "Tối ưu (GA/HC)" để hệ thống tự lưu báo cáo tại đây.</div>
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+              <table className="premium-table">
                 <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
                   <tr>
                     <th style={{ padding: '12px 20px', textAlign: 'left' }}>Tên bộ test</th>
@@ -480,8 +480,9 @@ const StepAnalysisView: React.FC<{ data: any }> = ({ data }) => {
 
   const flattenSeed = (s: any) => ({ ...(s.values || {}), ...s });
   const flatSeeds = seeds.map(flattenSeed);
+  const META_KEYS_EVAL = new Set(['values', 'id', 'tcid', 'rationale', 'origin', 'fitness', 'llmfitness', 'gafitness', 'hcfitness', 'finalfitness', 'categories', 'validationscore', 'boundaryscore', 'negativescore', 'errordescription', 'expectedresult', 'scenario', 'method', 'expected_result', 'error_description']);
   const seedKeys = flatSeeds.length > 0
-    ? Object.keys(flatSeeds[0]).filter(k => !['values', 'id', 'tcId', 'rationale', 'origin', 'fitness', 'llmFitness', 'gaFitness', 'hcFitness', 'finalFitness', 'categories', 'validationScore', 'boundaryScore', 'negativeScore', 'errorDescription'].includes(k))
+    ? Object.keys(flatSeeds[0]).filter(k => !META_KEYS_EVAL.has(k.trim().toLowerCase()) && !k.startsWith('_'))
     : [];
 
   return (
@@ -595,7 +596,7 @@ const StepEvaluationView: React.FC<{ data: any }> = ({ data }) => {
         <div>
           <SectionTitle icon={<Database size={18} />} text={`Trường dữ liệu & ràng buộc (${fields.length})`} />
           <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 8, overflow: 'hidden', marginTop: 10 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <table className="premium-table" style={{ fontSize: 12.5 }}>
               <thead style={{ background: 'var(--surface-subtle)', color: 'var(--text-muted)' }}>
                 <tr>
                   <th style={thS}>Tên trường</th><th style={thS}>Kiểu</th>
@@ -643,8 +644,8 @@ const StepEvaluationView: React.FC<{ data: any }> = ({ data }) => {
 
       <SectionTitle icon={<Gauge size={18} />} text="Đánh giá chất lượng tập F0" />
 
-      {/* KPI Cards */}
-      {metrics && (
+      {/* KPI Cards (Tạm ẩn theo yêu cầu) */}
+      {/* {metrics && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           <MetricCard label="Coverage Rate" value={`${Number(metrics.coverage ?? 0).toFixed(1)}%`} pct={Number(metrics.coverage ?? 0)} color="var(--color-emerald)" />
           <MetricCard label="Fitness Score" value={Number(metrics.fitness ?? 0).toFixed(3)} pct={Number(metrics.fitness ?? 0) * 100} color="var(--color-teal)" />
@@ -654,7 +655,7 @@ const StepEvaluationView: React.FC<{ data: any }> = ({ data }) => {
             <MetricCard label="Security Case Rate" value={`${(Number(metrics.securityRate) * 100).toFixed(1)}%`} pct={Number(metrics.securityRate) * 100} color="var(--color-rose)" />
           )}
         </div>
-      )}
+      )} */}
 
       {/* AI Evaluation */}
       {evalData && (evalData.score > 0 || (evalData.strengths && evalData.strengths.length > 0)) && (
@@ -677,20 +678,14 @@ const StepEvaluationView: React.FC<{ data: any }> = ({ data }) => {
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>Tập F0 ({flatSeeds.length} ca)</div>
           <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table className="premium-table" style={{ fontSize: 12 }}>
               <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-subtle)', zIndex: 2 }}>
                 <tr>
-                  <th style={thS}>Mã ca kiểm thử</th>
-                  <th style={thS}>Nguồn LLM</th>
-                  {seedKeys.map(k => <th key={k} style={thS}>{k}</th>)}
-                  <th style={thS}>Kết quả mong muốn</th>
-                  <th style={thS}>Lỗi mong muốn</th>
-                  <th style={thS}>Mục tiêu cải tiến</th>
-                  <th style={thS}>Fitness</th>
-                  <th style={thS}>Hợp lệ</th>
-                  <th style={thS}>Biên</th>
-                  <th style={thS}>Đa dạng</th>
-                  <th style={thS}>Ưu tiên</th>
+                  <ColHeader en="Test Code" vi="Mã ca kiểm thử" minWidth={100} />
+                  {seedKeys.map(k => <ColHeader key={k} en={k} vi="Trường dữ liệu" minWidth={250} />)}
+                  <ColHeader en="Expected Result" vi="Kết quả mong muốn" minWidth={250} />
+                  <ColHeader en="Expected Error" vi="Lỗi mong muốn" minWidth={250} />
+                  <ColHeader en="Fitness" vi="Fitness" align="right" minWidth={80} />
                 </tr>
               </thead>
               <tbody>
@@ -698,31 +693,24 @@ const StepEvaluationView: React.FC<{ data: any }> = ({ data }) => {
                   const isSeed = String(s.origin || '').toLowerCase().includes('seed');
                   return (
                     <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                      <td style={{ ...tdS, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                        {s.tcId || s.id || `TC-${String(i + 1).padStart(3, '0')}`}
+                      <td style={{ padding: '5px 8px', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+                        <div style={{ fontWeight: 600 }}>{s.tcId || s.id || `TC-${String(i + 1).padStart(3, '0')}`}</div>
+                        <div style={{ marginTop: 5 }}>
+                          <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, backgroundColor: isSeed ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-subtle)', border: `1px solid ${isSeed ? 'rgba(59, 130, 246, 0.2)' : 'var(--border-subtle)'}`, color: isSeed ? '#3b82f6' : 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                            {isSeed ? 'LLM (Seed)' : 'LLM'}
+                          </span>
+                        </div>
                       </td>
-                      <td style={{ ...tdS }}>
-                        <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 600, backgroundColor: isSeed ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-subtle)', border: `1px solid ${isSeed ? 'rgba(59, 130, 246, 0.2)' : 'var(--border-subtle)'}`, color: isSeed ? '#3b82f6' : 'var(--text-secondary)' }}>
-                          {isSeed ? 'LLM (Seed)' : 'LLM'}
-                        </span>
-                      </td>
-                      {seedKeys.map(k => <td key={k} style={{ ...tdS, maxWidth: 200, wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{String(s[k] ?? '')}</td>)}
-                      <td style={{ ...tdS, verticalAlign: 'top', maxWidth: 240, wordBreak: 'break-word' }}>
+                      {seedKeys.map(k => <td key={k} style={{ padding: '5px 8px', maxWidth: 350, wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: 12, verticalAlign: 'top' }}>{String(s[k] ?? '')}</td>)}
+                      <td style={{ padding: '5px 8px', verticalAlign: 'top', maxWidth: 350, wordBreak: 'break-word', color: 'var(--text-primary)' }}>
                         {typeof s.expectedResult === 'string' ? s.expectedResult : s.expectedResult?.statusText || ''}
                       </td>
-                      <td style={{ ...tdS, verticalAlign: 'top', color: 'var(--text-muted)', fontSize: 11 }}>
+                      <td style={{ padding: '5px 8px', verticalAlign: 'top', color: 'var(--text-muted)', fontSize: 11, maxWidth: 350, wordBreak: 'break-word' }}>
                         {s.errorDescription || 'Không có'}
                       </td>
-                      <td style={{ ...tdS, verticalAlign: 'top', fontSize: 11.5 }}>
-                        {s.rationale || s.scenario || '—'}
+                      <td style={{ padding: '5px 8px', fontWeight: 600, color: 'var(--color-emerald)', textAlign: 'right', verticalAlign: 'top' }}>
+                        {s.fitness != null ? Number(s.fitness > 1 ? s.fitness / 100 : s.fitness).toFixed(3) : '—'}
                       </td>
-                      <td style={{ ...tdS, fontWeight: 600, color: 'var(--color-emerald)' }}>
-                        {s.fitness != null ? `${(s.fitness > 1 ? s.fitness : s.fitness * 100).toFixed(1)}%` : '—'}
-                      </td>
-                      <td style={{ ...tdS, fontSize: 11 }}>{s.validationScore != null ? s.validationScore.toFixed(2) : '—'}</td>
-                      <td style={{ ...tdS, fontSize: 11 }}>{s.boundaryScore != null ? s.boundaryScore.toFixed(2) : '—'}</td>
-                      <td style={{ ...tdS, fontSize: 11 }}>{s.diversityScore != null ? s.diversityScore.toFixed(2) : '—'}</td>
-                      <td style={{ ...tdS, fontSize: 11 }}>{s.priorityScore != null ? s.priorityScore.toFixed(2) : '—'}</td>
                     </tr>
                   );
                 })}
@@ -755,14 +743,13 @@ const StepOptimizedView: React.FC<{
   const hcRows = (snapshot?.hcResult || snapshot?.step4_optimized_data || (forceTab === 'hc' ? rows : []) || []).map(flattenTc);
   const activeRows = activeTab === 'ga' ? gaRows : hcRows;
 
-  // Lấy keys từ data (bỏ metadata keys)
-  const META_KEYS = new Set(['values', 'id', 'tcId', 'rationale', 'origin', 'fitness', 'llmFitness',
-    'gaFitness', 'hcFitness', 'finalFitness', 'categories', 'validationScore', 'boundaryScore',
-    'negativeScore', 'errorDescription', 'expectedResult', 'ma_action', 'generation',
+  const META_KEYS = new Set(['values', 'id', 'tcid', 'rationale', 'origin', 'fitness', 'llmfitness',
+    'gafitness', 'hcfitness', 'finalfitness', 'categories', 'validationscore', 'boundaryscore',
+    'negativescore', 'errordescription', 'expectedresult', 'ma_action', 'generation',
     'parent_ids', 'local_search_applied', 'improvement', 'coverage', 'changes', 'covers',
-    'llm_values', 'ga_values', 'hc_values', 'scenario']);
+    'llm_values', 'ga_values', 'hc_values', 'scenario', 'method', 'expected_result', 'error_description']);
   const dataKeys = activeRows.length > 0
-    ? Object.keys(activeRows[0]).filter(k => !META_KEYS.has(k) && !k.startsWith('_'))
+    ? Object.keys(activeRows[0]).filter(k => !META_KEYS.has(k.trim().toLowerCase()) && !k.startsWith('_'))
     : [];
 
   const chartData = (progressHistory || []).map((e: any) => ({
@@ -821,8 +808,8 @@ const StepOptimizedView: React.FC<{
       {/* MA Stats */}
       {maStats && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-          <MetricCard label="Fitness tốt nhất" value={maStats.bestFitness != null ? `${Math.round(maStats.bestFitness * 100)}%` : '—'} color="var(--color-emerald)" />
-          <MetricCard label="Fitness TB" value={maStats.avgFitness != null ? `${Math.round(maStats.avgFitness * 100)}%` : '—'} color="var(--color-teal)" />
+          <MetricCard label="Fitness tốt nhất" value={maStats.bestFitness != null ? Number(maStats.bestFitness > 1 ? maStats.bestFitness / 100 : maStats.bestFitness).toFixed(3) : '—'} color="var(--color-emerald)" />
+          <MetricCard label="Fitness TB" value={maStats.avgFitness != null ? Number(maStats.avgFitness > 1 ? maStats.avgFitness / 100 : maStats.avgFitness).toFixed(3) : '—'} color="var(--color-teal)" />
           <MetricCard label="Đa dạng" value={maStats.diversity != null ? `${Math.round(maStats.diversity * 100)}%` : '—'} />
           <MetricCard label="Elite" value={String(maStats.eliteCount ?? '—')} />
           <MetricCard label="Lai ghép" value={String(maStats.crossoverCount ?? '—')} />
@@ -856,8 +843,8 @@ const StepOptimizedView: React.FC<{
       {activeRows.length === 0 ? (
         <Empty text={`Không có dữ liệu ${tab === 'ga' ? 'GA' : 'HC'} trong snapshot này.`} />
       ) : (
-        <div style={{ maxHeight: 480, overflow: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <div style={{ maxHeight: 400, overflow: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8, background: 'var(--surface-default)' }}>
+          <table className="premium-table" style={{ fontSize: 12, minWidth: 1400 }}>
             <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-subtle)', zIndex: 2 }}>
               <tr>
                 <ColHeader en="Test Code" vi="Mã ca kiểm thử" />
@@ -897,22 +884,22 @@ const StepOptimizedView: React.FC<{
                       const val = tc[k];
                       const empty = val === undefined || val === null || String(val) === '';
                       return (
-                        <td key={k} style={{ ...tdS, verticalAlign: 'top', maxWidth: 240, wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}>
+                        <td key={k} style={{ ...tdS, verticalAlign: 'top', maxWidth: 350, wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}>
                           {empty ? <span style={{ color: 'var(--text-muted)' }}>—</span> : String(val)}
                         </td>
                       );
                     })}
-                    <td style={{ ...tdS, verticalAlign: 'top', maxWidth: 240, wordBreak: 'break-word' }}>
+                    <td style={{ ...tdS, verticalAlign: 'top', maxWidth: 350, wordBreak: 'break-word' }}>
                       {typeof tc.expectedResult === 'string' ? tc.expectedResult : tc.expectedResult?.statusText || String(tc.expectedResult || '')}
                     </td>
-                    <td style={{ ...tdS, verticalAlign: 'top', color: 'var(--text-muted)', fontSize: 11 }}>
+                    <td style={{ ...tdS, verticalAlign: 'top', color: 'var(--text-muted)', fontSize: 11, maxWidth: 350, wordBreak: 'break-word' }}>
                       {tc.errorDescription || 'Không có'}
                     </td>
                     <td style={{ ...tdS, verticalAlign: 'top', fontSize: 11.5 }}>
                       {tc.rationale || tc.scenario || '—'}
                     </td>
-                    <td style={{ ...tdS, fontWeight: 600, color: 'var(--color-emerald)' }}>
-                      {tc.fitness != null ? `${(tc.fitness > 1 ? tc.fitness : tc.fitness * 100).toFixed(1)}%` : '—'}
+                    <td style={{ ...tdS, fontWeight: 600, color: 'var(--color-emerald)', textAlign: 'right' }}>
+                      {tc.fitness != null ? Number(tc.fitness > 1 ? tc.fitness / 100 : tc.fitness).toFixed(3) : '—'}
                     </td>
                     <td style={{ ...tdS, fontSize: 11 }}>{tc.validationScore != null ? tc.validationScore.toFixed(2) : '—'}</td>
                     <td style={{ ...tdS, fontSize: 11 }}>{tc.boundaryScore != null ? tc.boundaryScore.toFixed(2) : '—'}</td>
@@ -983,6 +970,14 @@ const LocalStyles: React.FC = () => (
     .icon-btn-danger { background: transparent; border: 1px solid transparent; color: var(--color-rose); border-radius: 6px; cursor: pointer; display: flex; transition: 0.2s; }
     .icon-btn-danger:hover { background: rgba(225,29,72,0.08); border-color: rgba(225,29,72,0.2); }
     
+    .premium-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+    .premium-table thead { background: var(--surface-subtle); position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    .premium-table th { padding: 5px 8px; text-align: left; font-size: 11.5px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border-subtle); white-space: nowrap; }
+    .premium-table td { padding: 5px 8px; color: var(--text-primary); border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+    .premium-table tbody tr { transition: all 0.2s ease; background: var(--surface-default); }
+    .premium-table tbody tr:hover { background: var(--surface-subtle); }
+    .premium-table tbody tr:last-child td { border-bottom: none; }
+    
     @media print {
       .app-sidebar, header, footer, .no-print, button, .glass-card:first-child, .glass-card:nth-child(2) { display: none !important; }
       .app-container, main { margin-left: 0 !important; padding: 0 !important; background: white !important; }
@@ -993,7 +988,7 @@ const LocalStyles: React.FC = () => (
   `}</style>
 );
 
-const thS: React.CSSProperties = { padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' };
-const tdS: React.CSSProperties = { padding: '9px 12px', verticalAlign: 'middle' };
+const thS: React.CSSProperties = {};
+const tdS: React.CSSProperties = {};
 
 export default ExportReportCenter;
