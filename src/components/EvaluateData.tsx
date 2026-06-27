@@ -10,8 +10,7 @@ import {
   ShieldCheck,
   Sparkles,
   Wand2,
-  X,
-  XCircle,
+  X
 } from 'lucide-react';
 import React, { useMemo } from 'react';
 import type { FieldConstraint } from '../algorithms/presets';
@@ -24,15 +23,22 @@ export const getExpectedResultShort = (expectedResult: string): string => {
   if (!expectedResult) return 'Success';
   const clean = String(expectedResult).trim().toUpperCase();
   if (
-    clean.startsWith('LỖI') || clean.startsWith('ERROR') || clean.startsWith('THẤT BẠI') ||
+    clean.startsWith('LỖI') ||
+    clean.startsWith('ERROR') ||
+    clean.startsWith('THẤT BẠI') ||
     clean.includes('VALIDATION_ERROR') ||
-    clean.includes('HTTP 400') || clean.includes('HTTP 422') || clean.includes('HTTP 500')
+    clean.includes('HTTP 400') ||
+    clean.includes('HTTP 422') ||
+    clean.includes('HTTP 500')
   ) {
     return 'Error';
   }
   if (
-    clean.startsWith('HỢP LỆ') || clean.startsWith('SUCCESS') || clean.startsWith('THÀNH CÔNG') ||
-    clean.includes('HTTP 200') || clean.includes('HTTP 201')
+    clean.startsWith('HỢP LỆ') ||
+    clean.startsWith('SUCCESS') ||
+    clean.startsWith('THÀNH CÔNG') ||
+    clean.includes('HTTP 200') ||
+    clean.includes('HTTP 201')
   ) {
     return 'Success';
   }
@@ -48,9 +54,21 @@ export const getExpectedResultShort = (expectedResult: string): string => {
 // =============================================================================
 
 const METHODS: { id: string; label: string; desc: string }[] = [
-  { id: 'ep', label: 'Phân vùng tương đương (Equivalence Partitioning - EP)', desc: 'Đại diện mỗi lớp tương đương' },
-  { id: 'bva', label: 'Phân tích giá trị biên (Boundary Value Analysis - BVA)', desc: 'Tập trung các giá trị biên min/max' },
-  { id: 'random', label: 'Chọn ngẫu nhiên (Random Testing)', desc: 'Sinh giá trị hợp lệ ngẫu nhiên' },
+  {
+    id: 'ep',
+    label: 'Phân vùng tương đương (Equivalence Partitioning - EP)',
+    desc: 'Đại diện mỗi lớp tương đương',
+  },
+  {
+    id: 'bva',
+    label: 'Phân tích giá trị biên (Boundary Value Analysis - BVA)',
+    desc: 'Tập trung các giá trị biên min/max',
+  },
+  {
+    id: 'random',
+    label: 'Chọn ngẫu nhiên (Random Testing)',
+    desc: 'Sinh giá trị hợp lệ ngẫu nhiên',
+  },
 ];
 
 // Kiểm tra 1 ca test có hợp lệ theo schema không (đơn giản hóa)
@@ -77,7 +95,12 @@ const isValidCase = (row: Record<string, any>, schema: FieldConstraint[]): boole
       if (s && !/^(03|05|07|08|09)\d{8}$/.test(s)) return false;
     } else if (f.type === 'card' && !f.regex) {
       if (s && !/^\d{16}$/.test(s)) return false;
-    } else if (f.type !== 'email' && f.type !== 'number' && f.type !== 'phone' && f.type !== 'card') {
+    } else if (
+      f.type !== 'email' &&
+      f.type !== 'number' &&
+      f.type !== 'phone' &&
+      f.type !== 'card'
+    ) {
       if (f.minLength != null && s.length < f.minLength) return false;
       if (f.maxLength != null && s.length > f.maxLength) return false;
     }
@@ -170,7 +193,7 @@ const Gauge: React.FC<{ value: number }> = ({ value }) => {
 // Hàm phân tích lý do lỗi chi tiết / Helper function to extract detailed failure reasons
 export const getFailureReasons = (
   row: Record<string, any>,
-  schema: FieldConstraint[],
+  schema: FieldConstraint[]
 ): string[] => {
   const target = row.values || row;
   const errors: string[] = [];
@@ -189,12 +212,12 @@ export const getFailureReasons = (
       } else {
         if (f.minValue != null && n < f.minValue) {
           errors.push(
-            `Trường "${f.name}" (${n}) < min (${f.minValue}) / Field "${f.name}" (${n}) < min (${f.minValue})`,
+            `Trường "${f.name}" (${n}) < min (${f.minValue}) / Field "${f.name}" (${n}) < min (${f.minValue})`
           );
         }
         if (f.maxValue != null && n > f.maxValue) {
           errors.push(
-            `Trường "${f.name}" (${n}) > max (${f.maxValue}) / Field "${f.name}" (${n}) > max (${f.maxValue})`,
+            `Trường "${f.name}" (${n}) > max (${f.maxValue}) / Field "${f.name}" (${n}) > max (${f.maxValue})`
           );
         }
       }
@@ -206,7 +229,9 @@ export const getFailureReasons = (
       try {
         const re = new RegExp(f.regex);
         if (!re.test(s)) {
-          errors.push(`Trường "${f.name}" không khớp định dạng / Field "${f.name}" does not match pattern: ${f.regex}`);
+          errors.push(
+            `Trường "${f.name}" không khớp định dạng / Field "${f.name}" does not match pattern: ${f.regex}`
+          );
         }
       } catch (e) {
         // Ignore invalid regex
@@ -219,15 +244,20 @@ export const getFailureReasons = (
       if (!/^\d{16}$/.test(s)) {
         errors.push(`Số thẻ "${f.name}" không hợp lệ (Phải gồm 16 chữ số)`);
       }
-    } else if (f.type !== 'email' && f.type !== 'number' && f.type !== 'phone' && f.type !== 'card') {
+    } else if (
+      f.type !== 'email' &&
+      f.type !== 'number' &&
+      f.type !== 'phone' &&
+      f.type !== 'card'
+    ) {
       if (f.minLength != null && s.length < f.minLength) {
         errors.push(
-          `Độ dài "${f.name}" (${s.length}) < min length (${f.minLength}) / Length of "${f.name}" (${s.length}) < min length (${f.minLength})`,
+          `Độ dài "${f.name}" (${s.length}) < min length (${f.minLength}) / Length of "${f.name}" (${s.length}) < min length (${f.minLength})`
         );
       }
       if (f.maxLength != null && s.length > f.maxLength) {
         errors.push(
-          `Độ dài "${f.name}" (${s.length}) > max length (${f.maxLength}) / Length of "${f.name}" (${s.length}) > max length (${f.maxLength})`,
+          `Độ dài "${f.name}" (${s.length}) > max length (${f.maxLength}) / Length of "${f.name}" (${s.length}) > max length (${f.maxLength})`
         );
       }
     }
@@ -290,7 +320,9 @@ export const EvaluateData: React.FC = () => {
 
     const SEC_KW = ["' or", '--', 'union', '<script', 'javascript:', '../..'];
     const hasSecurity = (row: Record<string, any>) =>
-      Object.values(row.values || row).some((v) => SEC_KW.some((kw) => String(v).toLowerCase().includes(kw)));
+      Object.values(row.values || row).some((v) =>
+        SEC_KW.some((kw) => String(v).toLowerCase().includes(kw))
+      );
 
     // Đồng bộ thước đo với backend (_compute_full_coverage):
     //   coverage = 0.5·val_cov + 0.35·bound_cov + 0.15·sec_cov
@@ -359,7 +391,12 @@ export const EvaluateData: React.FC = () => {
   const filteredSeeds = useMemo(() => {
     let list = initialSeeds || [];
     if (methodFilter !== 'all') {
-      list = list.filter((s) => s.method === methodFilter);
+      list = list.filter((s) => {
+        const m = (s.method || '').toLowerCase();
+        const f = methodFilter.toLowerCase();
+        // Khớp exact hoặc label tiếng Việt (Ngẫu nhiên → random)
+        return m === f || m.startsWith(f) || (f === 'random' && (m === 'ngẫu nhiên' || m.includes('ng') && m.includes('nhiên')));
+      });
     }
     if (statusFilter !== 'all') {
       list = list.filter((s) => {
@@ -553,14 +590,38 @@ export const EvaluateData: React.FC = () => {
         </div>
 
         {selectedMethods.includes('bva') && (
-          <div style={{ marginBottom: 16, padding: '12px', background: 'var(--brand-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-primary)', marginBottom: 8 }}>
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px',
+              background: 'var(--brand-50)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-subtle)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'var(--brand-primary)',
+                marginBottom: 8,
+              }}
+            >
               Cấu hình Cận biên (BVA)
             </div>
-            <select 
+            <select
               value={boundaryCount}
               onChange={(e) => setBoundaryCount(Number(e.target.value))}
-              style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid var(--border-subtle)', background: 'var(--bg-card)', fontSize: 12.5, outline: 'none', color: 'var(--text-primary)' }}
+              style={{
+                width: '100%',
+                padding: '8px',
+                borderRadius: 4,
+                border: '1px solid var(--border-subtle)',
+                background: 'var(--bg-card)',
+                fontSize: 12.5,
+                outline: 'none',
+                color: 'var(--text-primary)',
+              }}
             >
               <option value={2}>2 Biên (min, max) - Nhanh chóng</option>
               <option value={4}>4 Biên (min-1, min, max, max+1) - Khuyên dùng</option>
@@ -848,7 +909,7 @@ export const EvaluateData: React.FC = () => {
                     AI Quality &amp; Security Report (Đánh giá F0)
                   </h3>
                 </div>
-                <div
+                {/* <div
                   style={{
                     fontSize: 13,
                     fontWeight: 700,
@@ -859,7 +920,7 @@ export const EvaluateData: React.FC = () => {
                   }}
                 >
                   Điểm AI: {evaluationResult.score}/100
-                </div>
+                </div> */}
               </div>
 
               <div
@@ -1111,9 +1172,7 @@ export const EvaluateData: React.FC = () => {
                             verticalAlign: 'top',
                           }}
                         >
-                          <div style={{ fontWeight: 600 }}>
-                            TC-{String(i + 1).padStart(3, '0')}
-                          </div>
+                          <div style={{ fontWeight: 600 }}>TC-{String(i + 1).padStart(3, '0')}</div>
                           {row.method && (
                             <div style={{ marginTop: 5 }}>
                               <span
@@ -1129,7 +1188,7 @@ export const EvaluateData: React.FC = () => {
                                   border: `1px solid ${getMethodBadgeColor(row.method).border}`,
                                 }}
                               >
-                                {row.method}
+                                {row.method === 'bva' ? 'BVA' : row.method === 'ep' ? 'EP' : row.method === 'random' ? 'Random' : row.method === 'decision' ? 'Decision' : row.method}
                               </span>
                             </div>
                           )}
@@ -1163,25 +1222,40 @@ export const EvaluateData: React.FC = () => {
 
                         {/* Kết quả mong muốn */}
                         <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                          <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                          <div
+                            style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}
+                          >
                             {getExpectedResultShort(row.expectedResult) === 'Error' ? (
-                              <span style={{ color: 'var(--error)', fontWeight: 700, marginRight: '4px' }}>
+                              <span
+                                style={{
+                                  color: 'var(--error)',
+                                  fontWeight: 700,
+                                  marginRight: '4px',
+                                }}
+                              >
                                 Error:
                               </span>
                             ) : (
-                              <span style={{ color: '#10b981', fontWeight: 700, marginRight: '4px' }}>
+                              <span
+                                style={{ color: '#10b981', fontWeight: 700, marginRight: '4px' }}
+                              >
                                 Success:
                               </span>
                             )}
                             <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                              {typeof row.expectedResult === 'string' ? row.expectedResult : (row.expectedResult?.statusText || String(row.expectedResult || ''))}
+                              {typeof row.expectedResult === 'string'
+                                ? row.expectedResult
+                                : row.expectedResult?.statusText ||
+                                  String(row.expectedResult || '')}
                             </span>
                           </div>
                         </td>
 
                         {/* Lỗi mong muốn */}
                         <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                          <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                          <div
+                            style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}
+                          >
                             {getExpectedResultShort(row.expectedResult) === 'Error' ? (
                               <span style={{ color: 'var(--error)', fontWeight: 500 }}>
                                 {getExpectedError(row.expectedResult)}
@@ -1317,7 +1391,7 @@ export const EvaluateData: React.FC = () => {
                       k !== 'origin' &&
                       k !== 'scenario' &&
                       k !== 'expectedResult' &&
-                      k !== 'method',
+                      k !== 'method'
                   )
                   .map(([k, v]) => (
                     <div

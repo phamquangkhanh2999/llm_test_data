@@ -320,7 +320,7 @@ export const SpecInput: React.FC = () => {
         const targetMethod = selectedMethods[index % selectedMethods.length];
         // Đảm bảo gán nhãn method cho UI
         if (!seed.method) {
-          seed.method = targetMethod === 'bva' ? 'BVA' : targetMethod === 'ep' ? 'EP' : targetMethod === 'decision' ? 'Bảng quyết định' : 'Ngẫu nhiên';
+          seed.method = targetMethod; // lowercase key: 'bva', 'ep', 'random', 'decision'
         }
         newMethodSeeds[targetMethod].push(seed);
       });
@@ -508,7 +508,7 @@ export const SpecInput: React.FC = () => {
       const combinedSeeds: any[] = [];
       
       results.forEach((r) => {
-        const methodName = r.method === 'bva' ? 'BVA' : r.method === 'ep' ? 'EP' : r.method === 'decision' ? 'Bảng quyết định' : 'Ngẫu nhiên';
+        const methodName = r.method; // lowercase key: 'bva', 'ep', 'random', 'decision'
         r.population.forEach((item: any) => {
           if (!item.method) {
             item.method = methodName;

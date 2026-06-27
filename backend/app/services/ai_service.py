@@ -1241,6 +1241,11 @@ def generate_seeds_with_ai(
                 s["expectedResult"] = oracle["message"]
                 s["errorDescription"] = "Không có" if oracle["is_valid"] else ("; ".join(oracle["violated_fields_desc"]) or oracle["message"].replace("Lỗi: ", ""))
                 
+                # Gán nhãn method cho seed (dùng round-robin nếu nhiều phương pháp)
+                if not s.get("method"):
+                    effective = test_methods or ["bva"]
+                    s["method"] = effective[len(all_seeds) % len(effective)]
+                
                 all_seeds.append(s)
                 
                 # Guess distribution based on valid/boundary/invalid since we requested it combined
