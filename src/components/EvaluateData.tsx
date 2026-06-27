@@ -18,6 +18,27 @@ import type { FieldConstraint } from '../algorithms/presets';
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
 
+// Verdict nhị phân, KHÔNG còn phụ thuộc mã HTTP. Ưu tiên dấu hiệu lỗi trước
+// (tránh chuỗi lý do có chữ "hợp lệ" bị đọc nhầm). Vẫn nhận data cũ ("HTTP …"/"VALIDATION_ERROR").
+export const getExpectedResultShort = (expectedResult: string): string => {
+  if (!expectedResult) return 'Success';
+  const clean = String(expectedResult).trim().toUpperCase();
+  if (
+    clean.startsWith('LỖI') || clean.startsWith('ERROR') || clean.startsWith('THẤT BẠI') ||
+    clean.includes('VALIDATION_ERROR') ||
+    clean.includes('HTTP 400') || clean.includes('HTTP 422') || clean.includes('HTTP 500')
+  ) {
+    return 'Error';
+  }
+  if (
+    clean.startsWith('HỢP LỆ') || clean.startsWith('SUCCESS') || clean.startsWith('THÀNH CÔNG') ||
+    clean.includes('HTTP 200') || clean.includes('HTTP 201')
+  ) {
+    return 'Success';
+  }
+  return 'Error';
+};
+
 // =============================================================================
 //  BƯỚC 5: ĐÁNH GIÁ DỮ LIỆU KIỂM THỬ — bám sát màn Stitch.
 //  Coverage gauge (tròn) + Fitness Score + Duplicate Rate + Processing Time,
@@ -342,8 +363,8 @@ export const EvaluateData: React.FC = () => {
     }
     if (statusFilter !== 'all') {
       list = list.filter((s) => {
-        const ok = isValidCase(s, parsedSchema);
-        return statusFilter === 'pass' ? ok : !ok;
+        const res = getExpectedResultShort(s.expectedResult);
+        return statusFilter === 'pass' ? res === 'Success' : res === 'Error';
       });
     }
     return list;
@@ -605,7 +626,7 @@ export const EvaluateData: React.FC = () => {
           {/* 4 thẻ chỉ số */}
           <div
             style={{
-              display: 'grid',
+              display: 'none', // Ẩn theo yêu cầu
               gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
               gap: 14,
               marginBottom: 16,
@@ -1014,9 +1035,9 @@ export const EvaluateData: React.FC = () => {
                     fontWeight: 500,
                   }}
                 >
-                  <option value='all'>Tất cả trạng thái</option>
-                  <option value='pass'>Đạt</option>
-                  <option value='fail'>Lỗi</option>
+                  <option value='all'>Tất cả (All)</option>
+                  <option value='pass'>Success</option>
+                  <option value='fail'>Error</option>
                 </select>
 
                 {/* Bộ lọc phương pháp */}
@@ -1505,28 +1526,8 @@ const ColHeader: React.FC<{
     </div>
   </th>
 );
-// Verdict nhị phân, KHÔNG còn phụ thuộc mã HTTP. Ưu tiên dấu hiệu lỗi trước
-// (tránh chuỗi lý do có chữ "hợp lệ" bị đọc nhầm). Vẫn nhận data cũ ("HTTP …"/"VALIDATION_ERROR").
-const getExpectedResultShort = (expectedResult: string): string => {
-  if (!expectedResult) return 'Success';
-  const clean = String(expectedResult).trim().toUpperCase();
-  if (
-    clean.startsWith('LỖI') || clean.startsWith('ERROR') || clean.startsWith('THẤT BẠI') ||
-    clean.includes('VALIDATION_ERROR') ||
-    clean.includes('HTTP 400') || clean.includes('HTTP 422') || clean.includes('HTTP 500')
-  ) {
-    return 'Error';
-  }
-  if (
-    clean.startsWith('HỢP LỆ') || clean.startsWith('SUCCESS') || clean.startsWith('THÀNH CÔNG') ||
-    clean.includes('HTTP 200') || clean.includes('HTTP 201')
-  ) {
-    return 'Success';
-  }
-  return 'Error';
-};
 
-const getExpectedError = (expectedResult: string): string => {
+export const getExpectedError = (expectedResult: string): string => {
   if (!expectedResult) return 'Không có';
   const clean = String(expectedResult).trim();
   if (getExpectedResultShort(clean) === 'Success') return 'Không có';

@@ -522,7 +522,7 @@ function App() {
               nextLabel='Lịch Sử & Xuất'
               prerequisites={[
                 {
-                  met: hasHistory || !!hcResult,
+                  met: !!(hcResult && hcResult.length > 0),
                   warningText: 'Chưa có kết quả tối ưu HC. Vui lòng hoàn thành bước Tối ưu HC trước khi xem biểu đồ.',
                   goBackScreen: 'hc',
                   goBackLabel: 'Đến: HC Tối Ưu',

@@ -109,25 +109,21 @@ const dedupRate = (arr: any[]): number => {
 };
 
 /** Tạo trend data từ gaProgressHistory thật (nếu có), nếu không thì sinh đường cong mượt */
-const buildTrendData = (
-  gaProgressHistory: { generation: number; bestFitness: number; avgFitness: number }[],
-  llmBaseline: number,
-  gaFinal: number,
-  hcFinal: number,
-) => {
-  // ── Nếu có dữ liệu thật từ GA run ──
+const buildTrendData = (gaProgressHistory: any[], llmBaseline: number, gaFinal: number, hcFinal: number, hasHc: boolean) => {
+  // ── Nếu có history thật từ backend (gửi mỗi thế hệ) ──
   if (gaProgressHistory.length > 0) {
     return gaProgressHistory.map((p) => {
       const t = gaProgressHistory.indexOf(p) / Math.max(gaProgressHistory.length - 1, 1);
       const rawAvg = p.avgFitness > 1 ? p.avgFitness / 100 : p.avgFitness;
       // HC line: interpolate từ GA avg đến HC final
       const hcVal = rawAvg + (hcFinal - gaFinal) * (0.5 + 0.5 * t);
-      return {
+      const res: any = {
         generation: p.generation,
         'LLM': +llmBaseline.toFixed(3),
         'LLM + GA': +rawAvg.toFixed(3),
-        'LLM + GA + HC': +Math.min(hcVal, 1).toFixed(3),
       };
+      if (hasHc) res['LLM + GA + HC'] = +Math.min(hcVal, 1).toFixed(3);
+      return res;
     });
   }
 
@@ -141,12 +137,13 @@ const buildTrendData = (
     const gaVal = llmBaseline + (gaFinal - llmBaseline) * Math.pow(t, 0.55);
     // LLM+GA+HC: tăng nhanh hơn đến hcFinal
     const hcVal = llmBaseline + (hcFinal - llmBaseline) * Math.pow(t, 0.4);
-    return {
+    const res: any = {
       generation: gen,
       'LLM': +llm.toFixed(3),
       'LLM + GA': +gaVal.toFixed(3),
-      'LLM + GA + HC': +Math.min(hcVal, 1).toFixed(3),
     };
+    if (hasHc) res['LLM + GA + HC'] = +Math.min(hcVal, 1).toFixed(3);
+    return res;
   });
 };
 
@@ -230,19 +227,26 @@ export const AlgorithmCharts: React.FC<{ snapshotData?: any }> = ({ snapshotData
     const hcDiversity  = Math.min(gaDiversity  + 0.03 + (hasHc ? uniqueRate(hcDataset)  * 0.02 : 0), 0.96);
     const hcDedup      = Math.min(gaDedup      + 0.04 + (hasHc ? dedupRate(hcDataset)   * 0.02 : 0), 0.96);
 
+    // Define result format with conditional LLM+GA+HC
+    const formatRes = (cat: string, llm: number, ga: number, hc: number) => {
+      const res: any = { category: cat, 'LLM': +llm.toFixed(2), 'LLM+GA': +ga.toFixed(2) };
+      if (hasHc) res['LLM+GA+HC'] = +hc.toFixed(2);
+      return res;
+    };
+
     return [
-      { category: 'Fitness',            'LLM': +llmFit.toFixed(2),        'LLM+GA': +gaFit.toFixed(2),        'LLM+GA+HC': +hcFit.toFixed(2)        },
-      { category: 'Bao phủ ràng buộc', 'LLM': +llmConstraint.toFixed(2), 'LLM+GA': +gaConstraint.toFixed(2), 'LLM+GA+HC': +hcConstraint.toFixed(2) },
-      { category: 'Bao phủ biên',      'LLM': +llmBoundary.toFixed(2),   'LLM+GA': +gaBoundary.toFixed(2),   'LLM+GA+HC': +hcBoundary.toFixed(2)   },
-      { category: 'Đa dạng',           'LLM': +llmDiversity.toFixed(2),  'LLM+GA': +gaDiversity.toFixed(2),  'LLM+GA+HC': +hcDiversity.toFixed(2)  },
-      { category: 'Giảm trùng lặp',    'LLM': +llmDedup.toFixed(2),      'LLM+GA': +gaDedup.toFixed(2),      'LLM+GA+HC': +hcDedup.toFixed(2)      },
+      formatRes('Fitness', llmFit, gaFit, hcFit),
+      formatRes('Bao phủ ràng buộc', llmConstraint, gaConstraint, hcConstraint),
+      formatRes('Bao phủ biên', llmBoundary, gaBoundary, hcBoundary),
+      formatRes('Đa dạng', llmDiversity, gaDiversity, hcDiversity),
+      formatRes('Giảm trùng lặp', llmDedup, gaDedup, hcDedup),
     ];
   }, [llmSeeds, gaDataset, hcDataset, llmFit, gaFit, hcFit, evaluationMetrics, fieldCount]);
 
   // Chart 2: xu hướng fitness qua các thế hệ (LineChart)
   const trendData = useMemo(
-    () => buildTrendData(gaProgressHistory || [], llmFit, gaFit, hcFit),
-    [gaProgressHistory, llmFit, gaFit, hcFit],
+    () => buildTrendData(gaProgressHistory || [], llmFit, gaFit, hcFit, hcDataset.length > 0),
+    [gaProgressHistory, llmFit, gaFit, hcFit, hcDataset.length],
   );
 
   const hasRealData = llmSeeds.length > 0 || gaDataset.length > 0;
@@ -295,7 +299,7 @@ export const AlgorithmCharts: React.FC<{ snapshotData?: any }> = ({ snapshotData
               <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '16px', fontSize: '13px' }} />
               <Bar dataKey="LLM"       name="LLM"        fill="#1f77b4" maxBarSize={36} radius={[3,3,0,0]} label={<BarTopLabel />} />
               <Bar dataKey="LLM+GA"    name="LLM+GA"     fill="#ff7f0e" maxBarSize={36} radius={[3,3,0,0]} label={<BarTopLabel />} />
-              <Bar dataKey="LLM+GA+HC" name="LLM+GA+HC"  fill="#2ca02c" maxBarSize={36} radius={[3,3,0,0]} label={<BarTopLabel />} />
+              {hcDataset.length > 0 && <Bar dataKey="LLM+GA+HC" name="LLM+GA+HC"  fill="#2ca02c" maxBarSize={36} radius={[3,3,0,0]} label={<BarTopLabel />} />}
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -317,7 +321,7 @@ export const AlgorithmCharts: React.FC<{ snapshotData?: any }> = ({ snapshotData
           {[
             { label: 'LLM', val: llmFit, color: '#1f77b4' },
             { label: 'LLM+GA', val: gaFit, color: '#ff7f0e' },
-            { label: 'LLM+GA+HC', val: hcFit, color: '#2ca02c' },
+            ...(hcDataset.length > 0 ? [{ label: 'LLM+GA+HC', val: hcFit, color: '#2ca02c' }] : []),
           ].map(({ label, val, color }) => (
             <div key={label} style={{ textAlign: 'center', padding: '10px 20px', borderRadius: '8px', border: `2px solid ${color}22`, background: `${color}11` }}>
               <div style={{ fontSize: '11px', color: '#666', marginBottom: '4px' }}>{label}</div>
@@ -358,7 +362,7 @@ export const AlgorithmCharts: React.FC<{ snapshotData?: any }> = ({ snapshotData
               <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '16px', fontSize: '13px' }} />
               <Line type="monotone" dataKey="LLM"         stroke="#1f77b4" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
               <Line type="monotone" dataKey="LLM + GA"    stroke="#ff7f0e" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-              <Line type="monotone" dataKey="LLM + GA + HC" stroke="#2ca02c" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              {hcDataset.length > 0 && <Line type="monotone" dataKey="LLM + GA + HC" stroke="#2ca02c" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />}
             </LineChart>
           </ResponsiveContainer>
         </div>

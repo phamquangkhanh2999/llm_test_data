@@ -11,6 +11,7 @@ import * as XLSX from 'xlsx';
 import { config } from '../config';
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
+import { getExpectedResultShort } from './EvaluateData';
 
 const ColHeader: React.FC<{
   en: string;
@@ -44,7 +45,6 @@ export const HillClimbingOptimize: React.FC = () => {
   const {
     gaResult,
     setHcResult,
-    setActiveScreen,
     isOptimizingHC: isOptimizing,
     setIsOptimizingHC: setIsOptimizing,
     optimizationPhase,
@@ -52,7 +52,6 @@ export const HillClimbingOptimize: React.FC = () => {
     schemaName,
     parsedSchema: schema,
     rawText,
-    apiKey,
     llmProvider,
     specificationId,
     saveGenerationSnapshot,
@@ -63,11 +62,13 @@ export const HillClimbingOptimize: React.FC = () => {
     evaluationResult,
     evaluationMetrics,
     projectMeta,
+    setEvaluationMetrics,
     selectedPresetId,
   } = useAppStore();
 
-  const [iterations, setIterations] = useState(10);
-  const [hcData, setHcData] = useState<any | null>(null);
+  const [iterations, setIterations] = useState(25);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [hcData, setHcData] = useState<any[] | null>(null);
 
   const handleRun = async () => {
     if (!gaResult || gaResult.length === 0) {
@@ -299,6 +300,27 @@ export const HillClimbingOptimize: React.FC = () => {
             Quá trình HC đã hoàn tất trên {hcData.length} cá thể. Các giá trị cận biên đã được kiểm
             tra và tối ưu hóa thêm. Dữ liệu này sẽ được dùng làm bộ dữ liệu xuất cuối cùng.
           </p>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-secondary)',
+                fontSize: 12,
+                padding: '6px 10px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                outline: 'none',
+                fontWeight: 500,
+              }}
+            >
+              <option value='all'>Tất cả (All)</option>
+              <option value='pass'>Success</option>
+              <option value='fail'>Error</option>
+            </select>
+          </div>
           <div
             style={{
               overflowX: 'auto',
@@ -337,7 +359,14 @@ export const HillClimbingOptimize: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {hcData.slice(0, 50).map((tc: any, i: number) => {
+                {hcData
+                  .filter((tc: any) => {
+                    if (statusFilter === 'all') return true;
+                    const res = getExpectedResultShort(tc.expectedResult || tc.expected_result);
+                    return statusFilter === 'pass' ? res === 'Success' : res === 'Error';
+                  })
+                  .slice(0, 50)
+                  .map((tc: any, i: number) => {
                   const isSeed = String(tc.origin || '')
                     .toLowerCase()
                     .includes('seed');

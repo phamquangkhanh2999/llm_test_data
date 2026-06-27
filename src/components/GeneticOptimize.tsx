@@ -30,6 +30,7 @@ import {
 import { config } from '../config';
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
+import { getExpectedResultShort, getExpectedError } from './EvaluateData';
 
 // =============================================================================
 //  GENETIC ALGORITHM TỐI ƯU (Bước 4 Stitch)
@@ -336,7 +337,6 @@ export const GeneticOptimize: React.FC = () => {
     rawText,
     schemaName,
     apiKey,
-    llmProvider,
     handleEvolutionComplete,
     setActiveScreen,
     setGaResult,
@@ -368,6 +368,7 @@ export const GeneticOptimize: React.FC = () => {
   const [ma, setMa] = useState<RunResult | null>(null);
   const [selectedTC, setSelectedTC] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<'data' | 'ma' | 'intent'>('data');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const ready = schema.length > 0 && initialSeeds.length > 0;
   // Trọng số fitness: ưu tiên dữ liệu HỢP LỆ/TỰ NHIÊN. Giảm security để payload tấn công
@@ -1331,7 +1332,28 @@ export const GeneticOptimize: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 8 }} className='no-print'>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-secondary)',
+                  fontSize: 12,
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  fontWeight: 500,
+                }}
+              >
+                <option value='all'>Tất cả (All)</option>
+                <option value='pass'>Success</option>
+                <option value='fail'>Error</option>
+              </select>
+
+              <div style={{ display: 'flex', gap: 8 }} className='no-print'>
               <button
                 onClick={handleExportExcel}
                 className='btn btn-secondary'
@@ -1365,6 +1387,7 @@ export const GeneticOptimize: React.FC = () => {
                 Xuất JSON
               </button>
             </div>
+          </div>
           </div>
           <div style={{ overflowX: 'auto', maxHeight: 800 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
@@ -1400,7 +1423,14 @@ export const GeneticOptimize: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {ma.optimizedDataset.slice(0, 50).map((tc: any, i: number) => {
+                {ma.optimizedDataset
+                  .filter((tc: any) => {
+                    if (statusFilter === 'all') return true;
+                    const res = getExpectedResultShort(tc.expectedResult || tc.expected_result);
+                    return statusFilter === 'pass' ? res === 'Success' : res === 'Error';
+                  })
+                  .slice(0, 50)
+                  .map((tc: any, i: number) => {
                   const badge = getOriginBadge(tc.ma_action || tc.origin);
                   const isSeed = String(tc.origin || '')
                     .toLowerCase()
@@ -2455,62 +2485,6 @@ const Metric: React.FC<{
   </div>
 );
 
-// Verdict nhị phân, KHÔNG còn phụ thuộc mã HTTP. Ưu tiên dấu hiệu lỗi trước
-// (tránh chuỗi lý do có chữ "hợp lệ" bị đọc nhầm). Vẫn nhận data cũ ("HTTP …"/"VALIDATION_ERROR").
-const getExpectedResultShort = (expectedResult: string): string => {
-  if (!expectedResult) return 'Success';
-  const clean = String(expectedResult).trim().toUpperCase();
-  if (
-    clean.startsWith('LỖI') ||
-    clean.startsWith('ERROR') ||
-    clean.startsWith('THẤT BẠI') ||
-    clean.includes('VALIDATION_ERROR') ||
-    clean.includes('HTTP 400') ||
-    clean.includes('HTTP 422') ||
-    clean.includes('HTTP 500')
-  ) {
-    return 'Error';
-  }
-  if (
-    clean.startsWith('HỢP LỆ') ||
-    clean.startsWith('SUCCESS') ||
-    clean.startsWith('THÀNH CÔNG') ||
-    clean.includes('HTTP 200') ||
-    clean.includes('HTTP 201')
-  ) {
-    return 'Success';
-  }
-  return 'Error';
-};
 
-const getExpectedError = (expectedResult: string): string => {
-  if (!expectedResult) return 'Không có';
-  const clean = String(expectedResult).trim();
-  if (getExpectedResultShort(clean) === 'Success') return 'Không có';
-  const upper = clean.toUpperCase();
-
-  // Format mới: "Lỗi: <lý do>"
-  if (upper.startsWith('LỖI')) {
-    return clean.replace(/^lỗi\s*:?\s*/i, '').trim() || clean;
-  }
-  // Format cũ: "HTTP 4xx - <lý do>"
-  if (upper.includes('HTTP 400') || upper.includes('HTTP 422') || upper.includes('HTTP 500')) {
-    const parts = clean.split('-');
-    if (parts.length > 1) {
-      return parts.slice(1).join('-').trim();
-    }
-  }
-
-  if (upper.includes('THẤT BẠI') || upper.includes('ERROR') || upper.includes('FAIL')) {
-    let errorPart = clean;
-    const splitIndex = clean.indexOf(' Kỳ vọng');
-    if (splitIndex !== -1) {
-      errorPart = clean.slice(0, splitIndex);
-    }
-    errorPart = errorPart.replace(/^(THẤT BẠI|ERROR|FAIL)\s*(\([^)]+\))?:\s*/i, '');
-    return errorPart;
-  }
-  return clean; // Fallback to returning the full error message
-};
 
 export default GeneticOptimize;

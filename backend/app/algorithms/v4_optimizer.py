@@ -363,7 +363,11 @@ class V4TestSuiteOptimizer:
             validation_score = frac_valid
         elif category == "NEGATIVE_SECURITY":
             validation_score = 1.0 if any("SECURITY" in n for n in nodes) else 0.0
-        else: # NEGATIVE_FUNCTIONAL / BOUNDARY
+        elif category == "BOUNDARY":
+            # BOUNDARY test cases usually should be valid but at extreme values.
+            # Rewarding frac_valid increases the "Success" rate.
+            validation_score = frac_valid
+        else: # NEGATIVE_FUNCTIONAL
             validation_score = 0.0 if is_valid else 1.0
             
         boundary_coverage = min(1.0, sum(1 for n in nodes if "MIN" in n or "MAX" in n) / max(len(self.schema), 1))
