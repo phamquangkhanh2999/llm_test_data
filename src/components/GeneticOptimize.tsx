@@ -410,7 +410,7 @@ export const GeneticOptimize: React.FC = () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         specification_id: specId || 'local',
-        algorithm: 'ga_hc',
+        algorithm: 'ga',
         initial_seeds: initialSeeds,
         schema_rules: storeSchema,
         llm_provider: llmProvider,
@@ -1401,7 +1401,7 @@ export const GeneticOptimize: React.FC = () => {
                     zIndex: 5,
                   }}
                 >
-                  <ColHeader en='Test Code' vi='Mã ca kiểm thử' />
+                  <ColHeader en='Test Code' vi='Mã ca kiểm thử' minWidth={100} />
                   <ColHeader en='LLM Source' vi='Nguồn LLM' width={120} />
                   <ColHeader en='GA Operator' vi='Toán tử GA' width={150} />
                   {schema.map((f: any) => (

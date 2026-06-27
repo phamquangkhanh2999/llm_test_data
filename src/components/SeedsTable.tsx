@@ -284,7 +284,7 @@ export const SeedsTable: React.FC<SeedsTableProps> = ({
                 const absoluteIdx = (currentPage - 1) * pageSize + idx;
                 const fitnessRecord = fitnessRecords[absoluteIdx];
                 const fitnessVal = fitnessRecord?.finalFitness ?? fitnessRecord?.hcFitness ?? fitnessRecord?.fitness ?? seed.fitness ?? seed.gaFitness ?? null;
-                const tcId = seed.tcId || `TC-${String(absoluteIdx + 1).padStart(4, '0')}`;
+                const tcId = seed.tcId || `TC-${String(absoluteIdx + 1).padStart(3, '0')}`;
                 const seedValues = seed.values || seed.data || seed;
 
                 return (

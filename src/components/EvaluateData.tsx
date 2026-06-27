@@ -394,7 +394,7 @@ export const EvaluateData: React.FC = () => {
       const rowData: string[] = [];
 
       // 1. Mã ca kiểm thử
-      rowData.push(`TC-${String(124 + i).padStart(5, '0')}`);
+      rowData.push(`TC-${String(i + 1).padStart(3, '0')}`);
 
       // 2. Phương pháp
       rowData.push(row.method || '');
@@ -436,7 +436,7 @@ export const EvaluateData: React.FC = () => {
       const cleaned: any = {};
 
       // 1. Metadata khớp bảng Xem trước
-      cleaned.id = `TC-${String(124 + i).padStart(5, '0')}`;
+      cleaned.id = `TC-${String(i + 1).padStart(3, '0')}`;
       cleaned.method = row.method || null;
 
       // 2. Các trường dữ liệu động
@@ -1075,7 +1075,7 @@ export const EvaluateData: React.FC = () => {
                       zIndex: 5,
                     }}
                   >
-                    <ColHeader en='Test Code' vi='Mã ca kiểm thử' />
+                    <ColHeader en='Test Code' vi='Mã ca kiểm thử' minWidth={100} />
                     {parsedSchema.map((f: any) => (
                       <ColHeader
                         key={f.name}
@@ -1112,7 +1112,7 @@ export const EvaluateData: React.FC = () => {
                           }}
                         >
                           <div style={{ fontWeight: 600 }}>
-                            TC-{String(124 + i).padStart(5, '0')}
+                            TC-{String(i + 1).padStart(3, '0')}
                           </div>
                           {row.method && (
                             <div style={{ marginTop: 5 }}>

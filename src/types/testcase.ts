@@ -155,7 +155,7 @@ export function assignTcIds(seeds: any[]): TestCase[] {
   return seeds.map((seed, idx) => {
     const cats = seed.categories || (seed.category ? [seed.category] : [inferCategory(seed)]);
     return {
-      tcId: seed.tcId || `TC-${String(idx + 1).padStart(4, '0')}`,
+      tcId: seed.tcId || `TC-${String(idx + 1).padStart(3, '0')}`,
       method: seed.method || 'hybrid',
       scenario: seed.scenario || seed.desc || seed.description || '',
       expectedResult: seed.expectedResult || '',

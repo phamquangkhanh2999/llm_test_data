@@ -170,6 +170,7 @@ export const HillClimbingOptimize: React.FC = () => {
         initialPopulation: storeSeeds,
         step2_eval_result: evaluationResult,
         step3_metrics: evaluationMetrics,
+        gaResult: gaResult,
         step4_optimized_data: hcResultMapped,
         step4_history: progressHistory,
         coverage_rate: summaryData.coverageRate || 96,
@@ -342,7 +343,7 @@ export const HillClimbingOptimize: React.FC = () => {
                     zIndex: 5,
                   }}
                 >
-                  <ColHeader en='Test Code' vi='Mã ca kiểm thử' />
+                  <ColHeader en='Test Code' vi='Mã ca kiểm thử' minWidth={100} />
                   <ColHeader en='Origin' vi='Nguồn' width={120} />
                   {schema.map((f: any) => (
                     <ColHeader

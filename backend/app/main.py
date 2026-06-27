@@ -1671,16 +1671,18 @@ def api_save_generation_history(payload: dict, db: Session = Depends(get_db)):
             spec_name=payload.get("spec_name", "Unknown Session"),
             coverage_rate=payload.get("coverage_rate", 0.0),
             total_cases=len(payload.get("step4_optimized_data", [])),
-            step1_raw_text=payload.get("rawText", ""),
+            step1_raw_text=payload.get("raw_text") or payload.get("rawText", ""),
             step2_schema=json.dumps({
-                "fields": payload.get("schema", []),
+                "fields": payload.get("fields") or payload.get("schema", []),
                 "business_rules": payload.get("businessRules", []),
                 "constraints": payload.get("constraints", [])
             }),
             step3_seeds=json.dumps({
                 "seeds": payload.get("initialPopulation", []),
                 "evaluation": payload.get("step2_eval_result", None),
-                "metrics": payload.get("step3_metrics", None)
+                "metrics": payload.get("step3_metrics", None),
+                "gaResult": payload.get("gaResult", []),
+                "step4_history": payload.get("step4_history", [])
             }),
             step4_optimized_data=json.dumps(payload.get("step4_optimized_data", []))
         )

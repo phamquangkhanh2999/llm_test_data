@@ -418,9 +418,9 @@ export const ExportReportCenter: React.FC = () => {
           {activeStep === 3 && (
             <StepOptimizedView
               forceTab="ga"
-              rows={snapshot.gaResult || snapshot.step4_history?.[snapshot.step4_history.length - 1]?.best_solution || []}
-              coverage={snapshot.coverage_rate || snapshot.step4_history?.[snapshot.step4_history.length - 1]?.coverage}
-              progressHistory={snapshot.step4_history || snapshot.step4_progress_history || []}
+              rows={snapshot.gaResult || snapshot.step3_seeds?.gaResult || snapshot.step4_history?.[snapshot.step4_history.length - 1]?.best_solution || snapshot.step3_seeds?.step4_history?.[snapshot.step3_seeds?.step4_history?.length - 1]?.best_solution || []}
+              coverage={snapshot.coverage_rate || snapshot.step4_history?.[snapshot.step4_history.length - 1]?.coverage || snapshot.step3_seeds?.step4_history?.[snapshot.step3_seeds?.step4_history?.length - 1]?.coverage}
+              progressHistory={snapshot.step4_history || snapshot.step3_seeds?.step4_history || snapshot.step4_progress_history || []}
               maStats={snapshot.step4_ma_stats || snapshot.maStats}
               snapshot={snapshot}
               onExportCSV={handleExportCSV}
@@ -433,7 +433,7 @@ export const ExportReportCenter: React.FC = () => {
               forceTab="hc"
               rows={snapshot.step4_optimized_data || snapshot.hcResult || []}
               coverage={snapshot.coverage_rate}
-              progressHistory={snapshot.step4_history || snapshot.step4_progress_history || []}
+              progressHistory={snapshot.step4_history || snapshot.step3_seeds?.step4_history || snapshot.step4_progress_history || []}
               maStats={snapshot.step4_ma_stats || snapshot.maStats}
               snapshot={snapshot}
               onExportCSV={handleExportCSV}
@@ -657,7 +657,7 @@ const StepEvaluationView: React.FC<{ data: any }> = ({ data }) => {
       )}
 
       {/* AI Evaluation */}
-      {evalData && (
+      {evalData && (evalData.score > 0 || (evalData.strengths && evalData.strengths.length > 0)) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Điểm AI tổng quan:</div>
@@ -751,8 +751,8 @@ const StepOptimizedView: React.FC<{
     fitness: tc.finalFitness ?? tc.hcFitness ?? tc.gaFitness ?? tc.fitness ?? 0,
   });
 
-  const gaRows = (snapshot?.gaResult || []).map(flattenTc);
-  const hcRows = (snapshot?.hcResult || snapshot?.step4_optimized_data || rows || []).map(flattenTc);
+  const gaRows = (snapshot?.gaResult || snapshot?.step3_seeds?.gaResult || (forceTab === 'ga' ? rows : []) || []).map(flattenTc);
+  const hcRows = (snapshot?.hcResult || snapshot?.step4_optimized_data || (forceTab === 'hc' ? rows : []) || []).map(flattenTc);
   const activeRows = activeTab === 'ga' ? gaRows : hcRows;
 
   // Lấy keys từ data (bỏ metadata keys)

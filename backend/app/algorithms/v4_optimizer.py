@@ -384,9 +384,9 @@ class V4TestSuiteOptimizer:
         if "🫥" in str_all or "💩" in str_all or "🤷" in str_all: noise_score += 0.6
         if len(str_all) > 500 and "A" * 50 in str_all: noise_score += 0.4
         
-        # 3. Tính scalar fitness (scale 100)
-        scalar = (0.5 * blended_validation + 0.3 * goal_match + 0.2 * diversity_score) * 100
-        scalar = max(0.0, scalar - noise_score * 10)
+        # 3. Tính scalar fitness (scale 0-1)
+        scalar = (0.5 * blended_validation + 0.3 * goal_match + 0.2 * diversity_score)
+        scalar = max(0.0, scalar - noise_score * 0.1)
         
         # Không giết hẳn cá thể nếu trượt mục tiêu (giữ hướng tìm kiếm)
         if goal_match == 0:
