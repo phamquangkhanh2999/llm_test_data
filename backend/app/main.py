@@ -627,10 +627,17 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
             
             if algo in ["ga_hc", "ga"]:
                 optimizer.initialize_suite(llm_seeds_mapped)
-                for _ in range(config_dict["generations"]):
+                progress_history = []
+                f0_stats = optimizer.get_stats()
+                f0_stats["generation"] = 0
+                progress_history.append(f0_stats)
+                for gen_idx in range(config_dict["generations"]):
                     if req.job_id and ACTIVE_JOBS.get(req.job_id) == "cancelled":
                         raise HTTPException(status_code=499, detail="Job cancelled by user")
                     optimizer.evolve_one_generation()                
+                    gen_stats = optimizer.get_stats()
+                    gen_stats["generation"] = gen_idx + 1
+                    progress_history.append(gen_stats)
                 
                 # Use assemble_optimized_dataset to get 100% deduplicated data
                 max_out = req.pop_size if hasattr(req, 'pop_size') else config_dict.get("popSize", 50)
@@ -1118,6 +1125,7 @@ def api_optimize_testcase_dataset(req: OptimizeRequest, db: Session = Depends(ge
             "comparisonData": comparison_data,
             "fitnessReport": fitness_report,
             "exportData": export_data,
+            "progressHistory": progress_history if 'progress_history' in locals() else [],
             "maStats": optimizer.get_stats() if algo in ["ga_hc", "ga"] else None
         }
     except Exception as e:

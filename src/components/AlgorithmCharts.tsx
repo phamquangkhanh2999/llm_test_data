@@ -164,7 +164,7 @@ export const AlgorithmCharts: React.FC<{ snapshotData?: any }> = ({ snapshotData
   const initialSeeds = snapshotData ? (snapshotData.step3_seeds?.seeds || []) : storeData.initialSeeds;
   const gaResult = snapshotData ? (snapshotData.step4_optimized_data || []) : storeData.gaResult;
   const hcResult = snapshotData ? (snapshotData.step4_optimized_data || []) : storeData.hcResult;
-  const gaProgressHistory = snapshotData ? [] : storeData.gaProgressHistory;
+  const gaProgressHistory = snapshotData ? (snapshotData.step4_history || snapshotData.gaProgressHistory || []) : storeData.gaProgressHistory;
   const evaluationMetrics = snapshotData ? (snapshotData.step3_seeds?.metrics || null) : storeData.evaluationMetrics;
   const parsedSchema = snapshotData ? (snapshotData.step2_schema?.fields || []) : storeData.parsedSchema;
 
