@@ -862,8 +862,14 @@ const StepOptimizedView: React.FC<{
               <tr>
                 {/* Các cột cố định — khớp hoàn toàn với Bước 4 GA */}
                 <ColHeader en="Test Code" vi="Mã ca kiểm thử" minWidth={110} />
-                <ColHeader en="LLM Source" vi="Nguồn LLM" width={120} />
-                <ColHeader en={activeTab === 'ga' ? 'GA Operator' : 'HC Step'} vi={activeTab === 'ga' ? 'Toán tử GA' : 'Bước Leo đồi'} width={175} />
+                {activeTab === 'ga' ? (
+                  <>
+                    <ColHeader en="LLM Source" vi="Nguồn LLM" width={120} />
+                    <ColHeader en="GA Operator" vi="Toán tử GA" width={175} />
+                  </>
+                ) : (
+                  <ColHeader en="Origin" vi="Nguồn" width={120} />
+                )}
                 {/* Các trường dữ liệu động (email, password, ...) */}
                 {dataKeys.map(k => (
                   <ColHeader key={k} en={k} vi={`Trường dữ liệu`} minWidth={150} />
@@ -877,6 +883,7 @@ const StepOptimizedView: React.FC<{
             <tbody>
               {activeRows.map((tc: any, i: number) => {
                 const isSeed = String(tc.origin || '').toLowerCase().includes('seed');
+                const originalGaTc = activeTab === 'hc' && gaRows && gaRows[i] ? gaRows[i] : null;
                 // ── LLM Source: chỉ xét origin (seed vs non-seed) ──────────────
                 // ── GA Operator: chỉ xét ma_action (toán tử GA/HC thực sự) ─────
                 // Nếu ma_action null/rỗng/là "LLM*" → mặc định "GA" hoặc "HC"
@@ -919,42 +926,64 @@ const StepOptimizedView: React.FC<{
                       {displayCode}
                     </td>
 
-                    {/* LLM Source badge */}
-                    <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
-                      <span style={{
-                        display: 'inline-flex',
-                        padding: '3px 8px',
-                        borderRadius: 4,
-                        fontSize: 10.5,
-                        fontWeight: 600,
-                        backgroundColor: isSeed ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-subtle)',
-                        border: `1px solid ${isSeed ? 'rgba(59, 130, 246, 0.2)' : 'var(--border-subtle)'}`,
-                        color: isSeed ? '#3b82f6' : 'var(--text-secondary)',
-                      }}>
-                        {isSeed ? 'LLM (Seed)' : 'LLM'}
-                      </span>
-                    </td>
+                    {activeTab === 'ga' ? (
+                      <>
+                        {/* LLM Source badge */}
+                        <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            padding: '3px 8px',
+                            borderRadius: 4,
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                            backgroundColor: isSeed ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-subtle)',
+                            border: `1px solid ${isSeed ? 'rgba(59, 130, 246, 0.2)' : 'var(--border-subtle)'}`,
+                            color: isSeed ? '#3b82f6' : 'var(--text-secondary)',
+                          }}>
+                            {isSeed ? 'LLM (Seed)' : 'LLM'}
+                          </span>
+                        </td>
 
-                    {/* GA Operator / HC Step badge */}
-                    <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
-                      <span style={{
-                        display: 'inline-flex',
-                        padding: '3px 8px',
-                        borderRadius: 4,
-                        fontSize: 10.5,
-                        fontWeight: 600,
-                        backgroundColor: badge.bg,
-                        border: `1px solid ${badge.border}`,
-                        color: badge.color,
-                      }}>
-                        {badge.label}
-                      </span>
-                    </td>
+                        {/* GA Operator / HC Step badge */}
+                        <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            padding: '3px 8px',
+                            borderRadius: 4,
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                            backgroundColor: badge.bg,
+                            border: `1px solid ${badge.border}`,
+                            color: badge.color,
+                          }}>
+                            {badge.label}
+                          </span>
+                        </td>
+                      </>
+                    ) : (
+                      <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          padding: '3px 8px',
+                          borderRadius: 4,
+                          fontSize: 10.5,
+                          fontWeight: 600,
+                          backgroundColor: 'var(--surface-subtle)',
+                          border: '1px solid var(--border-subtle)',
+                          color: 'var(--text-secondary)',
+                        }}>
+                          {isSeed ? 'LLM (Seed)' : (tc.origin === 'GA+HC' ? 'HC' : (tc.origin || 'HC'))}
+                        </span>
+                      </td>
+                    )}
 
                     {/* Các trường dữ liệu động — mono font */}
                     {dataKeys.map(k => {
                       const val = tc[k];
                       const empty = val === undefined || val === null || String(val) === '';
+                      const originalVal = originalGaTc ? originalGaTc[k] : undefined;
+                      const isChanged = originalVal !== undefined && String(val) !== String(originalVal);
+
                       return (
                         <td key={k} style={{
                           padding: '5px 8px',
@@ -964,8 +993,22 @@ const StepOptimizedView: React.FC<{
                           maxWidth: 250,
                           wordBreak: 'break-word',
                           color: 'var(--text-primary)',
+                          ...(activeTab === 'hc' && isChanged ? {
+                            backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                            borderLeft: '2px solid var(--color-emerald)'
+                          } : {})
                         }}>
+                          {activeTab === 'hc' && isChanged && (
+                            <div style={{ fontSize: 9, color: 'var(--color-emerald)', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>
+                              ✨ Đã tối ưu ép biên
+                            </div>
+                          )}
                           {empty ? <span style={{ color: 'var(--text-muted)' }}>—</span> : String(val)}
+                          {activeTab === 'hc' && isChanged && (
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, textDecoration: 'line-through' }}>
+                              Gốc: {String(originalVal)}
+                            </div>
+                          )}
                         </td>
                       );
                     })}

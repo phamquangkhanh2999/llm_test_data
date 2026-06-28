@@ -371,7 +371,7 @@ export const HillClimbingOptimize: React.FC = () => {
                   const isSeed = String(tc.origin || '')
                     .toLowerCase()
                     .includes('seed');
-                  const originStr = isSeed ? 'LLM (Seed)' : tc.origin || 'HC';
+                  const originStr = isSeed ? 'LLM (Seed)' : (tc.origin === 'GA+HC' ? 'HC' : (tc.origin || 'HC'));
                   const resultStr = String(tc.expectedResult || tc.expected_result || '');
                   const cleanResult = resultStr.toUpperCase();
                   // Cùng logic verdict với getExpectedResultShort: ưu tiên dấu hiệu lỗi, không dùng mã HTTP.
