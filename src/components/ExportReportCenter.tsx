@@ -88,8 +88,17 @@ const getOriginBadge = (origin: string) => {
       border: 'rgba(6, 182, 212, 0.2)',
       color: 'var(--color-teal)',
     };
+  if (clean === 'llm' || clean === 'llm+polished' || clean === 'hof_padding') {
+    return {
+      label: 'GA',
+      bg: 'rgba(59, 130, 246, 0.08)',
+      border: 'rgba(59, 130, 246, 0.2)',
+      color: '#3b82f6',
+    };
+  }
+
   return {
-    label: origin,
+    label: origin === 'LLM' || origin === 'LLM+Polished' ? 'GA' : origin,
     bg: 'var(--surface-subtle)',
     border: 'var(--border-subtle)',
     color: 'var(--text-secondary)',
