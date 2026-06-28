@@ -84,57 +84,114 @@ class LocalParetoOptimizer:
         return current, logs
 
     def _generate_neighbors(self, tc: dict) -> list:
+        """
+        Tạo không gian lân cận N(s) cho mỗi ca kiểm thử — khớp đồ án Chương 3:
+
+        - Số  : tại min, tại max, min-1 (ngoài biên dưới), max+1 (ngoài biên trên),
+                min+1 (gần biên dưới), max-1 (gần biên trên), ±delta nhỏ
+        - Chuỗi: rỗng "", tại min_length, tại max_length, vượt max_length +1 ký tự,
+                dưới min_length -1 ký tự, khoảng trắng đầu cuối, ký tự đặc biệt
+        - Enum  : giá trị hợp lệ khác, giá trị không thuộc danh sách
+        """
         neighbors = []
-        
-        from .mutation_planner import MutationPlanner, MutationExecutor
+
+        from .v4_optimizer import extract_domain_vocab, generate_random_field_value
         import uuid
-        
-        # Guided steps for fields
+        import random as _rnd
+        import string as _string
+
+        vocab = extract_domain_vocab([], self.schema)
+
         for field in self.schema:
             name = field["name"]
             ftype = field.get("type", "string")
-            
-            steps = []
+            current_val = tc.get(name)
+
+            candidate_values = []
+
             if ftype == "number":
-                steps = ["+1", "-1", "boundary_max"]
+                min_v = field.get("minValue")
+                max_v = field.get("maxValue")
+
+                try:
+                    cur_num = float(current_val) if current_val is not None else 0.0
+                except (ValueError, TypeError):
+                    cur_num = 0.0
+
+                is_int = (min_v is None or float(min_v).is_integer()) and \
+                         (max_v is None or float(max_v).is_integer())
+
+                if min_v is not None:
+                    mn = int(min_v) if is_int else float(min_v)
+                    candidate_values += [
+                        mn,                  # tại biên dưới
+                        mn + (1 if is_int else 0.01),  # gần biên dưới (bên trong)
+                        mn - (1 if is_int else 0.01),  # ngoài biên dưới
+                    ]
+                if max_v is not None:
+                    mx = int(max_v) if is_int else float(max_v)
+                    candidate_values += [
+                        mx,                  # tại biên trên
+                        mx - (1 if is_int else 0.01),  # gần biên trên (bên trong)
+                        mx + (1 if is_int else 0.01),  # ngoài biên trên
+                    ]
+                # Thay đổi nhỏ xung quanh giá trị hiện tại
+                candidate_values += [cur_num + 1, cur_num - 1]
+
+            elif field.get("allowedValues"):
+                allowed = field["allowedValues"]
+                # Giá trị hợp lệ khác với giá trị hiện tại
+                others = [v for v in allowed if v != current_val]
+                candidate_values.extend(others[:3])
+                # Giá trị ngoài danh sách cho phép
+                candidate_values.append("INVALID_ENUM_VAL")
+
             else:
-                steps = ["approach_boundary", "+2 chars", "-2 chars", "attack_sqli"]
-                
-            for step in random.sample(steps, min(2, len(steps))):
-                neighbors.append({
-                    "id": str(uuid.uuid4()),
-                    "values": deepcopy(tc),
-                    "hc_step": step,
-                    "target_field": name
-                })
-                
-        # LLM Batch Execution (Sử dụng dummy mutation nếu không có LLM)
-        from .v4_optimizer import extract_domain_vocab, generate_random_field_value
-        vocab = extract_domain_vocab([], self.schema)
-        
-        mutated_neighbors = []
-        for nb in neighbors:
-            field_name = nb["target_field"]
-            field_schema = next((f for f in self.schema if f["name"] == field_name), None)
-            if not field_schema: continue
-            
-            step = nb["hc_step"]
-            val = nb["values"].get(field_name)
-            
-            if "attack" in step and field_schema.get("type") == "string":
-                nb["values"][field_name] = "' OR 1=1 --"
-            elif "boundary" in step:
-                if field_schema.get("type") == "number":
-                    nb["values"][field_name] = field_schema.get("maxValue", 999) + 1
-                else:
-                    nb["values"][field_name] = "A" * (field_schema.get("maxLength", 50) + 1)
-            else:
-                # Random noise
-                nb["values"][field_name] = generate_random_field_value(field_schema, "valid", vocab)
-                
-            mutated_neighbors.append(nb["values"])
-            
-        return mutated_neighbors
+                # Chuỗi: tạo lân cận theo độ dài và nội dung
+                min_l = field.get("minLength", 1)
+                max_l = field.get("maxLength", 50)
+                cur_str = str(current_val) if current_val is not None else ""
+
+                # Rỗng (test INVALID_REQUIRED)
+                candidate_values.append("")
+
+                # Tại biên dưới (min_length)
+                if min_l is not None and min_l > 0:
+                    candidate_values.append("a" * int(min_l))
+                    # Dưới biên dưới (ngoài biên)
+                    if int(min_l) > 1:
+                        candidate_values.append("a" * (int(min_l) - 1))
+
+                # Tại biên trên (max_length)
+                if max_l is not None:
+                    candidate_values.append("a" * int(max_l))
+                    # Vượt biên trên +1 ký tự
+                    candidate_values.append("a" * (int(max_l) + 1))
+
+                # Khoảng trắng đầu cuối
+                if cur_str:
+                    candidate_values.append("  " + cur_str + "  ")
+
+                # Ký tự đặc biệt
+                candidate_values.append(cur_str + "@#$")
+
+                # Email: thêm biến thể không hợp lệ nếu là email field
+                if ftype == "email" or "email" in name.lower():
+                    candidate_values += ["invalid-email", "name@", "@domain.com"]
+
+                # Security payload (SQL injection / XSS)
+                candidate_values.append("' OR 1=1 --")
+
+            # Tạo neighbor dict cho mỗi candidate value
+            for cand_val in candidate_values:
+                nb = dict(tc)
+                nb[name] = cand_val
+                neighbors.append(nb)
+
+        # Giới hạn để tránh bùng nổ kết hợp: lấy mẫu tối đa 20 lân cận
+        _rnd.shuffle(neighbors)
+        return neighbors[:20]
+
 
     def _dominates(self, a_vec: dict, b_vec: dict) -> bool:
         # Lexicographic Constraints

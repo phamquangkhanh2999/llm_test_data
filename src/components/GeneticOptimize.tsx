@@ -30,7 +30,7 @@ import {
 import { config } from '../config';
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
-import { getExpectedResultShort, getExpectedError } from './EvaluateData';
+import { getExpectedError, getExpectedResultShort } from './EvaluateData';
 
 // =============================================================================
 //  GENETIC ALGORITHM TỐI ƯU (Bước 4 Stitch)
@@ -888,8 +888,8 @@ export const GeneticOptimize: React.FC = () => {
         </div>
       )}
 
-      {/* Chỉ số GA */}
-      {ma && (
+      {/* Chỉ số GA (Đã ẩn theo yêu cầu) */}
+      {false && ma && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
           {/* 1. KẾT QUẢ CUỐI CÙNG */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -1416,10 +1416,6 @@ export const GeneticOptimize: React.FC = () => {
                   <ColHeader en='Expected Error' vi='Lỗi mong muốn' minWidth={200} />
                   <ColHeader en='Improvement Goal' vi='Mục tiêu cải tiến' minWidth={200} />
                   <ColHeader en='Fitness' vi='Fitness (0–1)' width={90} align='right' />
-                  <ColHeader en='ValidationScore' vi='Hợp lệ (0–1)' width={100} align='right' />
-                  <ColHeader en='BoundaryScore' vi='Biên (0–1)' width={90} align='right' />
-                  <ColHeader en='DiversityScore' vi='Đa dạng (0–1)' width={90} align='right' />
-                  <ColHeader en='PriorityScore' vi='Ưu tiên (0–1)' width={90} align='right' />
                 </tr>
               </thead>
               <tbody>
@@ -1449,7 +1445,7 @@ export const GeneticOptimize: React.FC = () => {
                     >
                       <td
                         style={{
-                          padding: '10px 16px',
+                          padding: '5px 8px',
                           fontFamily: 'var(--font-mono)',
                           color: 'var(--text-secondary)',
                           verticalAlign: 'top',
@@ -1460,7 +1456,7 @@ export const GeneticOptimize: React.FC = () => {
                       </td>
 
                       {/* Nguồn LLM */}
-                      <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
+                      <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
                         <span
                           style={{
                             display: 'inline-flex',
@@ -1482,7 +1478,7 @@ export const GeneticOptimize: React.FC = () => {
                       </td>
 
                       {/* Toán tử GA */}
-                      <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
+                      <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
                         <span
                           style={{
                             display: 'inline-flex',
@@ -1507,11 +1503,11 @@ export const GeneticOptimize: React.FC = () => {
                           <td
                             key={f.name}
                             style={{
-                              padding: '10px 16px',
+                              padding: '5px 8px',
                               verticalAlign: 'top',
                               fontFamily: 'var(--font-mono)',
                               fontSize: 12,
-                              maxWidth: 240,
+                              maxWidth: 250,
                               wordBreak: 'break-word',
                               color: 'var(--text-primary)',
                             }}
@@ -1526,8 +1522,8 @@ export const GeneticOptimize: React.FC = () => {
                       })}
 
                       {/* Kết quả mong muốn */}
-                      <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                      <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
+                        <div style={{ maxWidth: 250, wordBreak: 'break-word', lineHeight: '1.5' }}>
                           {getExpectedResultShort(tc.expectedResult) === 'Error' ? (
                             <span
                               style={{ color: 'var(--error)', fontWeight: 700, marginRight: '4px' }}
@@ -1548,8 +1544,8 @@ export const GeneticOptimize: React.FC = () => {
                       </td>
 
                       {/* Lỗi mong muốn */}
-                      <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                      <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
+                        <div style={{ maxWidth: 250, wordBreak: 'break-word', lineHeight: '1.5' }}>
                           {getExpectedResultShort(tc.expectedResult) === 'Error' ? (
                             <span style={{ color: 'var(--error)', fontWeight: 500 }}>
                               {getExpectedError(tc.expectedResult)}
@@ -1565,11 +1561,11 @@ export const GeneticOptimize: React.FC = () => {
                       {/* Mục tiêu cải tiến (Scenario / Rationale) */}
                       <td
                         style={{
-                          padding: '10px 16px',
+                          padding: '5px 8px',
                           verticalAlign: 'top',
                           fontSize: 12,
                           color: 'var(--text-primary)',
-                          minWidth: 200,
+                          maxWidth: 250,
                         }}
                       >
                         {tc.rationale || tc.scenario || (
@@ -1580,7 +1576,7 @@ export const GeneticOptimize: React.FC = () => {
                       {/* Fitness sau GA */}
                       <td
                         style={{
-                          padding: '10px 16px',
+                          padding: '5px 8px',
                           textAlign: 'right',
                           fontWeight: 700,
                           color: 'var(--brand-primary)',
@@ -1595,211 +1591,6 @@ export const GeneticOptimize: React.FC = () => {
                             : '0.000'}
                       </td>
 
-                      {/* ValidationScore - từ backend */}
-                      <td
-                        style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}
-                      >
-                        {(() => {
-                          let raw = tc.validationScore ?? tc.validation_score;
-                          if (raw == null && typeof tc.validation === 'number') raw = tc.validation;
-                          if (raw == null && typeof tc.rule === 'number') raw = tc.rule;
-                          const val = raw != null && !isNaN(Number(raw)) ? (Number(raw) > 1 ? Number(raw) / 100 : Number(raw)) : null;
-                          if (val == null)
-                            return (
-                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>
-                            );
-                          const pct = Math.round(val * 100);
-                          const color = val >= 0.8 ? '#10b981' : val >= 0.5 ? '#f59e0b' : '#ef4444';
-                          return (
-                            <div
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'flex-end',
-                                gap: 2,
-                              }}
-                            >
-                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>
-                                {val.toFixed(2)}
-                              </span>
-                              <div
-                                style={{
-                                  width: 48,
-                                  height: 4,
-                                  borderRadius: 2,
-                                  background: 'var(--border-subtle)',
-                                  overflow: 'hidden',
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    width: `${pct}%`,
-                                    height: '100%',
-                                    background: color,
-                                    borderRadius: 2,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </td>
-
-                      {/* BoundaryScore - từ backend */}
-                      <td
-                        style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}
-                      >
-                        {(() => {
-                          let raw = tc.boundaryScore ?? tc.boundary_score;
-                          if (raw == null && typeof tc.boundary === 'number') raw = tc.boundary;
-                          const val = raw != null && !isNaN(Number(raw)) ? (Number(raw) > 1 ? Number(raw) / 100 : Number(raw)) : null;
-                          if (val == null)
-                            return (
-                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>
-                            );
-                          const pct = Math.round(val * 100);
-                          const color = val >= 0.7 ? '#6366f1' : val >= 0.4 ? '#f59e0b' : '#94a3b8';
-                          return (
-                            <div
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'flex-end',
-                                gap: 2,
-                              }}
-                            >
-                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>
-                                {val.toFixed(2)}
-                              </span>
-                              <div
-                                style={{
-                                  width: 48,
-                                  height: 4,
-                                  borderRadius: 2,
-                                  background: 'var(--border-subtle)',
-                                  overflow: 'hidden',
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    width: `${pct}%`,
-                                    height: '100%',
-                                    background: color,
-                                    borderRadius: 2,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </td>
-
-                      {/* DiversityScore - tính FE từ origin uniqueness */}
-                      <td
-                        style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}
-                      >
-                        {(() => {
-                          // TC có nhiều loại origin khác nhau = diversity cao hơn seed
-                          const origin = String(tc.origin || tc.ma_action || '').toLowerCase();
-                          let val = 0.5; // default
-                          if (origin.includes('crossover')) val = 0.85;
-                          else if (origin.includes('mutation') && origin.includes('boundary'))
-                            val = 0.8;
-                          else if (origin.includes('mutation')) val = 0.72;
-                          else if (origin.includes('elite')) val = 0.65;
-                          else if (origin.includes('local') || origin.includes('ls')) val = 0.78;
-                          else if (origin.includes('seed')) val = 0.55;
-                          // nếu TC có categories rộng thì +
-                          const cats = Array.isArray(tc.categories) ? tc.categories.length : 1;
-                          val = Math.min(val + (cats - 1) * 0.04, 0.99);
-                          const pct = Math.round(val * 100);
-                          const color =
-                            val >= 0.75 ? '#06b6d4' : val >= 0.6 ? '#f59e0b' : '#94a3b8';
-                          return (
-                            <div
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'flex-end',
-                                gap: 2,
-                              }}
-                            >
-                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>
-                                {val.toFixed(2)}
-                              </span>
-                              <div
-                                style={{
-                                  width: 48,
-                                  height: 4,
-                                  borderRadius: 2,
-                                  background: 'var(--border-subtle)',
-                                  overflow: 'hidden',
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    width: `${pct}%`,
-                                    height: '100%',
-                                    background: color,
-                                    borderRadius: 2,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </td>
-
-                      {/* PriorityScore = fitness × validationScore */}
-                      <td
-                        style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}
-                      >
-                        {(() => {
-                          const fit =
-                            typeof tc.fitness === 'number' ? tc.fitness : (tc.gaFitness ?? 0);
-                          let rawVal = tc.validationScore ?? tc.validation_score;
-                          if (rawVal == null && typeof tc.validation === 'number') rawVal = tc.validation;
-                          if (rawVal == null && typeof tc.rule === 'number') rawVal = tc.rule;
-                          const valScore =
-                            rawVal != null && !isNaN(Number(rawVal)) ? (Number(rawVal) > 1 ? Number(rawVal) / 100 : Number(rawVal)) : fit;
-                          const priority = Math.min(fit * (0.5 + 0.5 * valScore), 1);
-                          const pct = Math.round(priority * 100);
-                          const color =
-                            priority >= 0.75 ? '#8b5cf6' : priority >= 0.5 ? '#f59e0b' : '#94a3b8';
-                          return (
-                            <div
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'flex-end',
-                                gap: 2,
-                              }}
-                            >
-                              <span style={{ fontWeight: 700, color, fontSize: 12 }}>
-                                {priority.toFixed(2)}
-                              </span>
-                              <div
-                                style={{
-                                  width: 48,
-                                  height: 4,
-                                  borderRadius: 2,
-                                  background: 'var(--border-subtle)',
-                                  overflow: 'hidden',
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    width: `${pct}%`,
-                                    height: '100%',
-                                    background: color,
-                                    borderRadius: 2,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </td>
                     </tr>
                   );
                 })}

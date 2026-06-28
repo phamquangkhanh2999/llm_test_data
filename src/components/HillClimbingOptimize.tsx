@@ -411,7 +411,7 @@ export const HillClimbingOptimize: React.FC = () => {
                     >
                       <td
                         style={{
-                          padding: '10px 16px',
+                          padding: '5px 8px',
                           fontFamily: 'var(--font-mono)',
                           color: 'var(--text-secondary)',
                           verticalAlign: 'top',
@@ -420,7 +420,7 @@ export const HillClimbingOptimize: React.FC = () => {
                       >
                         {`TC-HC-${String(i + 1).padStart(3, '0')}`}
                       </td>
-                      <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
+                      <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
                         <span
                           style={{
                             display: 'inline-flex',
@@ -446,11 +446,11 @@ export const HillClimbingOptimize: React.FC = () => {
                           <td
                             key={f.name}
                             style={{
-                              padding: '10px 16px',
+                              padding: '5px 8px',
                               verticalAlign: 'top',
                               fontFamily: 'var(--font-mono)',
                               fontSize: 12,
-                              maxWidth: 240,
+                              maxWidth: 250,
                               wordBreak: 'break-word',
                               color: 'var(--text-primary)',
                               backgroundColor: isChanged
@@ -492,8 +492,8 @@ export const HillClimbingOptimize: React.FC = () => {
                           </td>
                         );
                       })}
-                      <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                      <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
+                        <div style={{ maxWidth: 250, wordBreak: 'break-word', lineHeight: '1.5' }}>
                           {isError ? (
                             <span
                               style={{ color: 'var(--error)', fontWeight: 700, marginRight: '4px' }}
@@ -512,8 +512,8 @@ export const HillClimbingOptimize: React.FC = () => {
                           </span>
                         </div>
                       </td>
-                      <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                      <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
+                        <div style={{ maxWidth: 250, wordBreak: 'break-word', lineHeight: '1.5' }}>
                           {isError ? (
                             <span style={{ color: 'var(--error)', fontWeight: 500 }}>
                               {typeof tc.expectedResult === 'object'
@@ -527,8 +527,8 @@ export const HillClimbingOptimize: React.FC = () => {
                           )}
                         </div>
                       </td>
-                      <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        <div style={{ maxWidth: 340, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                      <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
+                        <div style={{ maxWidth: 250, wordBreak: 'break-word', lineHeight: '1.5' }}>
                           {tc.rationale ? (
                             <span style={{ color: 'var(--text-secondary)' }}>{tc.rationale}</span>
                           ) : (
@@ -537,7 +537,7 @@ export const HillClimbingOptimize: React.FC = () => {
                         </div>
                       </td>
                       <td
-                        style={{ padding: '10px 16px', textAlign: 'right', verticalAlign: 'top' }}
+                        style={{ padding: '5px 8px', textAlign: 'right', verticalAlign: 'top' }}
                       >
                         <div
                           style={{

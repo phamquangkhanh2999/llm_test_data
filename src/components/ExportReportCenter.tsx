@@ -9,6 +9,7 @@ import {
 import { useAppStore } from '../store/useAppStore';
 import { toast } from '../store/useToastStore';
 import { AlgorithmCharts } from './AlgorithmCharts';
+import { getExpectedResultShort, getExpectedError } from './EvaluateData';
 
 // =============================================================================
 //  TRUNG TÂM XUẤT KẾT QUẢ (BƯỚC 6)
@@ -723,7 +724,7 @@ const StepEvaluationView: React.FC<{ data: any }> = ({ data }) => {
   );
 };
 
-// ─── BƯỚC 4: Tối ưu GA & HC (tab) ──────────────────────────────────────────
+// ─── BƯỚC 3 & 4: Tối ưu GA & HC (tab) ─────────────────────────────────────
 const StepOptimizedView: React.FC<{
   rows: any[]; coverage: number; progressHistory: any[]; maStats: any;
   snapshot: any;
@@ -742,6 +743,9 @@ const StepOptimizedView: React.FC<{
   const gaRows = (snapshot?.gaResult || snapshot?.step3_seeds?.gaResult || (forceTab === 'ga' ? rows : []) || []).map(flattenTc);
   const hcRows = (snapshot?.hcResult || snapshot?.step4_optimized_data || (forceTab === 'hc' ? rows : []) || []).map(flattenTc);
   const activeRows = activeTab === 'ga' ? gaRows : hcRows;
+
+  // Prefix cho Test Code — giống hệt Bước 4 GA (TC-GA-001 / TC-HC-001)
+  const tcPrefix = activeTab === 'ga' ? 'TC-GA' : 'TC-HC';
 
   const META_KEYS = new Set(['values', 'id', 'tcid', 'rationale', 'origin', 'fitness', 'llmfitness',
     'gafitness', 'hcfitness', 'finalfitness', 'categories', 'validationscore', 'boundaryscore',
@@ -762,7 +766,7 @@ const StepOptimizedView: React.FC<{
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <SectionTitle icon={<Zap size={18} />} text={activeTab === 'ga' ? "Bộ test tối ưu (GA)" : "Bộ test tối ưu (HC)"} />
+        <SectionTitle icon={<Zap size={18} />} text={activeTab === 'ga' ? 'Bộ test tối ưu (GA)' : 'Bộ test tối ưu (HC)'} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} className="no-print">
           <span style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--color-emerald)', padding: '4px 12px', borderRadius: 20, fontWeight: 700, fontSize: 12 }}>
             Độ phủ: {Math.round((coverage || 0) > 1 ? (coverage || 0) : (coverage || 0) * 100)}%
@@ -839,72 +843,152 @@ const StepOptimizedView: React.FC<{
         </div>
       )}
 
-      {/* Bảng dữ liệu */}
+      {/* Bảng dữ liệu — format giống hệt Bước 4 GA */}
       {activeRows.length === 0 ? (
-        <Empty text={`Không có dữ liệu ${tab === 'ga' ? 'GA' : 'HC'} trong snapshot này.`} />
+        <Empty text={`Không có dữ liệu ${activeTab === 'ga' ? 'GA' : 'HC'} trong snapshot này.`} />
       ) : (
-        <div style={{ maxHeight: 400, overflow: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8, background: 'var(--surface-default)' }}>
-          <table className="premium-table" style={{ fontSize: 12, minWidth: 1400 }}>
-            <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-subtle)', zIndex: 2 }}>
+        <div style={{ maxHeight: 800, overflow: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8, background: 'var(--surface-default)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 1400 }}>
+            <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-subtle)', zIndex: 5, textAlign: 'left' }}>
               <tr>
-                <ColHeader en="Test Code" vi="Mã ca kiểm thử" />
+                {/* Các cột cố định — khớp hoàn toàn với Bước 4 GA */}
+                <ColHeader en="Test Code" vi="Mã ca kiểm thử" minWidth={110} />
                 <ColHeader en="LLM Source" vi="Nguồn LLM" width={120} />
-                <ColHeader en="GA Operator" vi="Toán tử GA" width={150} />
-                {dataKeys.map(k => <ColHeader key={k} en={k} vi="Trường dữ liệu" minWidth={150} />)}
+                <ColHeader en={activeTab === 'ga' ? 'GA Operator' : 'HC Step'} vi={activeTab === 'ga' ? 'Toán tử GA' : 'Bước Leo đồi'} width={175} />
+                {/* Các trường dữ liệu động (email, password, ...) */}
+                {dataKeys.map(k => (
+                  <ColHeader key={k} en={k} vi={`Trường dữ liệu`} minWidth={150} />
+                ))}
                 <ColHeader en="Expected Result" vi="Kết quả mong muốn" minWidth={220} />
                 <ColHeader en="Expected Error" vi="Lỗi mong muốn" minWidth={200} />
                 <ColHeader en="Improvement Goal" vi="Mục tiêu cải tiến" minWidth={200} />
-                <ColHeader en="Fitness" vi="Fitness (0-1)" width={90} align="right" />
-                <ColHeader en="ValidationScore" vi="Hợp lệ (0-1)" width={100} align="right" />
-                <ColHeader en="BoundaryScore" vi="Biên (0-1)" width={90} align="right" />
-                <ColHeader en="DiversityScore" vi="Đa dạng (0-1)" width={90} align="right" />
-                <ColHeader en="PriorityScore" vi="Ưu tiên (0-1)" width={90} align="right" />
+                <ColHeader en="Fitness" vi="Fitness (0–1)" width={90} align="right" />
               </tr>
             </thead>
             <tbody>
               {activeRows.map((tc: any, i: number) => {
                 const isSeed = String(tc.origin || '').toLowerCase().includes('seed');
-                const badge = getOriginBadge(tc.ma_action || tc.origin || (tab === 'ga' ? 'GA' : 'HC'));
+                // ── LLM Source: chỉ xét origin (seed vs non-seed) ──────────────
+                // ── GA Operator: chỉ xét ma_action (toán tử GA/HC thực sự) ─────
+                // Nếu ma_action null/rỗng/là "LLM*" → mặc định "GA" hoặc "HC"
+                const rawOp = tc.ma_action || tc.ga_action || tc.hc_action || '';
+                const isLLMOnlyOp = !rawOp || /^llm/i.test(rawOp);
+                const operatorSource = isLLMOnlyOp
+                  ? (activeTab === 'ga' ? 'GA' : 'HC')
+                  : rawOp;
+                const badge = getOriginBadge(operatorSource);
+
+                // Lấy kết quả mong muốn — giống Bước 4
+                const resShort = getExpectedResultShort(tc.expectedResult || tc.expected_result || '');
+                const isError = resShort === 'Error';
+                const expectedText = typeof tc.expectedResult === 'string'
+                  ? tc.expectedResult
+                  : tc.expectedResult?.statusText || String(tc.expectedResult || '');
+                // Expected Error — giống Bước 4
+                const expectedError = isError ? getExpectedError(tc.expectedResult || tc.expected_result || '') : 'Không có';
+                // Test Code prefix — TC-GA-001 hoặc TC-HC-001
+                const testCode = tc.tcId || tc.id || `${tcPrefix}-${String(i + 1).padStart(3, '0')}`;
+                // Đảm bảo Test Code có đúng prefix GA/HC
+                const displayCode = /^TC-(GA|HC)-\d+$/i.test(testCode) ? testCode : `${tcPrefix}-${String(i + 1).padStart(3, '0')}`;
+
                 return (
-                  <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)', background: i % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.01)' }}>
-                    <td style={{ ...tdS, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                      {tc.tcId || tc.id || `TC-${String(i + 1).padStart(3, '0')}`}
+                  <tr
+                    key={i}
+                    style={{
+                      borderTop: '1px solid var(--border-subtle)',
+                      background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
+                    }}
+                  >
+                    {/* Test Code — mono, TC-GA-001 format */}
+                    <td style={{
+                      padding: '5px 8px',
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--text-secondary)',
+                      verticalAlign: 'top',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {displayCode}
                     </td>
-                    <td style={{ ...tdS }}>
-                      <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 600, backgroundColor: isSeed ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-subtle)', border: `1px solid ${isSeed ? 'rgba(59, 130, 246, 0.2)' : 'var(--border-subtle)'}`, color: isSeed ? '#3b82f6' : 'var(--text-secondary)' }}>
+
+                    {/* LLM Source badge */}
+                    <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        padding: '3px 8px',
+                        borderRadius: 4,
+                        fontSize: 10.5,
+                        fontWeight: 600,
+                        backgroundColor: isSeed ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-subtle)',
+                        border: `1px solid ${isSeed ? 'rgba(59, 130, 246, 0.2)' : 'var(--border-subtle)'}`,
+                        color: isSeed ? '#3b82f6' : 'var(--text-secondary)',
+                      }}>
                         {isSeed ? 'LLM (Seed)' : 'LLM'}
                       </span>
                     </td>
-                    <td style={{ ...tdS }}>
-                      <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 600, backgroundColor: badge.bg, border: `1px solid ${badge.border}`, color: badge.color }}>
+
+                    {/* GA Operator / HC Step badge */}
+                    <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        padding: '3px 8px',
+                        borderRadius: 4,
+                        fontSize: 10.5,
+                        fontWeight: 600,
+                        backgroundColor: badge.bg,
+                        border: `1px solid ${badge.border}`,
+                        color: badge.color,
+                      }}>
                         {badge.label}
                       </span>
                     </td>
+
+                    {/* Các trường dữ liệu động — mono font */}
                     {dataKeys.map(k => {
                       const val = tc[k];
                       const empty = val === undefined || val === null || String(val) === '';
                       return (
-                        <td key={k} style={{ ...tdS, verticalAlign: 'top', maxWidth: 350, wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}>
+                        <td key={k} style={{
+                          padding: '5px 8px',
+                          verticalAlign: 'top',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 12,
+                          maxWidth: 250,
+                          wordBreak: 'break-word',
+                          color: 'var(--text-primary)',
+                        }}>
                           {empty ? <span style={{ color: 'var(--text-muted)' }}>—</span> : String(val)}
                         </td>
                       );
                     })}
-                    <td style={{ ...tdS, verticalAlign: 'top', maxWidth: 350, wordBreak: 'break-word' }}>
-                      {typeof tc.expectedResult === 'string' ? tc.expectedResult : tc.expectedResult?.statusText || String(tc.expectedResult || '')}
+
+                    {/* Expected Result — badge màu giống Bước 4 */}
+                    <td style={{ padding: '5px 8px', verticalAlign: 'top' }}>
+                      <div style={{ maxWidth: 250, wordBreak: 'break-word', lineHeight: '1.5' }}>
+                        {isError ? (
+                          <span style={{ color: 'var(--error)', fontWeight: 700, marginRight: 4 }}>Error:</span>
+                        ) : (
+                          <span style={{ color: '#10b981', fontWeight: 700, marginRight: 4 }}>Success:</span>
+                        )}
+                        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                          {expectedText}
+                        </span>
+                      </div>
                     </td>
-                    <td style={{ ...tdS, verticalAlign: 'top', color: 'var(--text-muted)', fontSize: 11, maxWidth: 350, wordBreak: 'break-word' }}>
-                      {tc.errorDescription || 'Không có'}
+
+                    {/* Expected Error */}
+                    <td style={{ padding: '5px 8px', verticalAlign: 'top', color: 'var(--text-muted)', fontSize: 11.5, maxWidth: 250, wordBreak: 'break-word' }}>
+                      {expectedError}
                     </td>
-                    <td style={{ ...tdS, verticalAlign: 'top', fontSize: 11.5 }}>
-                      {tc.rationale || tc.scenario || '—'}
+
+                    {/* Improvement Goal (scenario/rationale) */}
+                    <td style={{ padding: '5px 8px', verticalAlign: 'top', fontSize: 11.5, maxWidth: 250, wordBreak: 'break-word', color: 'var(--text-secondary)' }}>
+                      {tc.scenario || tc.rationale || '—'}
                     </td>
-                    <td style={{ ...tdS, fontWeight: 600, color: 'var(--color-emerald)', textAlign: 'right' }}>
+
+                    {/* Fitness */}
+                    <td style={{ padding: '5px 8px', fontWeight: 600, color: 'var(--color-emerald)', textAlign: 'right', verticalAlign: 'top' }}>
                       {tc.fitness != null ? Number(tc.fitness > 1 ? tc.fitness / 100 : tc.fitness).toFixed(3) : '—'}
                     </td>
-                    <td style={{ ...tdS, fontSize: 11 }}>{tc.validationScore != null ? tc.validationScore.toFixed(2) : '—'}</td>
-                    <td style={{ ...tdS, fontSize: 11 }}>{tc.boundaryScore != null ? tc.boundaryScore.toFixed(2) : '—'}</td>
-                    <td style={{ ...tdS, fontSize: 11 }}>{tc.diversityScore != null ? tc.diversityScore.toFixed(2) : '—'}</td>
-                    <td style={{ ...tdS, fontSize: 11 }}>{tc.priorityScore != null ? tc.priorityScore.toFixed(2) : '—'}</td>
                   </tr>
                 );
               })}

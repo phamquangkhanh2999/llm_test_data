@@ -304,22 +304,48 @@ def generate_random_field_value(field, mode="valid", domain_vocab=None):
         except (ValueError, TypeError):
             min_v, max_v = 0.0, 1000.0
 
+        # Khoảng vi phạm: đủ lớn để rõ ràng invalid, nhưng có nghĩa
+        range_size = max(abs(max_v - min_v), 1.0)
+        invalid_delta = max(1.0, range_size * 0.1)
+
         is_float = not min_v.is_integer() or not max_v.is_integer()
         if is_float:
             if mode in ("invalid", "ep_invalid"):
-                return min_v - 50.0 if random.random() > 0.5 else max_v + 50.0
+                # Fix #4: ±invalid_delta thay vì hardcode ±50
+                return (
+                    min_v - invalid_delta
+                    if random.random() > 0.5
+                    else max_v + invalid_delta
+                )
             if mode == "boundary":
-                return min_v if random.random() > 0.5 else max_v
+                # Biên chặt: đúng tại min hoặc max (hoặc ±1 unit nhỏ)
+                return (
+                    random.choice([min_v, min_v + 0.01])
+                    if random.random() > 0.5
+                    else random.choice([max_v, max_v - 0.01])
+                )
             if mode == "ep_valid":
                 return (min_v + max_v) / 2.0
             return random.uniform(min_v, max_v)
         else:
             min_i = int(min_v)
             max_i = int(max_v)
+            invalid_i = max(1, int(invalid_delta))
             if mode in ("invalid", "ep_invalid"):
-                return min_i - 50 if random.random() > 0.5 else max_i + 50
+                # Fix #4: ±invalid_i thay vì hardcode ±50
+                return (
+                    min_i - invalid_i
+                    if random.random() > 0.5
+                    else max_i + invalid_i
+                )
             if mode == "boundary":
-                return min_i if random.random() > 0.5 else max_i
+                # Biên chặt: tại min/max hoặc min+1/max-1 (near-boundary)
+                return random.choice([
+                    min_i,
+                    min_i + 1 if min_i + 1 <= max_i else min_i,
+                    max_i,
+                    max_i - 1 if max_i - 1 >= min_i else max_i
+                ])
             if mode == "ep_valid":
                 return (min_i + max_i) // 2
             return random.randint(min_i, max_i)
@@ -530,19 +556,27 @@ class TestSuiteOptimizer:
 
     def get_adaptive_mutation_rate(self):
         """
-        Decay mutation rate using quadratic schedule:
-        Start high (~0.25-0.30) for exploration,
-        decay to minimum (~0.02) for exploitation.
-        rate = initial - (initial - min) * progress^2
+        Tỷ lệ đột biến giảm dần (Adaptive Mutation Rate) — đồ án Chương 2:
+            Pm(g) = Pm_init - (Pm_init - Pm_min) * progress²
+
+        Công thức gốc trong lý thuyết là tuyến tính (bậc 1).
+        Ở đây dùng bậc 2 (quadratic) để:
+          - Khám phá rộng (exploration) ở các thế hệ đầu (tỷ lệ giảm chậm)
+          - Tập trung khai thác (exploitation) ở các thế hệ cuối (tỷ lệ giảm nhanh)
+        → Ổn định hơn so với tuyến tính khi số thế hệ lớn.
         """
         p = self._progress_ratio()
         return self._initial_mutation_rate - (self._initial_mutation_rate - self._min_mutation_rate) * (p ** 2)
 
     def get_adaptive_crossover_rate(self):
         """
-        Decay crossover rate more gently:
-        Start high (~0.80) for diversity through recombination,
-        decay to minimum (~0.45) for preserving good schemas.
+        Tỷ lệ lai ghép giảm dần (Adaptive Crossover Rate) — đồ án Chương 2:
+            Pc(g) = Pc_init - (Pc_init - Pc_min) * progress^1.5
+
+        Công thức gốc trong lý thuyết là tuyến tính (bậc 1).
+        Ở đây dùng bậc 1.5 (subquadratic) để:
+          - Duy trì tái tổ hợp cao ở giai đoạn giữa tiến hóa
+          - Giảm nhẹ hơn mutation (bậc 2) → đa dạng lâu hơn
         """
         p = self._progress_ratio()
         return self._initial_crossover_rate - (self._initial_crossover_rate - self._min_crossover_rate) * (p ** 1.5)
@@ -856,18 +890,25 @@ class TestSuiteOptimizer:
     # SELECTION (with Niche Density Distance tiebreaker)
     # ═══════════════════════════════════════════════════════════
 
-    def select_parent(self):
+    def select_parent(self, tournament_k: int = 3):
         """
-        Rank-based Selection V3.
-        Cá thể có rank càng cao (chỉ số thấp, vì đã sort descending) thì xác suất chọn càng lớn.
-        P(i) = (N - i + 1) / sum(1..N)
+        Tournament Selection — khớp với công thức đồ án (Chương 2):
+            winner = argmax { Fitness(Xᵢ) | Xᵢ ∈ S }
+        trong đó S là tập k cá thể được chọn ngẫu nhiên từ quần thể.
+
+        Tham số:
+            tournament_k: kích thước nhóm đấu giải (mặc định 3).
+                Giá trị lớn hơn → áp lực chọn lọc cao hơn → hội tụ nhanh hơn.
         """
         pop_size = len(self.test_suite)
         if pop_size == 0:
             return None
-            
-        weights = [pop_size - i for i in range(pop_size)]
-        return random.choices(self.test_suite, weights=weights, k=1)[0]
+
+        k = min(tournament_k, pop_size)
+        tournament = random.sample(self.test_suite, k)
+        # Chọn cá thể có fitness cao nhất trong nhóm đấu giải
+        winner = max(tournament, key=lambda ind: ind["fitness"])
+        return winner
 
     def _niche_density_distance(self, individual):
         """
@@ -1224,14 +1265,20 @@ class TestSuiteOptimizer:
 
     def _compute_full_coverage(self):
         """
-        UPGRADED coverage calculation:
-        - Uses ENTIRE population (not just top 10)
-        - Tracks pairwise field combinations
-        - Accounts for duplicate rate
+        Tính độ phủ tổng hợp — khớp công thức FinalQuality đồ án Chương 3:
+            FinalQuality(D*) = α·VC + β·BC + γ·DC + δ·NC
+
+        Ánh xạ:
+            VC (Validation Coverage)   → val_factor      (α = 0.50)
+            BC (Boundary Coverage)     → bound_factor    (β = 0.20)
+            DC (Diversity/Pairwise)    → pairwise_cov    (γ = 0.15)
+            NC (Negative Coverage)     → neg_factor      (δ = 0.15)
+        Tổng = 1.0, discount thêm nếu DuplicateRate > 0.3
         """
         raw_values = [ind["values"] for ind in self.test_suite]
+        categories_list = [ind.get("categories", ["POSITIVE"]) for ind in self.test_suite]
 
-        # --- 1. Individual field coverage (full population) ---
+        # --- 1. Validation Coverage (VC) ---
         total_valid = 0
         boundaries_checked = set()
 
@@ -1276,8 +1323,6 @@ class TestSuiteOptimizer:
                         if field.get("maxLength") is not None and len(val_str) == field["maxLength"] - 1:
                             boundaries_checked.add(f"{name}_max_near")
 
-
-
         total_cases = len(raw_values)
         max_valid = total_cases * len(self.schema)
         val_factor = total_valid / max_valid if max_valid > 0 else 0
@@ -1285,22 +1330,56 @@ class TestSuiteOptimizer:
         possible_bounds = len(self.schema) * 4  # 2 exact + 2 near per field
         bound_factor = len(boundaries_checked) / possible_bounds if possible_bounds > 0 else 0
 
-        # --- 2. Pairwise combination coverage ---
+        # --- 2. Pairwise Coverage (DC) ---
         pairwise_coverage = self._compute_pairwise_coverage(raw_values)
 
-        # --- 3. Composite coverage ---
-        # 60% validation + 20% boundary + 20% pairwise
+        # --- 3. Negative Coverage (NC) — Fix #6 ---
+        neg_factor = self._compute_negative_coverage(raw_values, categories_list)
+
+        # --- 4. Composite FinalQuality — đồ án công thức ---
+        # FinalQuality = α·VC + β·BC + γ·DC + δ·NC
         coverage = min(
-            (val_factor * 0.60) + (bound_factor * 0.20) + (pairwise_coverage * 0.20),
+            (val_factor * 0.50) +
+            (bound_factor * 0.20) +
+            (pairwise_coverage * 0.15) +
+            (neg_factor * 0.15),
             1.0
         )
 
-        # Discount by duplicate rate
+        # Discount nếu tỷ lệ trùng lặp vượt ngưỡng (đồ án đề cập)
         dup_rate = self._compute_duplicate_rate()
         if dup_rate > 0.3:
             coverage *= (1.0 - (dup_rate - 0.3) * 0.5)
 
         return max(coverage, 0.01)
+
+    def _compute_negative_coverage(self, raw_values: list, categories_list: list) -> float:
+        """
+        Tính Negative Data Coverage (NC) — đồ án Chương 3:
+            NC = số ca negative / tổng số ca kiểm thử
+
+        Ca negative gồm: NEGATIVE_FUNCTIONAL và NEGATIVE_SECURITY.
+        Giá trị NC lý tưởng nằm trong khoảng [0.15, 0.35] (15-35% ca negative).
+        """
+        if not raw_values:
+            return 0.0
+
+        total = len(raw_values)
+        neg_count = 0
+        for cats in categories_list:
+            cats_upper = [c.upper() for c in (cats or [])]
+            if any(c in ["NEGATIVE_FUNCTIONAL", "NEGATIVE_SECURITY", "NEGATIVE"] for c in cats_upper):
+                neg_count += 1
+
+        neg_ratio = neg_count / total
+        # Thưởng tối đa khi NC ≈ 0.20-0.30, không thưởng thêm nếu quá nhiều negative
+        # (Quá nhiều negative → tập thiếu dữ liệu positive nghĩa vụ)
+        if neg_ratio <= 0.35:
+            return neg_ratio / 0.35  # tuyến tính đến 1.0
+        else:
+            # Giảm nhẹ nếu negative quá nhiều
+            return max(0.0, 1.0 - (neg_ratio - 0.35) * 2.0)
+
 
     def _compute_pairwise_coverage(self, raw_values):
         """
