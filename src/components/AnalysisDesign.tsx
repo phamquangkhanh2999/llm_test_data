@@ -89,7 +89,7 @@ const RenderConstraintBadges: React.FC<{ f: FieldConstraint }> = ({ f }) => {
 
   if (f.allowedValues?.length) {
     badges.push({
-      text: `Enum: ${f.allowedValues.join(',')}`,
+      text: `Enum: ${Array.isArray(f.allowedValues) ? f.allowedValues.join(',') : f.allowedValues}`,
       bg: 'rgba(6, 182, 212, 0.08)',
       color: 'var(--color-teal)',
     });
@@ -97,7 +97,7 @@ const RenderConstraintBadges: React.FC<{ f: FieldConstraint }> = ({ f }) => {
 
   if (f.successValues?.length) {
     badges.push({
-      text: `Success: ${f.successValues.join(',')}`,
+      text: `Success: ${Array.isArray(f.successValues) ? f.successValues.join(',') : f.successValues}`,
       bg: 'rgba(16, 185, 129, 0.08)',
       color: 'var(--color-emerald)',
     });
