@@ -371,8 +371,6 @@ class V4TestSuiteOptimizer:
             validation_score = 0.0 if is_valid else 1.0
             
         boundary_coverage = min(1.0, sum(1 for n in nodes if "MIN" in n or "MAX" in n) / max(len(self.schema), 1))
-        # Gộp boundary vào validation_score
-        blended_validation = validation_score * 0.7 + boundary_coverage * 0.3
         
         # 2. Semantic Goal Match (0.3)
         actual_cat = self._classify_record({}, values)
@@ -384,8 +382,8 @@ class V4TestSuiteOptimizer:
         if "🫥" in str_all or "💩" in str_all or "🤷" in str_all: noise_score += 0.6
         if len(str_all) > 500 and "A" * 50 in str_all: noise_score += 0.4
         
-        # 3. Tính scalar fitness (scale 0-1)
-        scalar = (0.5 * blended_validation + 0.3 * goal_match + 0.2 * diversity_score)
+        # 3. Tính scalar fitness (scale 0-1) chia đều 25% cho mỗi tiêu chí
+        scalar = 0.25 * validation_score + 0.25 * boundary_coverage + 0.25 * goal_match + 0.25 * diversity_score
         scalar = max(0.0, scalar - noise_score * 0.1)
         
         # Không giết hẳn cá thể nếu trượt mục tiêu (giữ hướng tìm kiếm)
